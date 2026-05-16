@@ -1,7 +1,6 @@
 import os
 import pathlib
 import pytest
-import psycopg
 
 os.environ["HOMEDIR_TEST"] = "1"
 
@@ -44,9 +43,7 @@ def _drop_all_tables(conn):
 
 
 def _truncate_all_tables(conn):
-    tables = conn.execute(
-        "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-    ).fetchall()
+    tables = conn.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public'").fetchall()
     if tables:
         table_names = ", ".join(t[0] for t in tables)
         conn.execute(f"TRUNCATE {table_names} CASCADE")

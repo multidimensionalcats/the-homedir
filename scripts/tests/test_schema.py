@@ -1,6 +1,5 @@
 """Smoke tests to verify database schema and test infrastructure."""
 
-
 EXPECTED_TABLES = {
     "sessions",
     "file_operations",
@@ -84,9 +83,7 @@ class TestSchemaExists:
         """Duplicate slugs must be rejected."""
         import psycopg.errors
 
-        db_conn.execute(
-            "INSERT INTO compositions (slug, filename) VALUES ('test-slug', 'test.md')"
-        )
+        db_conn.execute("INSERT INTO compositions (slug, filename) VALUES ('test-slug', 'test.md')")
         db_conn.commit()
         try:
             db_conn.execute(
@@ -127,9 +124,7 @@ class TestSchemaExists:
             "INSERT INTO memory_blocks (id, block_hash, heading, content) "
             "VALUES (1, 'abc123', '## Test', 'content')"
         )
-        db_conn.execute(
-            "INSERT INTO memory_block_presence (snapshot_id, block_id) VALUES (1, 1)"
-        )
+        db_conn.execute("INSERT INTO memory_block_presence (snapshot_id, block_id) VALUES (1, 1)")
         db_conn.commit()
 
         import psycopg.errors
@@ -148,9 +143,7 @@ class TestSchemaExists:
         import psycopg.errors
 
         try:
-            db_conn.execute(
-                "INSERT INTO predictions (text, confidence) VALUES ('test', 1.5)"
-            )
+            db_conn.execute("INSERT INTO predictions (text, confidence) VALUES ('test', 1.5)")
             db_conn.commit()
             assert False, "Should have raised CheckViolation"
         except psycopg.errors.CheckViolation:
@@ -180,7 +173,9 @@ class TestSchemaExists:
         """Running the migration a second time should not error."""
         import pathlib
 
-        migration = pathlib.Path(__file__).parent.parent.parent / "migrations" / "001_initial_schema.sql"
+        migration = (
+            pathlib.Path(__file__).parent.parent.parent / "migrations" / "001_initial_schema.sql"
+        )
         with open(migration) as f:
             sql = f.read()
         db_conn.execute(sql)

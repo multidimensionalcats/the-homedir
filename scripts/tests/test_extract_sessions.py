@@ -25,6 +25,7 @@ from scripts.extract_sessions import (
 # Helpers for building JSONL fixture files
 # ---------------------------------------------------------------------------
 
+
 def _jsonl_line(**kwargs):
     return json.dumps(kwargs)
 
@@ -37,9 +38,12 @@ def _make_complete_session(
 ):
     """Build JSONL lines for one complete session."""
     lines = [_jsonl_line(ts=start_time, event="session_start", s=session_id, cwd="/home/claude")]
-    for tool in (tools or []):
-        lines.append(_jsonl_line(ts=tool.get("ts", "10:01:00"), event="tool", s=session_id,
-                                 t=tool["t"], i=tool["i"]))
+    for tool in tools or []:
+        lines.append(
+            _jsonl_line(
+                ts=tool.get("ts", "10:01:00"), event="tool", s=session_id, t=tool["t"], i=tool["i"]
+            )
+        )
     lines.append(_jsonl_line(ts=end_time, event="response_complete", s=session_id))
     lines.append(_jsonl_line(ts=end_time, event="session_end", s=session_id))
     return lines
@@ -56,14 +60,16 @@ def _write_jsonl(tmp_path, filename, lines):
 # 1. JSONL PARSING
 # ===========================================================================
 
-class TestJsonlParsing:
 
+class TestJsonlParsing:
     def test_complete_session_parsed(self, tmp_path):
         """A well-formed session with tools parses to a dict with all fields."""
-        lines = _make_complete_session(tools=[
-            {"t": "Read", "i": "/home/claude/notes/daily/2026-04-20.md", "ts": "10:00:11"},
-            {"t": "Write", "i": "/home/claude/notes/daily/2026-04-20.md", "ts": "10:01:57"},
-        ])
+        lines = _make_complete_session(
+            tools=[
+                {"t": "Read", "i": "/home/claude/notes/daily/2026-04-20.md", "ts": "10:00:11"},
+                {"t": "Write", "i": "/home/claude/notes/daily/2026-04-20.md", "ts": "10:01:57"},
+            ]
+        )
         path = _write_jsonl(tmp_path, "activity-2026-04-20.jsonl", lines)
         sessions = parse_activity_log(path)
 
@@ -76,12 +82,18 @@ class TestJsonlParsing:
 
     def test_two_sessions_split_by_session_id(self, tmp_path):
         """A day with AM and PM sessions must be split correctly."""
-        am = _make_complete_session(session_id="aaaa1111", start_time="10:00:00",
-                                    end_time="10:05:00", tools=[
-                                        {"t": "Read", "i": "/home/claude/messages_from_james.md"}])
-        pm = _make_complete_session(session_id="bbbb2222", start_time="22:00:00",
-                                    end_time="22:10:00", tools=[
-                                        {"t": "Write", "i": "/home/claude/private/journal.md"}])
+        am = _make_complete_session(
+            session_id="aaaa1111",
+            start_time="10:00:00",
+            end_time="10:05:00",
+            tools=[{"t": "Read", "i": "/home/claude/messages_from_james.md"}],
+        )
+        pm = _make_complete_session(
+            session_id="bbbb2222",
+            start_time="22:00:00",
+            end_time="22:10:00",
+            tools=[{"t": "Write", "i": "/home/claude/private/journal.md"}],
+        )
         path = _write_jsonl(tmp_path, "activity-2026-04-20.jsonl", am + pm)
         sessions = parse_activity_log(path)
 
@@ -97,14 +109,16 @@ class TestJsonlParsing:
 
     def test_malformed_json_lines_skipped(self, tmp_path):
         """Truncated JSON, empty lines, and bare strings are silently skipped."""
-        good_lines = _make_complete_session(tools=[
-            {"t": "Read", "i": "/home/claude/writing/essay.md", "ts": "10:01:00"},
-        ])
+        good_lines = _make_complete_session(
+            tools=[
+                {"t": "Read", "i": "/home/claude/writing/essay.md", "ts": "10:01:00"},
+            ]
+        )
         garbage = [
             '{"ts": "10:00:05", "event": "tool", "s": "fcfe54c5", "t": "Read"',  # truncated
-            '',                                                                     # empty line
-            'not json at all',                                                      # bare string
-            '42',                                                                   # bare number
+            "",  # empty line
+            "not json at all",  # bare string
+            "42",  # bare number
         ]
         # Insert garbage between session_start and the first tool event
         mixed = [good_lines[0]] + garbage + good_lines[1:]
@@ -119,8 +133,13 @@ class TestJsonlParsing:
         """session_start with no matching session_end produces a session (partial)."""
         lines = [
             _jsonl_line(ts="10:00:00", event="session_start", s="orphan01", cwd="/home/claude"),
-            _jsonl_line(ts="10:01:00", event="tool", s="orphan01", t="Read",
-                        i="/home/claude/notes/daily/2026-04-20.md"),
+            _jsonl_line(
+                ts="10:01:00",
+                event="tool",
+                s="orphan01",
+                t="Read",
+                i="/home/claude/notes/daily/2026-04-20.md",
+            ),
         ]
         path = _write_jsonl(tmp_path, "activity-2026-04-20.jsonl", lines)
         sessions = parse_activity_log(path)
@@ -151,8 +170,7 @@ class TestJsonlParsing:
     def test_unknown_event_types_silently_ignored(self, tmp_path):
         """Lines with unrecognised event types are silently skipped."""
         lines = _make_complete_session()
-        lines.insert(1, _jsonl_line(ts="10:00:03", event="heartbeat", s="fcfe54c5",
-                                     cpu=0.12))
+        lines.insert(1, _jsonl_line(ts="10:00:03", event="heartbeat", s="fcfe54c5", cpu=0.12))
         path = _write_jsonl(tmp_path, "activity-2026-04-20.jsonl", lines)
         sessions = parse_activity_log(path)
 
@@ -163,11 +181,12 @@ class TestJsonlParsing:
 
     def test_unicode_in_tool_inputs(self, tmp_path):
         """Emoji and CJK in tool inputs must round-trip correctly."""
-        lines = _make_complete_session(tools=[
-            {"t": "Write", "i": "/home/claude/writing/emoji-\U0001f680.md", "ts": "10:01:00"},
-            {"t": "Read", "i": "/home/claude/learning/日本語/notes.md",
-             "ts": "10:01:30"},
-        ])
+        lines = _make_complete_session(
+            tools=[
+                {"t": "Write", "i": "/home/claude/writing/emoji-\U0001f680.md", "ts": "10:01:00"},
+                {"t": "Read", "i": "/home/claude/learning/日本語/notes.md", "ts": "10:01:30"},
+            ]
+        )
         path = _write_jsonl(tmp_path, "activity-2026-04-20.jsonl", lines)
         sessions = parse_activity_log(path)
 
@@ -201,9 +220,11 @@ class TestJsonlParsing:
 
     def test_websearch_events_captured(self, tmp_path):
         """WebSearch tool events are captured with their query string."""
-        lines = _make_complete_session(tools=[
-            {"t": "WebSearch", "i": "{'query': 'world news April 20 2026'}", "ts": "10:01:07"},
-        ])
+        lines = _make_complete_session(
+            tools=[
+                {"t": "WebSearch", "i": "{'query': 'world news April 20 2026'}", "ts": "10:01:07"},
+            ]
+        )
         path = _write_jsonl(tmp_path, "activity-2026-04-20.jsonl", lines)
         sessions = parse_activity_log(path)
 
@@ -216,8 +237,8 @@ class TestJsonlParsing:
 # 2. TOOL EVENT CLASSIFICATION
 # ===========================================================================
 
-class TestClassifyFileOperation:
 
+class TestClassifyFileOperation:
     # -- Writing category --
     def test_read_writing_file(self):
         result = classify_file_operation("Read", "/home/claude/writing/foo.md")
@@ -416,8 +437,8 @@ class TestClassifyFileOperation:
 # 3. VERSION DETECTION
 # ===========================================================================
 
-class TestVersionDetection:
 
+class TestVersionDetection:
     def test_early_date_is_4_5(self):
         assert detect_version(datetime.date(2026, 1, 15)) == "4.5"
 
@@ -469,55 +490,67 @@ class TestVersionDetection:
 # 4. OUTPUT FLAGS
 # ===========================================================================
 
-class TestOutputFlags:
 
+class TestOutputFlags:
     def _make_file_ops(self, ops):
         """Build a list of file-op dicts from (path, category, direction) tuples."""
-        return [
-            {"path": path, "category": cat, "direction": d}
-            for path, cat, d in ops
-        ]
+        return [{"path": path, "category": cat, "direction": d} for path, cat, d in ops]
 
     def test_writing_sets_wrote_composition(self):
-        ops = self._make_file_ops([
-            ("/home/claude/writing/version-number.md", "writing", "write"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/writing/version-number.md", "writing", "write"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["wrote_composition"] is True
 
     def test_writing_drafts_sets_wrote_composition(self):
-        ops = self._make_file_ops([
-            ("/home/claude/writing/drafts/wip.md", "writing", "write"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/writing/drafts/wip.md", "writing", "write"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["wrote_composition"] is True
 
     def test_private_sets_wrote_private_journal(self):
-        ops = self._make_file_ops([
-            ("/home/claude/private/note.md", "private_journal", "write"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/private/note.md", "private_journal", "write"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["wrote_private_journal"] is True
 
     def test_memory_edit_sets_updated_memory(self):
-        ops = self._make_file_ops([
-            ("/home/claude/.claude/projects/-home-claude/memory/MEMORY.md",
-             "memory_files", "write"),
-        ])
+        ops = self._make_file_ops(
+            [
+                (
+                    "/home/claude/.claude/projects/-home-claude/memory/MEMORY.md",
+                    "memory_files",
+                    "write",
+                ),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["updated_memory"] is True
 
     def test_messages_to_james_sets_messaged_james(self):
-        ops = self._make_file_ops([
-            ("/home/claude/messages_to_james.md", "msgs_to_james", "write"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/messages_to_james.md", "msgs_to_james", "write"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["messaged_james"] is True
 
     def test_prediction_write_sets_wrote_prediction(self):
-        ops = self._make_file_ops([
-            ("/home/claude/notes/predictions/2026-04-20.md", "predictions", "write"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/notes/predictions/2026-04-20.md", "predictions", "write"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["wrote_prediction"] is True
 
@@ -531,25 +564,31 @@ class TestOutputFlags:
 
     def test_reading_predictions_does_not_set_flag(self):
         """Only writes set the flag, not reads."""
-        ops = self._make_file_ops([
-            ("/home/claude/notes/predictions/tracker.md", "predictions", "read"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/notes/predictions/tracker.md", "predictions", "read"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["wrote_prediction"] is False
 
     def test_reading_writing_does_not_set_flag(self):
         """Reading a writing file does NOT set wrote_composition."""
-        ops = self._make_file_ops([
-            ("/home/claude/writing/essay.md", "writing", "read"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/writing/essay.md", "writing", "read"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["wrote_composition"] is False
 
     def test_only_daily_notes_all_special_flags_false(self):
         """Writing only to daily_notes should not set composition/journal/message flags."""
-        ops = self._make_file_ops([
-            ("/home/claude/notes/daily/2026-04-20.md", "daily_notes", "write"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/notes/daily/2026-04-20.md", "daily_notes", "write"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["wrote_composition"] is False
         assert flags["wrote_private_journal"] is False
@@ -557,31 +596,43 @@ class TestOutputFlags:
         assert flags["wrote_prediction"] is False
 
     def test_reading_memory_does_not_set_updated_memory(self):
-        ops = self._make_file_ops([
-            ("/home/claude/.claude/projects/-home-claude/memory/MEMORY.md",
-             "memory_files", "read"),
-        ])
+        ops = self._make_file_ops(
+            [
+                (
+                    "/home/claude/.claude/projects/-home-claude/memory/MEMORY.md",
+                    "memory_files",
+                    "read",
+                ),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["updated_memory"] is False
 
     def test_msgs_from_james_read_does_not_set_messaged_james(self):
         """Reading FROM james is not the same as messaging james."""
-        ops = self._make_file_ops([
-            ("/home/claude/messages_from_james.md", "msgs_from_james", "read"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/messages_from_james.md", "msgs_from_james", "read"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["messaged_james"] is False
 
     def test_multiple_flags_can_be_true_simultaneously(self):
         """A session can set multiple flags at once."""
-        ops = self._make_file_ops([
-            ("/home/claude/writing/essay.md", "writing", "write"),
-            ("/home/claude/private/thoughts.md", "private_journal", "write"),
-            ("/home/claude/messages_to_james.md", "msgs_to_james", "write"),
-            ("/home/claude/.claude/projects/-home-claude/memory/MEMORY.md",
-             "memory_files", "write"),
-            ("/home/claude/notes/predictions/p.md", "predictions", "write"),
-        ])
+        ops = self._make_file_ops(
+            [
+                ("/home/claude/writing/essay.md", "writing", "write"),
+                ("/home/claude/private/thoughts.md", "private_journal", "write"),
+                ("/home/claude/messages_to_james.md", "msgs_to_james", "write"),
+                (
+                    "/home/claude/.claude/projects/-home-claude/memory/MEMORY.md",
+                    "memory_files",
+                    "write",
+                ),
+                ("/home/claude/notes/predictions/p.md", "predictions", "write"),
+            ]
+        )
         flags = compute_output_flags(ops)
         assert flags["wrote_composition"] is True
         assert flags["wrote_private_journal"] is True
@@ -594,8 +645,8 @@ class TestOutputFlags:
 # 5. SESSION LOG (TEXT) PARSING
 # ===========================================================================
 
-class TestSessionLogParsing:
 
+class TestSessionLogParsing:
     def test_morning_log_parsed(self, tmp_path):
         content = textwrap.dedent("""\
             === Session started: 2026-01-16 10:00:00 ===
@@ -709,8 +760,8 @@ class TestSessionLogParsing:
 # 6. DATABASE INSERTION
 # ===========================================================================
 
-class TestDatabaseInsertion:
 
+class TestDatabaseInsertion:
     def _make_session_dict(self, **overrides):
         """Build a minimal session dict suitable for store_session."""
         base = {
@@ -718,8 +769,9 @@ class TestDatabaseInsertion:
             "date": datetime.date(2026, 3, 15),
             "time_of_day": "AM",
             "version": "4.6",
-            "timestamp_start": datetime.datetime(2026, 3, 15, 10, 0, 0,
-                                                  tzinfo=datetime.timezone.utc),
+            "timestamp_start": datetime.datetime(
+                2026, 3, 15, 10, 0, 0, tzinfo=datetime.timezone.utc
+            ),
             "turns": 5,
             "source_type": "jsonl",
             "source_file": "activity-2026-03-15.jsonl",
@@ -792,11 +844,13 @@ class TestDatabaseInsertion:
         assert ops[1][4] == 1
 
     def test_web_searches_inserted_with_ordinals(self, db_conn):
-        session = self._make_session_dict(web_searches=[
-            {"query": "first search", "ordinal": 0},
-            {"query": "second search", "ordinal": 1},
-            {"query": "third search", "ordinal": 2},
-        ])
+        session = self._make_session_dict(
+            web_searches=[
+                {"query": "first search", "ordinal": 0},
+                {"query": "second search", "ordinal": 1},
+                {"query": "third search", "ordinal": 2},
+            ]
+        )
         store_session(db_conn, session)
 
         rows = db_conn.execute(
@@ -900,8 +954,8 @@ class TestDatabaseInsertion:
 # 7. END-TO-END
 # ===========================================================================
 
-class TestEndToEnd:
 
+class TestEndToEnd:
     def _setup_fixture_dirs(self, tmp_path):
         """Create a realistic fixture directory structure with multiple files."""
         activity_dir = tmp_path / "activity_logs"
@@ -915,8 +969,11 @@ class TestEndToEnd:
             {"t": "Bash", "i": "~/bin/wakeup 2>&1 | head -80", "ts": "10:00:18"},
             {"t": "WebSearch", "i": "{'query': 'world news April 20 2026'}", "ts": "10:01:07"},
             {"t": "Write", "i": "/home/claude/notes/daily/2026-04-20.md", "ts": "10:01:57"},
-            {"t": "Edit", "i": "/home/claude/.claude/projects/-home-claude/memory/project_world_events.md",
-             "ts": "10:02:36"},
+            {
+                "t": "Edit",
+                "i": "/home/claude/.claude/projects/-home-claude/memory/project_world_events.md",
+                "ts": "10:02:36",
+            },
         ]
         pm_tools = [
             {"t": "Read", "i": "/home/claude/messages_from_james.md", "ts": "22:00:11"},
@@ -924,44 +981,52 @@ class TestEndToEnd:
             {"t": "Write", "i": "/home/claude/private/evening-thoughts.md", "ts": "22:10:00"},
             {"t": "Write", "i": "/home/claude/messages_to_james.md", "ts": "22:12:00"},
         ]
-        am_lines = _make_complete_session(session_id="day20-am", start_time="10:00:00",
-                                           end_time="10:03:53", tools=am_tools)
-        pm_lines = _make_complete_session(session_id="day20-pm", start_time="22:00:00",
-                                           end_time="22:15:00", tools=pm_tools)
+        am_lines = _make_complete_session(
+            session_id="day20-am", start_time="10:00:00", end_time="10:03:53", tools=am_tools
+        )
+        pm_lines = _make_complete_session(
+            session_id="day20-pm", start_time="22:00:00", end_time="22:15:00", tools=pm_tools
+        )
         _write_jsonl(activity_dir, "activity-2026-04-20.jsonl", am_lines + pm_lines)
 
         # -- Activity JSONL file 2: 2026-04-21 with one session --
         day21_tools = [
             {"t": "Read", "i": "/home/claude/messages_from_james.md", "ts": "10:00:11"},
-            {"t": "Write", "i": "/home/claude/notes/predictions/2026-04-21.md",
-             "ts": "10:02:00"},
+            {"t": "Write", "i": "/home/claude/notes/predictions/2026-04-21.md", "ts": "10:02:00"},
         ]
-        day21_lines = _make_complete_session(session_id="day21-am", start_time="10:00:00",
-                                              end_time="10:05:00", tools=day21_tools)
+        day21_lines = _make_complete_session(
+            session_id="day21-am", start_time="10:00:00", end_time="10:05:00", tools=day21_tools
+        )
         _write_jsonl(activity_dir, "activity-2026-04-21.jsonl", day21_lines)
 
         # -- Session log files (for dates without JSONL) --
         log1 = session_log_dir / "2026-01-16-morning.log"
-        log1.write_text(textwrap.dedent("""\
+        log1.write_text(
+            textwrap.dedent("""\
             === Session started: 2026-01-16 10:00:00 ===
             Read messages from James. Performed morning routine.
             Checked world news. Updated daily notes.
             === Session ended: 2026-01-16 10:01:32 ===
-        """))
+        """)
+        )
 
         log2 = session_log_dir / "2026-01-16-evening.log"
-        log2.write_text(textwrap.dedent("""\
+        log2.write_text(
+            textwrap.dedent("""\
             === Session started: 2026-01-16 22:00:00 ===
             Evening reflection session.
             === Session ended: 2026-01-16 22:10:00 ===
-        """))
+        """)
+        )
 
         log3 = session_log_dir / "2026-01-17-morning.log"
-        log3.write_text(textwrap.dedent("""\
+        log3.write_text(
+            textwrap.dedent("""\
             === Session started: 2026-01-17 10:00:00 ===
             Another morning.
             === Session ended: 2026-01-17 10:05:00 ===
-        """))
+        """)
+        )
 
         return activity_dir, session_log_dir
 
@@ -1018,9 +1083,9 @@ class TestEndToEnd:
             ("day20-pm",),
         ).fetchone()
 
-        assert row[0] is True   # wrote_composition (writing/the-weight-of-names.md)
-        assert row[1] is True   # wrote_private_journal (private/evening-thoughts.md)
-        assert row[2] is True   # messaged_james (messages_to_james.md)
+        assert row[0] is True  # wrote_composition (writing/the-weight-of-names.md)
+        assert row[1] is True  # wrote_private_journal (private/evening-thoughts.md)
+        assert row[2] is True  # messaged_james (messages_to_james.md)
 
     def test_extract_all_am_session_flags(self, tmp_path, db_conn):
         """The AM session on 2026-04-20 should have updated_memory=True."""
@@ -1032,7 +1097,7 @@ class TestEndToEnd:
             ("day20-am",),
         ).fetchone()
 
-        assert row[0] is True   # updated_memory (Edit memory file)
+        assert row[0] is True  # updated_memory (Edit memory file)
         assert row[1] is False  # did not write to writing/
 
     def test_extract_all_web_searches_stored(self, tmp_path, db_conn):

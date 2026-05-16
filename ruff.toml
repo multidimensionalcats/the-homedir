@@ -1,9 +1,8 @@
+line-length = 100
+
 [lint]
 select = ["E", "F", "W", "I", "UP", "S", "B"]
-ignore = ["S101"]  # assert is fine in non-production code
+ignore = ["S101"]
 
 [lint.per-file-ignores]
-"scripts/tests/*" = ["S", "B"]  # security/bugbear rules relaxed in tests
-
-[format]
-line-length = 100
+"scripts/tests/*" = ["S", "B"]

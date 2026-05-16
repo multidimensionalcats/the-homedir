@@ -7,17 +7,13 @@ FAIL against the current implementation until fixes are applied.
 
 import json
 import datetime
-import os
 
 import pytest
 import psycopg
 
 from scripts.extract_sessions import (
     parse_activity_log,
-    parse_session_log,
     classify_file_operation,
-    detect_version,
-    compute_output_flags,
     store_session,
     extract_all,
     _categorize_path,
@@ -34,6 +30,7 @@ NUL = chr(0)
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _jsonl_line(**kwargs):
     return json.dumps(kwargs)
 
@@ -41,9 +38,12 @@ def _jsonl_line(**kwargs):
 def _make_session_lines(session_id, start_time="10:00:00", end_time="10:05:00", tools=None):
     """Build JSONL lines for one complete session."""
     lines = [_jsonl_line(ts=start_time, event="session_start", s=session_id, cwd="/home/claude")]
-    for tool in (tools or []):
-        lines.append(_jsonl_line(ts=tool.get("ts", "10:01:00"), event="tool", s=session_id,
-                                 t=tool["t"], i=tool["i"]))
+    for tool in tools or []:
+        lines.append(
+            _jsonl_line(
+                ts=tool.get("ts", "10:01:00"), event="tool", s=session_id, t=tool["t"], i=tool["i"]
+            )
+        )
     lines.append(_jsonl_line(ts=end_time, event="session_end", s=session_id))
     return lines
 
@@ -61,8 +61,7 @@ def _make_session_dict(**overrides):
         "date": datetime.date(2026, 3, 15),
         "time_of_day": "AM",
         "version": "4.6",
-        "timestamp_start": datetime.datetime(2026, 3, 15, 10, 0, 0,
-                                              tzinfo=datetime.timezone.utc),
+        "timestamp_start": datetime.datetime(2026, 3, 15, 10, 0, 0, tzinfo=datetime.timezone.utc),
         "turns": 3,
         "source_type": "jsonl",
         "source_file": "activity-2026-03-15.jsonl",
@@ -81,6 +80,7 @@ def _make_session_dict(**overrides):
 # ===========================================================================
 # 1. TRANSACTION INTEGRITY -- partial insert corruption
 # ===========================================================================
+
 
 class TestTransactionIntegrity:
     """store_session does not wrap inserts in a transaction.  If a
@@ -155,9 +155,7 @@ class TestTransactionIntegrity:
         row = db_conn.execute(
             "SELECT 1 FROM sessions WHERE id = %s", ("txn-rollback-02",)
         ).fetchone()
-        assert row is None, (
-            "Session row was orphaned after web_search INSERT failed"
-        )
+        assert row is None, "Session row was orphaned after web_search INSERT failed"
 
     def test_partial_file_ops_not_committed_on_failure(self, db_conn):
         """If the second file_operation fails, the first one must also
@@ -191,9 +189,7 @@ class TestTransactionIntegrity:
             "SELECT COUNT(*) FROM file_operations WHERE session_id = %s",
             ("txn-rollback-03",),
         ).fetchone()[0]
-        assert count == 0, (
-            "Partial file_operations were left behind after a later INSERT failed"
-        )
+        assert count == 0, "Partial file_operations were left behind after a later INSERT failed"
 
     def test_commit_not_called_before_all_inserts_complete(self, db_conn):
         """Verify that if the third file_operation (out of 3) fails, the
@@ -240,14 +236,13 @@ class TestTransactionIntegrity:
             ("txn-rollback-04",),
         ).fetchone()[0]
         assert session_row is None, "Session row orphaned after third file_op failed"
-        assert file_ops_count == 0, (
-            "First two file_operations survived despite third failing"
-        )
+        assert file_ops_count == 0, "First two file_operations survived despite third failing"
 
 
 # ===========================================================================
 # 2. NULL BYTES IN INPUT
 # ===========================================================================
+
 
 class TestNullBytes:
     """Python json.loads happily preserves null bytes but PostgreSQL TEXT
@@ -304,8 +299,7 @@ class TestNullBytes:
         except psycopg.errors.DataError:
             db_conn.rollback()
             pytest.fail(
-                "Raw psycopg DataError from null byte in file path -- "
-                "pipeline must sanitize"
+                "Raw psycopg DataError from null byte in file path -- pipeline must sanitize"
             )
 
     def test_null_byte_in_web_search_query_rejected(self, db_conn):
@@ -324,9 +318,7 @@ class TestNullBytes:
             assert NUL not in row[0], "Null byte stored in web search query"
         except psycopg.errors.DataError:
             db_conn.rollback()
-            pytest.fail(
-                "Raw psycopg DataError from null byte in web search query"
-            )
+            pytest.fail("Raw psycopg DataError from null byte in web search query")
 
     def test_null_byte_in_jsonl_tool_input_sanitized(self, tmp_path):
         """Null bytes in JSONL tool input paths must be caught during parsing."""
@@ -369,6 +361,7 @@ class TestNullBytes:
 # 3. PATH TRAVERSAL
 # ===========================================================================
 
+
 class TestPathTraversal:
     """_categorize_path and _classify_bash do no path canonicalization.
     Paths with ../ can escape /home/claude/ while still matching as
@@ -378,44 +371,32 @@ class TestPathTraversal:
         """cat /home/claude/../../etc/passwd starts with /home/claude but
         resolves to /etc/passwd.  Must NOT be classified as a valid
         /home/claude read."""
-        result = classify_file_operation(
-            "Bash", "cat /home/claude/../../etc/passwd"
-        )
+        result = classify_file_operation("Bash", "cat /home/claude/../../etc/passwd")
         # Either None (rejected) or the path must be canonicalized
         if result is not None:
             path, category, direction = result
             # After canonicalization, this resolves to /etc/passwd
             # which is NOT under /home/claude
-            assert ".." not in path, (
-                "Path traversal stored raw: {}".format(path)
-            )
+            assert ".." not in path, "Path traversal stored raw: {}".format(path)
             # If it somehow still classifies, it must not resolve to /etc/passwd
             assert "/etc/passwd" not in path
 
     def test_traversal_in_writing_subdir(self):
         """Path /home/claude/writing/../../../etc/shadow must NOT be
         classified as 'writing'."""
-        result = classify_file_operation(
-            "Read", "/home/claude/writing/../../../etc/shadow"
-        )
+        result = classify_file_operation("Read", "/home/claude/writing/../../../etc/shadow")
         if result is not None:
             path, category, direction = result
-            assert category != "writing", (
-                "Path traversal falsely classified as 'writing'"
-            )
+            assert category != "writing", "Path traversal falsely classified as 'writing'"
             assert ".." not in path, "Traversal stored raw: {}".format(path)
 
     def test_traversal_in_bash_redirect(self):
         """echo data >> /home/claude/notes/../../../etc/crontab must
         NOT be classified as a notes write."""
-        result = _classify_bash(
-            'echo "pwned" >> /home/claude/notes/../../../etc/crontab'
-        )
+        result = _classify_bash('echo "pwned" >> /home/claude/notes/../../../etc/crontab')
         if result is not None:
             path, category, direction = result
-            assert category != "daily_notes", (
-                "Path traversal falsely classified as notes category"
-            )
+            assert category != "daily_notes", "Path traversal falsely classified as notes category"
             assert ".." not in path
 
     def test_categorize_path_rejects_traversal(self):
@@ -454,8 +435,7 @@ class TestPathTraversal:
         # /home/claude/notes/daily/../../writing/../../../etc/hosts
         # resolves to /etc/hosts
         result = classify_file_operation(
-            "Read",
-            "/home/claude/notes/daily/../../writing/../../../etc/hosts"
+            "Read", "/home/claude/notes/daily/../../writing/../../../etc/hosts"
         )
         if result is not None:
             path, category, _ = result
@@ -468,6 +448,7 @@ class TestPathTraversal:
 # ===========================================================================
 # 4. IDEMPOTENCY / RACE CONDITIONS
 # ===========================================================================
+
 
 class TestIdempotency:
     """store_session uses SELECT-then-INSERT for deduplication.  This is
@@ -497,8 +478,7 @@ class TestIdempotency:
             ("idempotent-01",),
         ).fetchone()[0]
         assert ops_count == 1, (
-            "Expected 1 file_operation, got {} -- "
-            "duplicate inserted on re-run".format(ops_count)
+            "Expected 1 file_operation, got {} -- duplicate inserted on re-run".format(ops_count)
         )
 
     def test_double_store_does_not_duplicate_web_searches(self, db_conn):
@@ -514,8 +494,8 @@ class TestIdempotency:
             "SELECT COUNT(*) FROM web_searches WHERE session_id = %s",
             ("idempotent-02",),
         ).fetchone()[0]
-        assert ws_count == 2, (
-            "Expected 2 web_searches, got {} -- duplicated on re-run".format(ws_count)
+        assert ws_count == 2, "Expected 2 web_searches, got {} -- duplicated on re-run".format(
+            ws_count
         )
 
     def test_extract_all_rerun_no_duplicate_file_ops(self, tmp_path, db_conn):
@@ -541,8 +521,8 @@ class TestIdempotency:
             "SELECT COUNT(*) FROM file_operations WHERE session_id = %s",
             ("rerun-01",),
         ).fetchone()[0]
-        assert ops_count == 2, (
-            "Expected 2 file_operations, got {} after double extract_all".format(ops_count)
+        assert ops_count == 2, "Expected 2 file_operations, got {} after double extract_all".format(
+            ops_count
         )
 
     def test_partial_failure_then_retry_is_clean(self, db_conn):
@@ -598,14 +578,13 @@ class TestIdempotency:
             ("retry-01",),
         ).fetchone()[0]
         assert session_count == 1, "Duplicate session rows after retry"
-        assert ops_count == 1, (
-            "Expected 1 file_op after retry, got {}".format(ops_count)
-        )
+        assert ops_count == 1, "Expected 1 file_op after retry, got {}".format(ops_count)
 
 
 # ===========================================================================
 # 5. CATEGORY SUBSTRING FALSE POSITIVES
 # ===========================================================================
+
 
 class TestCategorySubstringFalsePositives:
     """_categorize_path uses `if pattern in path` which matches substrings
@@ -618,9 +597,7 @@ class TestCategorySubstringFalsePositives:
         substring of... wait, 'unpredictable' does NOT contain 'prediction'.
         But 'prediction-review' DOES.  Testing both."""
         # This one: "prediction" IS present in the path via the filename
-        result = classify_file_operation(
-            "Write", "/home/claude/writing/prediction-outcomes.md"
-        )
+        result = classify_file_operation("Write", "/home/claude/writing/prediction-outcomes.md")
         assert result is not None
         _, category, _ = result
         assert category == "writing", (
@@ -643,8 +620,7 @@ class TestCategorySubstringFalsePositives:
         'experiment' as a substring could cause issues in future rules."""
         cat = _categorize_path("/home/claude/learning/experimental-methods.md")
         assert cat == "learning", (
-            "Expected 'learning', got '{}' -- "
-            "substring match from 'experimental'".format(cat)
+            "Expected 'learning', got '{}' -- substring match from 'experimental'".format(cat)
         )
 
     def test_about_memory_in_conversations(self):
@@ -666,8 +642,9 @@ class TestCategorySubstringFalsePositives:
         'thoughts' substring must not match 'thoughts' category."""
         cat = _categorize_path("/home/claude/notes/daily/thoughts-on-writing.md")
         assert cat == "daily_notes", (
-            "Expected 'daily_notes', got '{}' -- "
-            "'thoughts' substring matched from filename".format(cat)
+            "Expected 'daily_notes', got '{}' -- 'thoughts' substring matched from filename".format(
+                cat
+            )
         )
 
     def test_memory_lane_in_writing(self):
@@ -707,6 +684,7 @@ class TestCategorySubstringFalsePositives:
 # 6. CATEGORY RULE ORDERING SHADOWS
 # ===========================================================================
 
+
 class TestCategoryOrdering:
     """Rule order in _CATEGORY_RULES determines which category wins when
     a path matches multiple patterns.  These tests verify the path's
@@ -728,17 +706,16 @@ class TestCategoryOrdering:
         """/home/claude/private/writing/secret-essay.md -- primary dir is
         private/, so it must be 'private_journal'."""
         cat = _categorize_path("/home/claude/private/writing/secret-essay.md")
-        assert cat == "private_journal", (
-            "Expected 'private_journal', got '{}'".format(cat)
-        )
+        assert cat == "private_journal", "Expected 'private_journal', got '{}'".format(cat)
 
     def test_daily_notes_thoughts_on_memory(self):
         """/home/claude/notes/daily/thoughts-on-memory.md -- primary dir is
         notes/daily/, must be 'daily_notes', not 'thoughts' or 'memory_files'."""
         cat = _categorize_path("/home/claude/notes/daily/thoughts-on-memory.md")
         assert cat == "daily_notes", (
-            "Expected 'daily_notes', got '{}' -- "
-            "substring match overrode path-based match".format(cat)
+            "Expected 'daily_notes', got '{}' -- substring match overrode path-based match".format(
+                cat
+            )
         )
 
     def test_experiments_memory_test(self):
@@ -792,6 +769,7 @@ class TestCategoryOrdering:
 # 7. BASH REGEX FRAGILITY
 # ===========================================================================
 
+
 class TestBashRegex:
     """The bash parser uses simple regexes that break on quoted paths,
     pipe chains, file descriptor redirects, and other common patterns."""
@@ -803,9 +781,7 @@ class TestBashRegex:
         assert result is not None, "Quoted path with spaces was not detected"
         path, category, direction = result
         # Path must contain the full filename, not be truncated
-        assert "important draft.md" in path, (
-            "Path truncated at space: got '{}'".format(path)
-        )
+        assert "important draft.md" in path, "Path truncated at space: got '{}'".format(path)
         assert category == "writing"
         assert direction == "read"
 
@@ -825,18 +801,14 @@ class TestBashRegex:
     def test_grep_classified_as_read(self):
         """grep -r 'pattern' /home/claude/writing/ is a read-like operation."""
         result = _classify_bash("grep -r 'pattern' /home/claude/writing/essay.md")
-        assert result is not None, (
-            "grep command not detected as file operation"
-        )
+        assert result is not None, "grep command not detected as file operation"
         _, _, direction = result
         assert direction == "read"
 
     def test_cat_piped_to_head(self):
         """cat /home/claude/notes/daily/2026-01-15.md | head -5 must
         classify as a read of the notes file."""
-        result = _classify_bash(
-            "cat /home/claude/notes/daily/2026-01-15.md | head -5"
-        )
+        result = _classify_bash("cat /home/claude/notes/daily/2026-01-15.md | head -5")
         assert result is not None
         path, category, direction = result
         assert "notes/daily/2026-01-15.md" in path
@@ -846,9 +818,7 @@ class TestBashRegex:
         """2>/dev/null cat /home/claude/writing/test.md -- the file
         descriptor redirect must not confuse the path extraction."""
         result = _classify_bash("2>/dev/null cat /home/claude/writing/test.md")
-        assert result is not None, (
-            "File descriptor redirect confused the parser"
-        )
+        assert result is not None, "File descriptor redirect confused the parser"
         path, category, direction = result
         assert "writing/test.md" in path
         assert direction == "read"
@@ -866,9 +836,7 @@ class TestBashRegex:
         result = _classify_bash("cat '/home/claude/writing/my draft.md'")
         assert result is not None, "Single-quoted path with spaces not detected"
         path, _, _ = result
-        assert "my draft.md" in path, (
-            "Single-quoted path truncated at space: got '{}'".format(path)
-        )
+        assert "my draft.md" in path, "Single-quoted path truncated at space: got '{}'".format(path)
 
     def test_heredoc_redirect_not_file_write(self):
         """cat << EOF should not classify EOF as a file path.
@@ -886,18 +854,14 @@ class TestBashRegex:
     def test_mv_command_not_detected(self):
         """mv is a file operation (rename/move) but the current regex only
         handles cat/head/tail and redirects. This documents the gap."""
-        result = _classify_bash(
-            "mv /home/claude/writing/draft.md /home/claude/writing/final.md"
-        )
+        _classify_bash("mv /home/claude/writing/draft.md /home/claude/writing/final.md")
         # Current implementation won't detect this -- that's a known gap
         # This test documents it but doesn't fail on it (it's a detection
         # gap, not a misclassification)
 
     def test_cp_command_write_detection(self):
         """cp src dst is a write to dst. Current regex misses this."""
-        result = _classify_bash(
-            "cp /home/claude/writing/draft.md /home/claude/writing/backup.md"
-        )
+        result = _classify_bash("cp /home/claude/writing/draft.md /home/claude/writing/backup.md")
         # cp is a write to the destination; current regex won't catch it
         # This test documents the gap
         if result is not None:
@@ -920,6 +884,7 @@ class TestBashRegex:
 # 8. TIME-OF-DAY EDGE CASES
 # ===========================================================================
 
+
 class TestTimeOfDayEdgeCases:
     """time_of_day is derived from the first event timestamp.  Edge cases
     around sub-second precision, noon boundary, and parse failures."""
@@ -931,8 +896,7 @@ class TestTimeOfDayEdgeCases:
             "subsec-01",
             start_time="22:30:45.123",
             end_time="22:45:00",
-            tools=[{"t": "Read", "i": "/home/claude/notes/daily/2026-05-01.md",
-                     "ts": "22:31:00"}],
+            tools=[{"t": "Read", "i": "/home/claude/notes/daily/2026-05-01.md", "ts": "22:31:00"}],
         )
         p = _write_jsonl(tmp_path, "activity-2026-05-01.jsonl", lines)
         sessions = parse_activity_log(p)
@@ -940,8 +904,7 @@ class TestTimeOfDayEdgeCases:
         assert len(sessions) == 1
         assert sessions[0]["time_of_day"] == "PM", (
             "Got '{}' -- sub-second timestamp "
-            "may have caused parse failure defaulting to AM".format(
-                sessions[0]["time_of_day"])
+            "may have caused parse failure defaulting to AM".format(sessions[0]["time_of_day"])
         )
 
     def test_morning_timestamp_is_am(self, tmp_path):
@@ -966,9 +929,7 @@ class TestTimeOfDayEdgeCases:
         p = _write_jsonl(tmp_path, "activity-2026-05-01.jsonl", lines)
         sessions = parse_activity_log(p)
 
-        assert sessions[0]["time_of_day"] == "PM", (
-            "12:00:00 classified as AM -- noon is PM"
-        )
+        assert sessions[0]["time_of_day"] == "PM", "12:00:00 classified as AM -- noon is PM"
 
     def test_microsecond_precision_timestamp(self, tmp_path):
         """Timestamp '14:30:00.123456' with microsecond precision must
@@ -1038,14 +999,16 @@ class TestTimeOfDayEdgeCases:
 
         assert len(sessions) == 1
         assert sessions[0]["time_of_day"] == "PM", (
-            "Got '{}' -- timezone offset in timestamp caused parse "
-            "failure defaulting to AM".format(sessions[0]["time_of_day"])
+            "Got '{}' -- timezone offset in timestamp caused parse failure defaulting to AM".format(
+                sessions[0]["time_of_day"]
+            )
         )
 
 
 # ===========================================================================
 # 9. WEB QUERY FALLBACK RETURNS RAW BLOB
 # ===========================================================================
+
 
 class TestWebQueryFallback:
     """_extract_web_query falls back to returning the raw input string.
@@ -1069,8 +1032,8 @@ class TestWebQueryFallback:
         padding = "x" * 5000
         inp = "{{'query': 'actual search term', 'extra_field': '{}'}}".format(padding)
         result = _extract_web_query(inp)
-        assert result == "actual search term", (
-            "Expected 'actual search term', got: {}".format(repr(result)[:100])
+        assert result == "actual search term", "Expected 'actual search term', got: {}".format(
+            repr(result)[:100]
         )
 
     def test_multiline_json_like_blob_not_returned_raw(self):
@@ -1080,31 +1043,25 @@ class TestWebQueryFallback:
         result = _extract_web_query(blob)
         # Should extract 'test' via regex, not return the whole blob
         if result is not None:
-            assert len(result) < 500, (
-                "Returned {}-char blob instead of extracting query".format(len(result))
+            assert len(result) < 500, "Returned {}-char blob instead of extracting query".format(
+                len(result)
             )
 
     def test_empty_string_returns_none(self):
         """Empty string input must return None, not empty string."""
         result = _extract_web_query("")
-        assert result is None, (
-            "Expected None for empty input, got {}".format(repr(result))
-        )
+        assert result is None, "Expected None for empty input, got {}".format(repr(result))
 
     def test_whitespace_only_returns_none(self):
         """Whitespace-only input must return None."""
         result = _extract_web_query("   \n\t  ")
-        assert result is None, (
-            "Expected None for whitespace input, got {}".format(repr(result))
-        )
+        assert result is None, "Expected None for whitespace input, got {}".format(repr(result))
 
     def test_binary_garbage_not_stored(self):
         """Random non-UTF8-like bytes (as string) must not be stored as query."""
         garbage = "".join(chr(i) for i in range(1, 32))  # control chars
         result = _extract_web_query(garbage)
-        assert result is None or len(result) < 50, (
-            "Control character garbage returned as web query"
-        )
+        assert result is None or len(result) < 50, "Control character garbage returned as web query"
 
     def test_huge_query_in_valid_json_truncated(self):
         """A valid JSON with an absurdly long query string must be truncated."""
@@ -1115,7 +1072,8 @@ class TestWebQueryFallback:
         # The pipeline should truncate this
         assert result is None or len(result) < 10_000, (
             "100K-char query returned without truncation (len={})".format(
-                len(result) if result else 0)
+                len(result) if result else 0
+            )
         )
 
     def test_nested_quotes_extract_correctly(self):
@@ -1132,6 +1090,7 @@ class TestWebQueryFallback:
 # 10. OUT-OF-ORDER EVENTS
 # ===========================================================================
 
+
 class TestOutOfOrderEvents:
     """Events may appear out of order in a JSONL file.  Tool events
     appearing before session_start must still be assigned correctly."""
@@ -1141,12 +1100,21 @@ class TestOutOfOrderEvents:
         The session must still be parsed with those events included."""
         lines = [
             # Tool event appears before session_start in file
-            _jsonl_line(ts="10:01:00", event="tool", s="ooo-01",
-                        t="Read", i="/home/claude/notes/daily/2026-05-01.md"),
-            _jsonl_line(ts="10:00:00", event="session_start", s="ooo-01",
-                        cwd="/home/claude"),
-            _jsonl_line(ts="10:02:00", event="tool", s="ooo-01",
-                        t="Write", i="/home/claude/writing/essay.md"),
+            _jsonl_line(
+                ts="10:01:00",
+                event="tool",
+                s="ooo-01",
+                t="Read",
+                i="/home/claude/notes/daily/2026-05-01.md",
+            ),
+            _jsonl_line(ts="10:00:00", event="session_start", s="ooo-01", cwd="/home/claude"),
+            _jsonl_line(
+                ts="10:02:00",
+                event="tool",
+                s="ooo-01",
+                t="Write",
+                i="/home/claude/writing/essay.md",
+            ),
             _jsonl_line(ts="10:05:00", event="session_end", s="ooo-01"),
         ]
         p = _write_jsonl(tmp_path, "activity-2026-05-01.jsonl", lines)
@@ -1155,28 +1123,42 @@ class TestOutOfOrderEvents:
         assert len(sessions) == 1
         # Must capture BOTH tool events, including the one before session_start
         assert len(sessions[0]["tool_events"]) == 2, (
-            "Expected 2 tool events, got {} -- "
-            "tool event before session_start was dropped".format(
-                len(sessions[0]["tool_events"]))
+            "Expected 2 tool events, got {} -- tool event before session_start was dropped".format(
+                len(sessions[0]["tool_events"])
+            )
         )
 
     def test_interleaved_sessions_separated_correctly(self, tmp_path):
         """Events from two sessions are interleaved (not cleanly grouped).
         Both sessions must be correctly separated."""
         lines = [
-            _jsonl_line(ts="10:00:00", event="session_start", s="inter-A",
-                        cwd="/home/claude"),
-            _jsonl_line(ts="10:00:00", event="session_start", s="inter-B",
-                        cwd="/home/claude"),
-            _jsonl_line(ts="10:01:00", event="tool", s="inter-A",
-                        t="Read", i="/home/claude/writing/a.md"),
-            _jsonl_line(ts="10:01:30", event="tool", s="inter-B",
-                        t="Write", i="/home/claude/notes/daily/2026-05-01.md"),
-            _jsonl_line(ts="10:02:00", event="tool", s="inter-A",
-                        t="Write", i="/home/claude/private/journal.md"),
+            _jsonl_line(ts="10:00:00", event="session_start", s="inter-A", cwd="/home/claude"),
+            _jsonl_line(ts="10:00:00", event="session_start", s="inter-B", cwd="/home/claude"),
+            _jsonl_line(
+                ts="10:01:00", event="tool", s="inter-A", t="Read", i="/home/claude/writing/a.md"
+            ),
+            _jsonl_line(
+                ts="10:01:30",
+                event="tool",
+                s="inter-B",
+                t="Write",
+                i="/home/claude/notes/daily/2026-05-01.md",
+            ),
+            _jsonl_line(
+                ts="10:02:00",
+                event="tool",
+                s="inter-A",
+                t="Write",
+                i="/home/claude/private/journal.md",
+            ),
             _jsonl_line(ts="10:03:00", event="session_end", s="inter-B"),
-            _jsonl_line(ts="10:04:00", event="tool", s="inter-A",
-                        t="Read", i="/home/claude/messages_from_james.md"),
+            _jsonl_line(
+                ts="10:04:00",
+                event="tool",
+                s="inter-A",
+                t="Read",
+                i="/home/claude/messages_from_james.md",
+            ),
             _jsonl_line(ts="10:05:00", event="session_end", s="inter-A"),
         ]
         p = _write_jsonl(tmp_path, "activity-2026-05-01.jsonl", lines)
@@ -1200,10 +1182,14 @@ class TestOutOfOrderEvents:
         NOT the first event in file order."""
         lines = [
             # A PM tool event appears before the AM session_start
-            _jsonl_line(ts="23:59:00", event="tool", s="tod-ooo-01",
-                        t="Read", i="/home/claude/writing/essay.md"),
-            _jsonl_line(ts="09:00:00", event="session_start", s="tod-ooo-01",
-                        cwd="/home/claude"),
+            _jsonl_line(
+                ts="23:59:00",
+                event="tool",
+                s="tod-ooo-01",
+                t="Read",
+                i="/home/claude/writing/essay.md",
+            ),
+            _jsonl_line(ts="09:00:00", event="session_start", s="tod-ooo-01", cwd="/home/claude"),
             _jsonl_line(ts="09:05:00", event="session_end", s="tod-ooo-01"),
         ]
         p = _write_jsonl(tmp_path, "activity-2026-05-01.jsonl", lines)
@@ -1214,8 +1200,7 @@ class TestOutOfOrderEvents:
         # not PM (from tool event at 23:59:00 which appeared first in file)
         assert sessions[0]["time_of_day"] == "AM", (
             "Got '{}' -- time_of_day was derived "
-            "from file order instead of session_start timestamp".format(
-                sessions[0]["time_of_day"])
+            "from file order instead of session_start timestamp".format(sessions[0]["time_of_day"])
         )
 
     def test_session_end_before_session_start_in_file(self, tmp_path):
@@ -1223,10 +1208,14 @@ class TestOutOfOrderEvents:
         (for the same session) must still result in a valid end_time."""
         lines = [
             _jsonl_line(ts="10:05:00", event="session_end", s="end-first-01"),
-            _jsonl_line(ts="10:00:00", event="session_start", s="end-first-01",
-                        cwd="/home/claude"),
-            _jsonl_line(ts="10:01:00", event="tool", s="end-first-01",
-                        t="Read", i="/home/claude/writing/a.md"),
+            _jsonl_line(ts="10:00:00", event="session_start", s="end-first-01", cwd="/home/claude"),
+            _jsonl_line(
+                ts="10:01:00",
+                event="tool",
+                s="end-first-01",
+                t="Read",
+                i="/home/claude/writing/a.md",
+            ),
         ]
         p = _write_jsonl(tmp_path, "activity-2026-05-01.jsonl", lines)
         sessions = parse_activity_log(p)
@@ -1241,12 +1230,13 @@ class TestOutOfOrderEvents:
         """Tool events with a session ID that never has a session_start
         must be silently dropped, not cause crashes or phantom sessions."""
         lines = [
-            _jsonl_line(ts="10:00:00", event="session_start", s="known-01",
-                        cwd="/home/claude"),
-            _jsonl_line(ts="10:01:00", event="tool", s="unknown-99",
-                        t="Read", i="/home/claude/writing/a.md"),
-            _jsonl_line(ts="10:02:00", event="tool", s="known-01",
-                        t="Read", i="/home/claude/writing/b.md"),
+            _jsonl_line(ts="10:00:00", event="session_start", s="known-01", cwd="/home/claude"),
+            _jsonl_line(
+                ts="10:01:00", event="tool", s="unknown-99", t="Read", i="/home/claude/writing/a.md"
+            ),
+            _jsonl_line(
+                ts="10:02:00", event="tool", s="known-01", t="Read", i="/home/claude/writing/b.md"
+            ),
             _jsonl_line(ts="10:05:00", event="session_end", s="known-01"),
         ]
         p = _write_jsonl(tmp_path, "activity-2026-05-01.jsonl", lines)
@@ -1262,6 +1252,7 @@ class TestOutOfOrderEvents:
 # ===========================================================================
 # 11. UNICODE ATTACKS
 # ===========================================================================
+
 
 class TestUnicodeAttacks:
     """No normalization or stripping of Unicode control characters.
@@ -1281,8 +1272,7 @@ class TestUnicodeAttacks:
             ).fetchone()
             assert row is not None
             assert rtl_char not in row[0], (
-                "RTL Override character stored in session_id -- "
-                "enables UI spoofing attacks"
+                "RTL Override character stored in session_id -- enables UI spoofing attacks"
             )
         except (ValueError, psycopg.errors.DataError):
             db_conn.rollback()
@@ -1348,9 +1338,7 @@ class TestUnicodeAttacks:
         result = classify_file_operation("Write", evil_path)
         assert result is not None
         path, _, _ = result
-        assert lre not in path and pdf not in path, (
-            "Bidi control characters stored in file path"
-        )
+        assert lre not in path and pdf not in path, "Bidi control characters stored in file path"
 
     def test_zero_width_space_in_session_id_deduplicated(self, db_conn):
         """Two session IDs that differ only by a zero-width space (U+200B)
@@ -1368,14 +1356,13 @@ class TestUnicodeAttacks:
             "SELECT COUNT(*) FROM sessions WHERE id LIKE %s", ("session-abc%123%",)
         ).fetchone()[0]
         # These should be treated as the same session after normalization
-        assert count == 1, (
-            "Zero-width space created a duplicate session: {} rows".format(count)
-        )
+        assert count == 1, "Zero-width space created a duplicate session: {} rows".format(count)
 
 
 # ===========================================================================
 # 12. RESOURCE EXHAUSTION
 # ===========================================================================
+
 
 class TestResourceExhaustion:
     """No input size limits.  Malicious inputs can cause excessive memory
@@ -1396,25 +1383,28 @@ class TestResourceExhaustion:
         # The tool input should be truncated to something reasonable
         tool_input = sessions[0]["tool_events"][0]["i"]
         assert len(tool_input) < 10000, (
-            "Tool input is {} chars -- "
-            "1MB payload stored without truncation".format(len(tool_input))
+            "Tool input is {} chars -- 1MB payload stored without truncation".format(
+                len(tool_input)
+            )
         )
 
     def test_100k_events_single_session(self, tmp_path):
         """A session with 100,000 tool events must parse without crashing.
         This is unrealistically large and should be handled gracefully."""
         lines = [
-            _jsonl_line(ts="10:00:00", event="session_start", s="exhaust-02",
-                        cwd="/home/claude"),
+            _jsonl_line(ts="10:00:00", event="session_start", s="exhaust-02", cwd="/home/claude"),
         ]
         for i in range(100_000):
             lines.append(
-                _jsonl_line(ts="10:01:00", event="tool", s="exhaust-02",
-                            t="Read", i="/home/claude/notes/file_{}.md".format(i))
+                _jsonl_line(
+                    ts="10:01:00",
+                    event="tool",
+                    s="exhaust-02",
+                    t="Read",
+                    i="/home/claude/notes/file_{}.md".format(i),
+                )
             )
-        lines.append(
-            _jsonl_line(ts="23:59:59", event="session_end", s="exhaust-02")
-        )
+        lines.append(_jsonl_line(ts="23:59:59", event="session_end", s="exhaust-02"))
         p = _write_jsonl(tmp_path, "activity-2026-05-01.jsonl", lines)
 
         # Must complete without OOM -- we just verify it returns
@@ -1436,8 +1426,7 @@ class TestResourceExhaustion:
             ).fetchone()
             if row is not None:
                 assert row[0] < 1000, (
-                    "10,000-char session_id stored without truncation "
-                    "(length={})".format(row[0])
+                    "10,000-char session_id stored without truncation (length={})".format(row[0])
                 )
         except (ValueError, psycopg.errors.DataError):
             db_conn.rollback()
@@ -1465,7 +1454,7 @@ class TestResourceExhaustion:
         """A tool input with deeply nested JSON braces must not cause
         regex catastrophic backtracking or stack overflow."""
         # 1000 levels of nesting
-        nested = '{"a":' * 1000 + '"deep"' + '}' * 1000
+        nested = '{"a":' * 1000 + '"deep"' + "}" * 1000
         lines = _make_session_lines(
             "exhaust-03",
             tools=[{"t": "WebSearch", "i": nested, "ts": "10:01:00"}],
@@ -1498,8 +1487,8 @@ class TestResourceExhaustion:
             ("exhaust-path-01",),
         ).fetchone()
         assert row is not None
-        assert row[0] < 10_000, (
-            "100KB file path stored without truncation (length={})".format(row[0])
+        assert row[0] < 10_000, "100KB file path stored without truncation (length={})".format(
+            row[0]
         )
 
     def test_many_web_searches_per_session(self, db_conn):
@@ -1521,7 +1510,4 @@ class TestResourceExhaustion:
         assert count <= 10_000, "More searches stored than submitted"
         # Flag if no cap was applied
         if count == 10_000:
-            pytest.fail(
-                "10,000 web searches stored without any cap -- "
-                "resource exhaustion risk"
-            )
+            pytest.fail("10,000 web searches stored without any cap -- resource exhaustion risk")
