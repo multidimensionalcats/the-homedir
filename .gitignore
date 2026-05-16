@@ -2,3 +2,7 @@ home-directory-spec.md
 .env
 node_modules/
 dist/
+.venv/
+__pycache__/
+*.egg-info/
+scripts/tests/*_raw.md
