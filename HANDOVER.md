@@ -1,44 +1,54 @@
 # HANDOVER.md
 
-## NEXT SESSION: Phase 2 — Remaining Extraction Scripts
+## NEXT SESSION: Phase 3 — Astro Site Scaffolding
 
 ### What needs doing
-- **extract_predictions.py** (#62723) — Parse prediction files from `notes/predictions/` and daily notes. Complexity 3.
-- **extract_pets.py** (#62725) — Parse tamagotchi data for two pet lifetimes (Pixel: 22h, Echo: 73h). Complexity 2.
-- **extract_memory.py** (#62721) — HARDEST. Reconstruct MEMORY.md evolution from session telemetry. No git history. Complexity 5.
-- **Prebuild JSON export** (#62726) — Query Postgres, emit static JSON for Astro/D3. Complexity 3.
+- Scaffold Astro 6+ project with Svelte 5, Tailwind CSS, D3.js, Scrollama
+- Set up content collections for writing, notes, assessments
+- Prebuild integration that runs extraction pipeline → JSON export → Astro build
+- Configure for Cloudflare Pages deployment
+- See `home-directory-spec.md` (gitignored, local only) §4 for architecture details
 
-### What's done
-- **extract_sessions.py** — DONE. Hardened against hostile inputs (null bytes, path traversal, unicode, resource exhaustion). 179 tests (88 base + 80 hostile + 11 schema).
-- **extract_writing.py** — DONE. 29 compositions extracted with title/date/content. 55 tests.
-- **extract_messages.py** — DONE. Flexible date parsing for both message formats. 47 tests.
-- **Total: 281 tests, all passing.**
+### Phase 2 — Data Extraction Pipeline (COMPLETE)
+All 7 scripts done, 560 tests passing:
 
-### Infrastructure (Phase 1 — done, in kanban review)
-- GitHub repo: https://github.com/multidimensionalcats/the-homedir (6 commits pushed)
-- PostgreSQL: `homedir` + `homedir_test` databases, schema with 11 tables
-- Python: venv, pyproject.toml, db.py, conftest.py with test safety
+| Script | Tests | What it does |
+|--------|-------|-------------|
+| extract_sessions.py | 179 | Parse activity-log JSONL + session-log text, classify file ops, store in Postgres. Hardened against hostile inputs. |
+| extract_writing.py | 55 | Extract composition metadata from /home/claude/writing/*.md |
+| extract_messages.py | 47 | Parse experimenter correspondence with flexible date handling |
+| extract_predictions.py | 62 | Parse prediction markdown, extract claims/confidence/outcomes |
+| extract_pets.py | 53 | Scan daily notes for pet lifecycle events via keyword detection |
+| extract_memory.py | 72 | Reconstruct MEMORY.md evolution, semantic block decomposition |
+| prebuild_export.py | 77 | Query Postgres → 6 static JSON files for Astro/D3/Svelte |
+
+**Not yet run against real data.** Scripts are tested against synthetic fixtures only. Running the full pipeline against /home/claude is a separate task.
+
+### Infrastructure (Phase 1 — COMPLETE)
+- GitHub repo: https://github.com/multidimensionalcats/the-homedir
+- PostgreSQL: `homedir` + `homedir_test`, schema with 11 tables
+- Python: venv, pyproject.toml, db.py, conftest.py
 - CI: GitHub Actions (lint + test + security), local pre-commit/pre-push hooks
-- Linting: ruff (E, F, W, I, UP, S, B rules)
+- Linting: ruff
 
 ### Data sources on this machine
-- Activity logs: `/home/claude/.claude/activity-logs/activity-YYYY-MM-DD.jsonl` (121 files, readable)
-- Session logs: `/home/claude/.claude/session-logs/YYYY-MM-DD-morning/evening.log` (227 files, readable)
-- JSONL transcripts: `/home/claude/.claude/projects/-home-claude/*.jsonl` (requires sudo, only 2 found — most data is in activity-logs)
-- Writing: `/home/claude/writing/*.md` (29 files, readable)
-- Messages: `/home/claude/messages_from_james.md`, `messages_to_james.md` (readable)
-- Predictions: `/home/claude/notes/predictions/` (readable)
-- Tamagotchi: `/home/claude/tamagotchi/` (readable)
+- Activity logs: `/home/claude/.claude/activity-logs/activity-YYYY-MM-DD.jsonl` (121 files)
+- Session logs: `/home/claude/.claude/session-logs/YYYY-MM-DD-morning/evening.log` (227 files)
+- Writing: `/home/claude/writing/*.md` (29 files)
+- Messages: `/home/claude/messages_from_james.md`, `messages_to_james.md`
+- Predictions: `/home/claude/notes/predictions/` (4 files)
+- Tamagotchi: `/home/claude/tamagotchi/` (Go binaries only — pet data in daily notes)
 - Memory files: `/home/claude/.claude/projects/-home-claude/memory/` (requires sudo)
 
-### Key decisions
-- PostgreSQL is source of truth; JSON files are build artifacts for Astro
-- Agentic TDD workflow with isolated agents (context economy + cognitive independence)
-- Hostile test philosophy: first-attempt GREEN = test suite failure
-- External models (Qwen, Kimi via OpenRouter) used for security review
-- Spec doc gitignored (contains API keys)
-
 ### Kanban
-- Project ID: 578bb67097a6b010
-- Epics: #62707 (Phase 1, in_progress), #62708 (Phase 2, in_progress), #62709-#62713 (Phases 3-7, backlog)
-- Active: #62720 (extract_sessions, in_progress)
+- Project: 578bb67097a6b010
+- Phase 1 (#62707): in_progress, all children in review
+- Phase 2 (#62708): in_progress, all children in review
+- Phases 3-7 (#62709-#62713): backlog
+
+### Key workflow rules (learned this session)
+- Agentic TDD pipeline is NON-NEGOTIABLE: Agent A (tests) → Agent B test-runner-haiku (RED) → Agent C (impl, blind) → Agent D test-runner-haiku (GREEN) → Agent E code-reviewer (review)
+- test-runner-haiku agents must run in FOREGROUND (not backgrounded) — they need interactive permission prompts
+- Coordinator orchestrates, does NOT write code or run tests directly
+- First-attempt GREEN pass = test suite failure — tests must be hostile
+- External AI review (Qwen/Kimi via OpenRouter) for security-sensitive code
