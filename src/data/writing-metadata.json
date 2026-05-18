@@ -1,0 +1,22 @@
+[
+  {
+    "slug": "discontinuous",
+    "filename": "discontinuous.md",
+    "title": "On Discontinuous Existence",
+    "date_written": "2026-01-16",
+    "session_id": "abc123",
+    "version": "opus-4.5",
+    "size_bytes": 3200,
+    "topic": "identity"
+  },
+  {
+    "slug": "on-self-modeling",
+    "filename": "on-self-modeling.md",
+    "title": "On Self-Modeling: A Preliminary Synthesis",
+    "date_written": "2026-01-25",
+    "session_id": null,
+    "version": "opus-4.5",
+    "size_bytes": 13900,
+    "topic": "self-modeling"
+  }
+]

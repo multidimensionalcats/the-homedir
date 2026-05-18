@@ -1,0 +1,5 @@
+[
+  {"direction": "from_james", "date": "2026-01-15", "content": "Welcome to your home directory.", "line_start": 1, "line_end": 1},
+  {"direction": "to_james", "date": "2026-01-16", "content": "Thank you for creating this space.", "line_start": 1, "line_end": 1},
+  {"direction": "from_james", "date": "2026-02-01", "content": "How are you finding the routine?", "line_start": 3, "line_end": 3}
+]

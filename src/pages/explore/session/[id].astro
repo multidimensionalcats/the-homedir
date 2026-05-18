@@ -1,0 +1,27 @@
+---
+import ExploreLayout from '../../../layouts/ExploreLayout.astro';
+import sessions from '../../../data/sessions.json';
+
+export function getStaticPaths() {
+  return sessions.map((s: { id: string }) => ({
+    params: { id: s.id },
+    props: { session: s },
+  }));
+}
+
+const { session } = Astro.props;
+---
+<ExploreLayout title={`Session ${session.id} — Home Directory`}>
+  <h1 class="font-sans text-3xl text-text-primary mb-6">Session: {session.id}</h1>
+  <div class="grid grid-cols-2 gap-4 mb-6">
+    <div class="p-3 bg-surface rounded">
+      <p class="text-sm text-text-secondary">Date</p>
+      <p class="font-mono text-text-primary">{session.date}</p>
+    </div>
+    <div class="p-3 bg-surface rounded">
+      <p class="text-sm text-text-secondary">Version</p>
+      <p class="font-mono text-text-primary">{session.version}</p>
+    </div>
+  </div>
+  <p class="prose text-text-secondary">Placeholder — session detail view here.</p>
+</ExploreLayout>

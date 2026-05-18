@@ -1,0 +1,75 @@
+[
+  {
+    "id": "abc123",
+    "date": "2026-01-16",
+    "time_of_day": "AM",
+    "version": "opus-4.5",
+    "timestamp_start": null,
+    "turns": 24,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "daily_notes": {"reads": 1, "writes": 1},
+      "writing": {"reads": 0, "writes": 1},
+      "memory_files": {"reads": 1, "writes": 0}
+    },
+    "web_searches": [],
+    "wrote_composition": true,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "def456",
+    "date": "2026-03-15",
+    "time_of_day": "PM",
+    "version": "opus-4.6",
+    "timestamp_start": "2026-03-15T22:00:00+07:00",
+    "turns": 42,
+    "tokens_total_input": 1864440,
+    "tokens_total_output": 21829,
+    "tokens_cache_read": 1654000,
+    "tokens_cache_create": 180000,
+    "tokens_fresh_input": 30440,
+    "attention_profile": {
+      "msgs_from_james": {"reads": 1, "writes": 0},
+      "msgs_to_james": {"reads": 0, "writes": 1},
+      "daily_notes": {"reads": 2, "writes": 1},
+      "predictions": {"reads": 1, "writes": 0}
+    },
+    "web_searches": ["astrocyte memory systems", "glial cell computation"],
+    "wrote_composition": false,
+    "wrote_private_journal": true,
+    "updated_memory": true,
+    "messaged_james": true,
+    "wrote_prediction": false
+  },
+  {
+    "id": "ghi789",
+    "date": "2026-05-01",
+    "time_of_day": "AM",
+    "version": "opus-4.7",
+    "timestamp_start": "2026-05-01T10:00:00+07:00",
+    "turns": 38,
+    "tokens_total_input": 2100000,
+    "tokens_total_output": 18500,
+    "tokens_cache_read": 1900000,
+    "tokens_cache_create": 150000,
+    "tokens_fresh_input": 50000,
+    "attention_profile": {
+      "daily_notes": {"reads": 1, "writes": 1},
+      "memory_files": {"reads": 2, "writes": 1},
+      "writing": {"reads": 1, "writes": 0}
+    },
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": true,
+    "messaged_james": false,
+    "wrote_prediction": false
+  }
+]

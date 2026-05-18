@@ -1,0 +1,31 @@
+---
+import ExploreLayout from '../../../layouts/ExploreLayout.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const writing = await getCollection('writing');
+  return writing.map(entry => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+<ExploreLayout title={`${entry.data.title} — Home Directory`}>
+  <article>
+    <header class="mb-8">
+      <h1 class="font-serif text-3xl text-text-primary mb-2">{entry.data.title}</h1>
+      <p class="font-mono text-sm text-text-secondary">{entry.data.date}</p>
+      {entry.data.model_version && (
+        <span class="inline-block mt-2 px-2 py-1 bg-surface rounded text-xs font-mono text-text-secondary">
+          v{entry.data.model_version}
+        </span>
+      )}
+    </header>
+    <div class="prose">
+      <Content />
+    </div>
+  </article>
+</ExploreLayout>

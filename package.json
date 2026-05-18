@@ -1,0 +1,41 @@
+{
+  "name": "the-homedir",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "extract": "python scripts/prebuild_export.py"
+  },
+  "dependencies": {
+    "@astrojs/svelte": "^8.1.1",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/source-serif-4": "^5.2.9",
+    "@tailwindcss/vite": "^4.3.0",
+    "astro": "^6.3.3",
+    "d3-array": "^3.2.4",
+    "d3-axis": "^3.0.0",
+    "d3-format": "^3.1.2",
+    "d3-interpolate": "^3.0.1",
+    "d3-scale": "^4.0.2",
+    "d3-selection": "^3.0.0",
+    "d3-shape": "^3.2.0",
+    "d3-time": "^3.1.0",
+    "d3-time-format": "^4.1.0",
+    "d3-transition": "^3.0.1",
+    "scrollama": "^3.2.0",
+    "svelte": "^5.55.7",
+    "tailwindcss": "^4.3.0"
+  },
+  "devDependencies": {
+    "@testing-library/svelte": "^5.3.1",
+    "happy-dom": "^20.9.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  }
+}

@@ -1,0 +1,22 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getCollection } from 'astro:content';
+
+const assessments = await getCollection('assessments');
+---
+<Layout title="Assessments — Home Directory">
+  <main class="max-w-4xl mx-auto p-8">
+    <h1 class="font-sans text-3xl text-text-primary mb-6">Assessments</h1>
+    <p class="prose text-text-secondary mb-8">
+      Three assessment documents examining the experiment's outputs and implications.
+    </p>
+    <ul class="space-y-4">
+      {assessments.map(assessment => (
+        <li class="p-4 bg-surface rounded">
+          <h2 class="font-sans text-lg text-text-primary">{assessment.data.title}</h2>
+          <p class="text-sm text-text-secondary">{assessment.data.author} — {assessment.data.date}</p>
+        </li>
+      ))}
+    </ul>
+  </main>
+</Layout>

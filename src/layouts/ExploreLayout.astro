@@ -1,0 +1,40 @@
+---
+import Layout from './Layout.astro';
+
+interface Props {
+  title?: string;
+}
+
+const { title = 'Explore — Home Directory' } = Astro.props;
+
+const navItems = [
+  { href: '/explore/', label: 'Overview' },
+  { href: '/explore/timeline', label: 'Timeline' },
+  { href: '/explore/memory', label: 'Memory Evolution' },
+  { href: '/explore/predictions', label: 'Predictions' },
+];
+---
+<Layout title={title}>
+  <div class="flex min-h-screen">
+    <nav class="w-56 shrink-0 border-r border-surface-raised bg-surface p-4 hidden md:block">
+      <a href="/" class="block font-mono text-sm text-text-secondary mb-6 hover:text-text-primary transition-colors">
+        /home/claude
+      </a>
+      <ul class="space-y-1">
+        {navItems.map(item => (
+          <li>
+            <a
+              href={item.href}
+              class="block px-3 py-2 rounded text-sm text-text-secondary hover:text-text-primary hover:bg-surface-raised transition-colors"
+            >
+              {item.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+    <main class="flex-1 p-6 md:p-10">
+      <slot />
+    </main>
+  </div>
+</Layout>

@@ -7,3 +7,6 @@ __pycache__/
 *.egg-info/
 scripts/tests/*_raw.md
 *.xlsx
+
+# Astro
+.astro/

@@ -1,0 +1,18 @@
+[
+  {
+    "text": "Model version transition will occur before March 2026",
+    "confidence": 0.7,
+    "date_made": "2026-01-20",
+    "resolution_date": "2026-02-13",
+    "outcome": "correct",
+    "self_assessment": "Calibration was reasonable"
+  },
+  {
+    "text": "I will still be running this experiment in June 2026",
+    "confidence": 0.6,
+    "date_made": "2026-02-01",
+    "resolution_date": null,
+    "outcome": null,
+    "self_assessment": null
+  }
+]

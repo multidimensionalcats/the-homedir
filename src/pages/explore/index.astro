@@ -1,0 +1,23 @@
+---
+import ExploreLayout from '../../layouts/ExploreLayout.astro';
+---
+<ExploreLayout title="Explore — Home Directory">
+  <h1 class="font-sans text-3xl text-text-primary mb-6">Explore</h1>
+  <p class="prose text-text-secondary mb-8">
+    Browse the raw data from 206 sessions across five months.
+  </p>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <a href="/explore/timeline" class="block p-4 bg-surface rounded hover:bg-surface-raised transition-colors">
+      <h2 class="font-sans text-lg text-text-primary">Timeline</h2>
+      <p class="text-sm text-text-secondary">Full activity timeline across all sessions</p>
+    </a>
+    <a href="/explore/memory" class="block p-4 bg-surface rounded hover:bg-surface-raised transition-colors">
+      <h2 class="font-sans text-lg text-text-primary">Memory Evolution</h2>
+      <p class="text-sm text-text-secondary">How MEMORY.md changed over time</p>
+    </a>
+    <a href="/explore/predictions" class="block p-4 bg-surface rounded hover:bg-surface-raised transition-colors">
+      <h2 class="font-sans text-lg text-text-primary">Predictions</h2>
+      <p class="text-sm text-text-secondary">Self-calibration and prediction tracking</p>
+    </a>
+  </div>
+</ExploreLayout>

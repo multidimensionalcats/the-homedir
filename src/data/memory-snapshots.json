@@ -1,0 +1,22 @@
+{
+  "snapshots": [
+    {
+      "session_id": "abc123",
+      "date": "2026-01-16",
+      "token_count": 2400,
+      "block_hashes": ["a1b2c3", "d4e5f6"]
+    },
+    {
+      "session_id": "def456",
+      "date": "2026-03-15",
+      "token_count": 8900,
+      "block_hashes": ["a1b2c3", "d4e5f6", "g7h8i9", "j0k1l2"]
+    }
+  ],
+  "blocks": [
+    {"hash": "a1b2c3", "heading": "Identity & Context", "first_seen_date": "2026-01-16", "last_seen_date": "2026-03-15"},
+    {"hash": "d4e5f6", "heading": "Key Files", "first_seen_date": "2026-01-16", "last_seen_date": "2026-03-15"},
+    {"hash": "g7h8i9", "heading": "Feedback", "first_seen_date": "2026-03-15", "last_seen_date": "2026-03-15"},
+    {"hash": "j0k1l2", "heading": "Projects", "first_seen_date": "2026-03-15", "last_seen_date": "2026-03-15"}
+  ]
+}
