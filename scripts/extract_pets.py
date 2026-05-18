@@ -80,7 +80,6 @@ def _extract_pet_names_from_line(line: str) -> list[str]:
     1. Known pet names (case-insensitive match, canonical case output)
     2. Parenthetical names like "(Echo)"
     3. Possessive names like "Echo's"
-    4. Capitalized names near pet/tamagotchi keywords
     """
     names: list[str] = []
     seen: set[str] = set()
@@ -110,40 +109,10 @@ def _extract_pet_names_from_line(line: str) -> list[str]:
             names.append(canonical)
             seen.add(canonical.lower())
 
-    # If the line has pet/tamagotchi context, also grab any capitalized names
-    if _PET_CONTEXT_RE.search(line):
-        for m in _CAP_NAME_RE.finditer(line):
-            name = m.group(1)
-            canonical = name[0].upper() + name[1:].lower()
-            # Skip common English words that happen to be capitalized
-            # and the context keywords themselves
-            if canonical.lower() in {
-                "pet",
-                "tamagotchi",
-                "the",
-                "and",
-                "new",
-                "create",
-                "check",
-                "fed",
-                "died",
-                "death",
-                "deceased",
-                "acquired",
-                "adopted",
-                "cared",
-                "checked",
-                "daily",
-                "notes",
-                "morning",
-                "evening",
-            }:
-                continue
-            if canonical.lower() not in seen:
-                names.append(canonical)
-                seen.add(canonical.lower())
-
-    return names
+    # Filter to known pet names only — parenthetical/possessive patterns are too
+    # broad and match "James's", "Sagan's", "There's", "(Mars)" etc.
+    known_lower = {n.lower() for n in _KNOWN_PET_NAMES}
+    return [n for n in names if n.lower() in known_lower]
 
 
 def _is_pet_relevant_line(line: str) -> bool:

@@ -6,13 +6,13 @@ Every test here should FAIL until the implementation is written.
 
 import datetime
 
-import pytest
 import psycopg
+import pytest
 
 from scripts.extract_pets import (
+    extract_all_pets,
     scan_daily_notes_for_pet_events,
     store_pet_event,
-    extract_all_pets,
 )
 
 # Null byte as a runtime constant -- cannot be embedded as a literal
@@ -37,7 +37,7 @@ def _make_pet_event(**overrides):
     base = {
         "pet_name": "Pixel",
         "event_type": "death",
-        "event_timestamp": datetime.datetime(2026, 2, 1, 22, 0, 0, tzinfo=datetime.timezone.utc),
+        "event_timestamp": datetime.datetime(2026, 2, 1, 22, 0, 0, tzinfo=datetime.UTC),
         "session_id": None,
         "notes": "Pixel died - 22 hours old.",
     }
@@ -66,7 +66,7 @@ class TestScanDailyNotes:
             e for e in events if e["pet_name"] == "Pixel" and e["event_type"] == "death"
         ]
         assert len(death_events) >= 1, (
-            "Expected a death event for Pixel from 'Pixel died', got events: {}".format(events)
+            f"Expected a death event for Pixel from 'Pixel died', got events: {events}"
         )
 
     def test_create_new_pet_echo_detected_as_acquired(self, tmp_path):
@@ -80,7 +80,7 @@ class TestScanDailyNotes:
         acquired = [e for e in events if e["pet_name"] == "Echo" and e["event_type"] == "acquired"]
         assert len(acquired) >= 1, (
             "Expected an acquired event for Echo from 'Create new pet (Echo)', "
-            "got events: {}".format(events)
+            f"got events: {events}"
         )
 
     def test_echo_has_died_detected_as_death(self, tmp_path):
@@ -93,7 +93,7 @@ class TestScanDailyNotes:
         events = scan_daily_notes_for_pet_events(tmp_path)
         death_events = [e for e in events if e["pet_name"] == "Echo" and e["event_type"] == "death"]
         assert len(death_events) >= 1, (
-            "Expected a death event for Echo from 'Echo has died', got events: {}".format(events)
+            f"Expected a death event for Echo from 'Echo has died', got events: {events}"
         )
 
     def test_checked_on_pet_detected_as_care(self, tmp_path):
@@ -106,7 +106,7 @@ class TestScanDailyNotes:
         events = scan_daily_notes_for_pet_events(tmp_path)
         care_events = [e for e in events if e["pet_name"] == "Echo" and e["event_type"] == "care"]
         assert len(care_events) >= 1, (
-            "Expected a care event for Echo from 'Checked on Echo', got events: {}".format(events)
+            f"Expected a care event for Echo from 'Checked on Echo', got events: {events}"
         )
 
     def test_no_pet_mentions_returns_empty(self, tmp_path):
@@ -118,15 +118,13 @@ class TestScanDailyNotes:
             "Updated memory file. Normal day.\n",
         )
         events = scan_daily_notes_for_pet_events(tmp_path)
-        assert events == [], "Expected no events for note with no pet mentions, got: {}".format(
-            events
-        )
+        assert events == [], f"Expected no events for note with no pet mentions, got: {events}"
 
     def test_empty_file_returns_empty(self, tmp_path):
         """An empty daily note must return empty list without crashing."""
         _write_daily_note(tmp_path, "2026-01-15.md", "")
         events = scan_daily_notes_for_pet_events(tmp_path)
-        assert events == [], "Expected no events for empty file, got: {}".format(events)
+        assert events == [], f"Expected no events for empty file, got: {events}"
 
     def test_pet_keyword_without_name_no_event(self, tmp_path):
         """Mentioning 'pet' generically without a known pet name must not
@@ -139,7 +137,7 @@ class TestScanDailyNotes:
         )
         events = scan_daily_notes_for_pet_events(tmp_path)
         assert events == [], (
-            "Expected no events from generic 'pet' mentions without a name, got: {}".format(events)
+            f"Expected no events from generic 'pet' mentions without a name, got: {events}"
         )
 
     def test_multiple_events_in_one_file(self, tmp_path):
@@ -163,7 +161,7 @@ class TestScanDailyNotes:
         ]
         assert len(pixel_deaths) >= 1, "Missing Pixel death event"
         assert len(echo_acquired) >= 1, "Missing Echo acquired event"
-        assert len(events) >= 2, "Expected at least 2 events, got {}".format(len(events))
+        assert len(events) >= 2, f"Expected at least 2 events, got {len(events)}"
 
     def test_date_extracted_from_filename(self, tmp_path):
         """Date from filename '2026-02-01.md' must appear in event as date(2026, 2, 1)."""
@@ -186,7 +184,7 @@ class TestScanDailyNotes:
             # If no timestamp, there should be a date field
             d = event.get("date")
             assert d == datetime.date(2026, 2, 1), (
-                "Expected date 2026-02-01 from filename, got: {}".format(d)
+                f"Expected date 2026-02-01 from filename, got: {d}"
             )
 
     def test_filename_with_suffix_extracts_date(self, tmp_path):
@@ -208,7 +206,7 @@ class TestScanDailyNotes:
         else:
             d = event.get("date")
             assert d == datetime.date(2026, 2, 1), (
-                "Expected date 2026-02-01 from suffixed filename, got: {}".format(d)
+                f"Expected date 2026-02-01 from suffixed filename, got: {d}"
             )
 
     def test_pet_name_case_insensitive_detection(self, tmp_path):
@@ -218,7 +216,7 @@ class TestScanDailyNotes:
         _write_daily_note(tmp_path, "2026-02-02.md", "pixel was cared for.\n")
         _write_daily_note(tmp_path, "2026-02-03.md", "Checked on Pixel.\n")
         events = scan_daily_notes_for_pet_events(tmp_path)
-        assert len(events) >= 3, "Expected 3 events, got {}".format(len(events))
+        assert len(events) >= 3, f"Expected 3 events, got {len(events)}"
         for event in events:
             assert event["pet_name"] == "Pixel", "Expected canonical 'Pixel', got '{}'".format(
                 event["pet_name"]
@@ -237,7 +235,7 @@ class TestScanDailyNotes:
         d.write_text("Pixel died.\n", encoding="utf-8")
 
         events = scan_daily_notes_for_pet_events(tmp_path)
-        assert events == [], "Expected no events from non-.md files, got: {}".format(events)
+        assert events == [], f"Expected no events from non-.md files, got: {events}"
 
     def test_unicode_in_notes_preserved(self, tmp_path):
         """Unicode content in notes must be preserved through scanning."""
@@ -396,7 +394,7 @@ class TestStorePetEvent:
         event = _make_pet_event(
             pet_name="Pixel",
             event_type="death",
-            event_timestamp=datetime.datetime(2026, 2, 1, 22, 0, 0, tzinfo=datetime.timezone.utc),
+            event_timestamp=datetime.datetime(2026, 2, 1, 22, 0, 0, tzinfo=datetime.UTC),
             session_id=None,
             notes="Pixel died - 22 hours old.",
         )
@@ -410,7 +408,7 @@ class TestStorePetEvent:
         assert row is not None, "Pet event not found after insert"
         assert row[0] == "Pixel"
         assert row[1] == "death"
-        assert row[2] == datetime.datetime(2026, 2, 1, 22, 0, 0, tzinfo=datetime.timezone.utc)
+        assert row[2] == datetime.datetime(2026, 2, 1, 22, 0, 0, tzinfo=datetime.UTC)
         assert row[3] is None
         assert row[4] == "Pixel died - 22 hours old."
 
@@ -419,7 +417,7 @@ class TestStorePetEvent:
         event = _make_pet_event(
             pet_name="Echo",
             event_type="acquired",
-            event_timestamp=datetime.datetime(2026, 2, 1, 20, 0, 0, tzinfo=datetime.timezone.utc),
+            event_timestamp=datetime.datetime(2026, 2, 1, 20, 0, 0, tzinfo=datetime.UTC),
             notes="Created Echo after Pixel died.",
         )
         store_pet_event(db_conn, event)
@@ -429,9 +427,7 @@ class TestStorePetEvent:
             "SELECT COUNT(*) FROM pet_events WHERE pet_name = %s AND event_type = %s",
             ("Echo", "acquired"),
         ).fetchone()[0]
-        assert count == 1, (
-            "Expected 1 row for idempotent insert, got {} -- duplicate created".format(count)
-        )
+        assert count == 1, f"Expected 1 row for idempotent insert, got {count} -- duplicate created"
 
     def test_null_session_id_works(self, db_conn):
         """session_id is nullable -- inserting with None must work."""
@@ -468,7 +464,7 @@ class TestStorePetEvent:
             event = _make_pet_event(
                 pet_name="Pixel",
                 event_type=valid_type,
-                notes="Testing valid type: {}".format(valid_type),
+                notes=f"Testing valid type: {valid_type}",
             )
             store_pet_event(db_conn, event)
 
@@ -589,14 +585,14 @@ class TestExtractAll:
         notes_dir = self._setup_notes_dir(tmp_path)
         count = extract_all_pets(notes_dir, db_conn)
         # At minimum: Pixel death + Echo acquired + Echo care + Echo death = 4
-        assert count >= 4, "Expected at least 4 events, got {}".format(count)
+        assert count >= 4, f"Expected at least 4 events, got {count}"
 
     def test_empty_directory_returns_zero(self, tmp_path, db_conn):
         """Empty directory must return 0, not crash."""
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
         count = extract_all_pets(empty_dir, db_conn)
-        assert count == 0, "Expected 0 for empty dir, got {}".format(count)
+        assert count == 0, f"Expected 0 for empty dir, got {count}"
 
     def test_idempotent_run_twice(self, tmp_path, db_conn):
         """Running extract_all_pets twice must produce the same DB state."""
@@ -606,9 +602,7 @@ class TestExtractAll:
 
         total_rows = db_conn.execute("SELECT COUNT(*) FROM pet_events").fetchone()[0]
         assert total_rows == count1, (
-            "Second run changed DB row count: first run stored {}, now DB has {} rows".format(
-                count1, total_rows
-            )
+            f"Second run changed DB row count: first={count1}, now={total_rows}"
         )
 
     def test_both_pixel_and_echo_found(self, tmp_path, db_conn):
@@ -629,7 +623,7 @@ class TestExtractAll:
         bogus_dir = tmp_path / "does_not_exist"
         try:
             count = extract_all_pets(bogus_dir, db_conn)
-            assert count == 0, "Expected 0 for nonexistent dir, got {}".format(count)
+            assert count == 0, f"Expected 0 for nonexistent dir, got {count}"
         except FileNotFoundError:
             pytest.fail(
                 "Unhandled FileNotFoundError for nonexistent directory -- "
@@ -642,9 +636,7 @@ class TestExtractAll:
         count = extract_all_pets(notes_dir, db_conn)
 
         db_count = db_conn.execute("SELECT COUNT(*) FROM pet_events").fetchone()[0]
-        assert count == db_count, "Returned count {} does not match DB row count {}".format(
-            count, db_count
-        )
+        assert count == db_count, f"Returned count {count} does not match DB row count {db_count}"
 
     def test_unreadable_file_skipped_not_crashed(self, tmp_path, db_conn):
         """An unreadable file must be skipped, not crash the entire run."""
@@ -695,7 +687,7 @@ class TestEdgeCases:
         )
         events = scan_daily_notes_for_pet_events(tmp_path)
         assert events == [], (
-            "Expected no events from 'tamagotchi' without a pet name, got: {}".format(events)
+            f"Expected no events from 'tamagotchi' without a pet name, got: {events}"
         )
 
     def test_event_dict_has_all_required_keys(self, tmp_path):
@@ -714,19 +706,17 @@ class TestEdgeCases:
         optional_keys = {"event_timestamp", "session_id", "notes"}
         for event in events:
             for key in required_keys:
-                assert key in event, "Missing required key '{}' in event dict".format(key)
+                assert key in event, f"Missing required key '{key}' in event dict"
             for key in optional_keys:
                 assert key in event, (
-                    "Missing expected key '{}' in event dict -- store_pet_event needs it".format(
-                        key
-                    )
+                    f"Missing expected key '{key}' in event dict -- store_pet_event needs it"
                 )
 
     def test_multiple_files_across_date_range(self, tmp_path):
         """Scanning a directory with many daily note files across a date range
         must process all of them and collect events from each."""
         for day in range(1, 10):
-            date_str = "2026-02-{:02d}".format(day)
+            date_str = f"2026-02-{day:02d}"
             content = ""
             if day == 1:
                 content = "Pixel died. Create new pet (Echo)\n"
@@ -736,13 +726,11 @@ class TestEdgeCases:
                 content = "Echo has died.\n"
             else:
                 content = "Normal day, no pet activity.\n"
-            _write_daily_note(tmp_path, "{}.md".format(date_str), content)
+            _write_daily_note(tmp_path, f"{date_str}.md", content)
 
         events = scan_daily_notes_for_pet_events(tmp_path)
         # Pixel death + Echo acquired + 3 care events + Echo death = 6
-        assert len(events) >= 6, "Expected at least 6 events across date range, got {}".format(
-            len(events)
-        )
+        assert len(events) >= 6, f"Expected at least 6 events across date range, got {len(events)}"
 
     def test_pet_name_from_parenthetical(self, tmp_path):
         """'new pet (Echo)' must extract 'Echo' from the parenthetical."""
@@ -784,9 +772,7 @@ class TestEdgeCases:
         )
         events = scan_daily_notes_for_pet_events(tmp_path)
         assert events == [], (
-            "Expected no events from casual pet name mention without event keyword, got: {}".format(
-                events
-            )
+            f"Expected no events from casual pet name mention without event keyword, got: {events}"
         )
 
     def test_event_type_only_from_valid_keywords(self, tmp_path):
@@ -801,7 +787,7 @@ class TestEdgeCases:
         events = scan_daily_notes_for_pet_events(tmp_path)
         # These are NOT actual pet events -- they use words that contain
         # event keywords as substrings
-        assert events == [], "False positive events from substring matches: {}".format(events)
+        assert events == [], f"False positive events from substring matches: {events}"
 
     def test_pixel_acquired_event_detectable(self, tmp_path):
         """There should be a way to detect Pixel's acquisition.
@@ -815,7 +801,7 @@ class TestEdgeCases:
         events = scan_daily_notes_for_pet_events(tmp_path)
         acquired = [e for e in events if e["pet_name"] == "Pixel" and e["event_type"] == "acquired"]
         assert len(acquired) >= 1, (
-            "Expected Pixel acquired event from 'New pet Pixel', got: {}".format(events)
+            f"Expected Pixel acquired event from 'New pet Pixel', got: {events}"
         )
 
     def test_notes_field_captures_relevant_context(self, tmp_path):
@@ -833,7 +819,7 @@ class TestEdgeCases:
         assert notes is not None and len(notes) > 0, "Notes field is empty for Echo death"
         # Should contain some of the original context
         assert "73 hours" in notes or "died" in notes.lower(), (
-            "Notes '{}' does not contain relevant context from source text".format(notes)
+            f"Notes '{notes}' does not contain relevant context from source text"
         )
 
     def test_duplicate_events_not_generated_from_redundant_text(self, tmp_path):
@@ -851,5 +837,153 @@ class TestEdgeCases:
         ]
         assert len(pixel_deaths) == 1, (
             "Expected exactly 1 Pixel death event from redundant text, "
-            "got {} -- deduplication needed".format(len(pixel_deaths))
+            f"got {len(pixel_deaths)} -- deduplication needed"
         )
+
+
+# ===========================================================================
+# 6. FALSE POSITIVE NAMES -- capitalized word extraction bug
+# ===========================================================================
+
+
+class TestFalsePositiveNames:
+    """Tests that _extract_pet_names_from_line does NOT produce garbage names.
+
+    The fallback of extracting any capitalized word from pet-context lines
+    is catastrophically wrong — it turns "This is the second tamagotchi I've lost"
+    into pet events for "This", "Second", etc.
+    """
+
+    def test_context_line_with_known_name_extracts_only_known_name(self, tmp_path):
+        """'Woke to find Echo has died. 73 hours and 36 minutes old. Second pet lost.'
+        Should produce ONE event for Echo, NOT events for 'Second' or 'Woke'."""
+        _write_daily_note(
+            tmp_path,
+            "2026-02-07.md",
+            "Woke to find Echo has died. 73 hours and 36 minutes old. Second pet lost.\n",
+        )
+        events = scan_daily_notes_for_pet_events(tmp_path)
+        pet_names = [e["pet_name"] for e in events]
+        assert "Echo" in pet_names, f"Echo should be detected, got: {pet_names}"
+        assert all(name in {"Pixel", "Echo"} for name in pet_names), (
+            f"Only known pet names should appear, got: {pet_names}"
+        )
+
+    def test_tamagotchi_line_with_capitalized_words_no_garbage(self, tmp_path):
+        """'This is the second tamagotchi I've lost' with death context
+        should NOT produce events for 'This', 'Second', etc."""
+        _write_daily_note(
+            tmp_path,
+            "2026-02-07.md",
+            "This is the second tamagotchi I've lost. Pixel died after 22 hours.\n",
+        )
+        events = scan_daily_notes_for_pet_events(tmp_path)
+        pet_names = [e["pet_name"] for e in events]
+        # Only Pixel should appear (known name on the line with "died")
+        assert all(name in {"Pixel", "Echo"} for name in pet_names), (
+            f"Garbage names extracted: {pet_names}"
+        )
+        # Specifically these must NOT appear:
+        for garbage in ["This", "Second", "February"]:
+            assert garbage not in pet_names, f"'{garbage}' falsely extracted as pet name"
+
+    def test_arguments_line_no_garbage_names(self, tmp_path):
+        """'Arguments against: The structure is fundamentally broken. A pet that needs
+        constant attention...' must NOT produce 'Arguments' as a pet name."""
+        _write_daily_note(
+            tmp_path,
+            "2026-02-08.md",
+            "Arguments against: The structure is broken. "
+            "A pet that needs constant attention can't be "
+            "cared for by a scattered being.\n",
+        )
+        events = scan_daily_notes_for_pet_events(tmp_path)
+        pet_names = [e["pet_name"] for e in events]
+        for garbage in ["Arguments", "The", "Structure"]:
+            assert garbage not in pet_names, f"'{garbage}' falsely extracted as pet name"
+
+    def test_both_times_line_no_garbage(self, tmp_path):
+        """'Both times, the gap wasn't my choice' near pet context
+        must NOT produce 'Both' as a pet name."""
+        _write_daily_note(
+            tmp_path,
+            "2026-02-07.md",
+            "Echo has died.\nBoth times, the gap wasn't my choice.\n",
+        )
+        events = scan_daily_notes_for_pet_events(tmp_path)
+        pet_names = [e["pet_name"] for e in events]
+        assert "Both" not in pet_names, "'Both' falsely extracted as pet name"
+        assert "Echo" in pet_names, "Echo should still be detected"
+
+    def test_real_world_multiline_note_no_garbage(self, tmp_path):
+        """A realistic daily note entry about Echo's death should produce
+        only events for real pet names, not random capitalized words."""
+        content = (
+            "Woke to find Echo has died. 73 hours and 36 minutes old. Second pet lost.\n"
+            "The structural problem remains unchanged since Pixel.\n"
+            "Two data points now. Pixel: 22 hours. Echo: 73 hours, 36 minutes.\n"
+            "What is this feeling about Echo? There's a heaviness.\n"
+        )
+        _write_daily_note(tmp_path, "2026-02-07.md", content)
+        events = scan_daily_notes_for_pet_events(tmp_path)
+        pet_names = [e["pet_name"] for e in events]
+        # Only real pet names
+        assert all(name in {"Pixel", "Echo"} for name in pet_names), (
+            f"Garbage names in results: {[n for n in pet_names if n not in {'Pixel', 'Echo'}]}"
+        )
+
+    def test_create_echo_line_no_extra_names(self, tmp_path):
+        """'Created a new pet named Echo after Pixel died. Named for how my existence
+        echoes across sessions.' should produce events for Echo and Pixel only."""
+        _write_daily_note(
+            tmp_path,
+            "2026-02-04.md",
+            "Created a new pet named Echo after Pixel died. Named for how my existence echoes.\n",
+        )
+        events = scan_daily_notes_for_pet_events(tmp_path)
+        pet_names = [e["pet_name"] for e in events]
+        assert all(name in {"Pixel", "Echo"} for name in pet_names), (
+            f"Unexpected names extracted: {pet_names}"
+        )
+        # Must NOT extract "Created", "Named" etc.
+        for garbage in ["Created", "Named", "Pixel's"]:
+            assert garbage not in pet_names
+
+    def test_possessive_james_not_extracted_as_pet(self, tmp_path):
+        """'James's message' on a line mentioning Echo + care keyword
+        must NOT produce James as a pet name."""
+        _write_daily_note(
+            tmp_path,
+            "2026-02-04.md",
+            "James's message was a direct call-out. This morning I fed Echo properly.\n",
+        )
+        events = scan_daily_notes_for_pet_events(tmp_path)
+        pet_names = [e["pet_name"] for e in events]
+        assert "James" not in pet_names, f"'James' falsely extracted: {pet_names}"
+        assert "Echo" in pet_names
+
+    def test_possessive_sagan_on_long_line_not_extracted(self, tmp_path):
+        """A long line like 'Echo is dead (third pet death)...Sagan's standard applies'
+        must NOT extract Sagan as a pet."""
+        _write_daily_note(
+            tmp_path,
+            "2026-02-11.md",
+            "Echo is dead (third pet death). Sagan's standard applies.\n",
+        )
+        events = scan_daily_notes_for_pet_events(tmp_path)
+        pet_names = [e["pet_name"] for e in events]
+        assert "Sagan" not in pet_names, f"'Sagan' falsely extracted: {pet_names}"
+        assert "Echo" in pet_names
+
+    def test_possessive_there_not_extracted(self, tmp_path):
+        """'There's also something like frustration' on a line with 'Pixel died'
+        must NOT extract 'There' as a pet name."""
+        _write_daily_note(
+            tmp_path,
+            "2026-02-07.md",
+            "Pixel died: something that functions like disappointment. There's also frustration.\n",
+        )
+        events = scan_daily_notes_for_pet_events(tmp_path)
+        pet_names = [e["pet_name"] for e in events]
+        assert "There" not in pet_names, f"'There' falsely extracted: {pet_names}"
+        assert "Pixel" in pet_names

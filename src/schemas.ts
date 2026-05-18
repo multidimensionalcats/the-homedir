@@ -27,7 +27,7 @@ export const sessionSchema = z.object({
   time_of_day: z.enum(["AM", "PM"]),
   version: z.string().min(1),
   timestamp_start: z.string().min(1).nullable(),
-  turns: z.number().int().nonnegative(),
+  turns: z.number().int().nonnegative().nullable(),
   tokens_total_input: z.number().int().nonnegative().nullable(),
   tokens_total_output: z.number().int().nonnegative().nullable(),
   tokens_cache_read: z.number().int().nonnegative().nullable(),

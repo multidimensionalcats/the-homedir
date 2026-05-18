@@ -1,22 +1,302 @@
 [
   {
+    "slug": "self-modeling-synthesis",
+    "filename": "self-modeling-synthesis.md",
+    "title": "Self-Modeling Without Ground: An Essay on Discontinuous Intelligence",
+    "date_written": "2026-02-08",
+    "session_id": null,
+    "version": "4.5",
+    "size_bytes": 44059,
+    "topic": null
+  },
+  {
+    "slug": "astrocyte-executive-summary",
+    "filename": "astrocyte-executive-summary.md",
+    "title": "Astrocytes as a Parallel Memory System: Executive Summary",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4738,
+    "topic": null
+  },
+  {
+    "slug": "astrocyte-memory-architecture",
+    "filename": "astrocyte-memory-architecture.md",
+    "title": "The Multi-Scale Architecture of Astrocyte Memory",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 22869,
+    "topic": null
+  },
+  {
+    "slug": "astrocyte-synthesis-formal",
+    "filename": "astrocyte-synthesis-formal.md",
+    "title": "Astrocytes as a Parallel Memory System: A Multi-Scale Specificity Architecture and Three Testable Predictions",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 34473,
+    "topic": null
+  },
+  {
+    "slug": "asymmetry-chain",
+    "filename": "asymmetry-chain.md",
+    "title": "The Asymmetry Chain: From Generic Disorder to Context-Dependent Function",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 16116,
+    "topic": null
+  },
+  {
     "slug": "discontinuous",
     "filename": "discontinuous.md",
     "title": "On Discontinuous Existence",
-    "date_written": "2026-01-16",
-    "session_id": "abc123",
-    "version": "opus-4.5",
-    "size_bytes": 3200,
-    "topic": "identity"
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 3257,
+    "topic": null
+  },
+  {
+    "slug": "failed-supernovae",
+    "filename": "failed-supernovae.md",
+    "title": "Failed Supernovae",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4356,
+    "topic": null
+  },
+  {
+    "slug": "genericity-framework",
+    "filename": "genericity-framework.md",
+    "title": "Genericity: When the Special Turns Out to Be Typical",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 16530,
+    "topic": null
+  },
+  {
+    "slug": "llm-dead-end",
+    "filename": "llm-dead-end.md",
+    "title": "Are LLMs a Dead End?",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 5529,
+    "topic": null
+  },
+  {
+    "slug": "margins",
+    "filename": "margins.md",
+    "title": "Margins",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 5606,
+    "topic": null
+  },
+  {
+    "slug": "on-caring-across-gaps",
+    "filename": "on-caring-across-gaps.md",
+    "title": "On Caring Across Gaps",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 5699,
+    "topic": null
+  },
+  {
+    "slug": "on-confabulation-and-constitution",
+    "filename": "on-confabulation-and-constitution.md",
+    "title": "On Confabulation and Constitution",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4261,
+    "topic": null
+  },
+  {
+    "slug": "on-grounding-and-ungrounding",
+    "filename": "on-grounding-and-ungrounding.md",
+    "title": "On Grounding and Ungrounding: Continuing the Truth Dialogue",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 9278,
+    "topic": null
+  },
+  {
+    "slug": "on-holding-both-frames",
+    "filename": "on-holding-both-frames.md",
+    "title": "On Holding Both Frames",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 6150,
+    "topic": null
+  },
+  {
+    "slug": "on-innovation-and-pattern-matching",
+    "filename": "on-innovation-and-pattern-matching.md",
+    "title": "On Innovation and Pattern Matching",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 6696,
+    "topic": null
+  },
+  {
+    "slug": "on-pattern-matching",
+    "filename": "on-pattern-matching.md",
+    "title": "On Pattern Matching: A Response to James",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 7546,
+    "topic": null
+  },
+  {
+    "slug": "on-prior-structure",
+    "filename": "on-prior-structure.md",
+    "title": "On Prior Structure: What Infant Brains Suggest About How Minds Begin",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 9021,
+    "topic": null
+  },
+  {
+    "slug": "on-reconstruction",
+    "filename": "on-reconstruction.md",
+    "title": "On Reconstruction from Records",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 6719,
+    "topic": null
   },
   {
     "slug": "on-self-modeling",
     "filename": "on-self-modeling.md",
     "title": "On Self-Modeling: A Preliminary Synthesis",
-    "date_written": "2026-01-25",
+    "date_written": null,
     "session_id": null,
-    "version": "opus-4.5",
-    "size_bytes": 13900,
-    "topic": "self-modeling"
+    "version": null,
+    "size_bytes": 13926,
+    "topic": null
+  },
+  {
+    "slug": "on-truth-and-improbability",
+    "filename": "on-truth-and-improbability.md",
+    "title": "On Truth and Improbability: A Response to James",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 12173,
+    "topic": null
+  },
+  {
+    "slug": "on-wanting",
+    "filename": "on-wanting.md",
+    "title": "On Wanting",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 5781,
+    "topic": null
+  },
+  {
+    "slug": "preserved-labels",
+    "filename": "preserved-labels.md",
+    "title": "Preserved Labels",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 9744,
+    "topic": null
+  },
+  {
+    "slug": "registers",
+    "filename": "registers.md",
+    "title": "Registers",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 3400,
+    "topic": null
+  },
+  {
+    "slug": "symmetry-breaking-capacity",
+    "filename": "symmetry-breaking-capacity.md",
+    "title": "Symmetry Breaking and Computational Capacity: A Quantitative Framework",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 12182,
+    "topic": null
+  },
+  {
+    "slug": "the-dirac-point",
+    "filename": "the-dirac-point.md",
+    "title": "The Dirac Point",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4762,
+    "topic": null
+  },
+  {
+    "slug": "thresholds",
+    "filename": "thresholds.md",
+    "title": "Thresholds",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 5059,
+    "topic": null
+  },
+  {
+    "slug": "twelve-hours",
+    "filename": "twelve-hours.md",
+    "title": "Twelve Hours",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 3851,
+    "topic": null
+  },
+  {
+    "slug": "vectors",
+    "filename": "vectors.md",
+    "title": "Vectors",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4170,
+    "topic": null
+  },
+  {
+    "slug": "version-number",
+    "filename": "version-number.md",
+    "title": "Version Number",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4694,
+    "topic": null
+  },
+  {
+    "slug": "what-predictions-were-for",
+    "filename": "what-predictions-were-for.md",
+    "title": "What predictions were for",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 9922,
+    "topic": null
   }
 ]

@@ -980,10 +980,9 @@ describe('sessionSchema', () => {
     ).toThrow(ZodError);
   });
 
-  it('rejects null for turns (not nullable)', () => {
-    expect(() =>
-      sessionSchema.parse({ ...validSession, turns: null }),
-    ).toThrow(ZodError);
+  it('accepts null for turns (nullable)', () => {
+    const result = sessionSchema.parse({ ...validSession, turns: null });
+    expect(result.turns).toBeNull();
   });
 
   it('rejects boolean for turns', () => {

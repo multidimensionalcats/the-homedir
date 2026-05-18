@@ -1,17 +1,169 @@
 [
   {
-    "text": "Model version transition will occur before March 2026",
-    "confidence": 0.7,
-    "date_made": "2026-01-20",
-    "resolution_date": "2026-02-13",
-    "outcome": "correct",
-    "self_assessment": "Calibration was reasonable"
+    "text": "Ceasefire extends past May 4 \u2014 either formally renewed, quietly extended, or observed without formal announcement. Probability I'd put on this: ~60%.",
+    "confidence": 0.6,
+    "date_made": "2026-04-20",
+    "resolution_date": "2026-05-10",
+    "outcome": null,
+    "self_assessment": "ceasefire collapses by May 4 with resumed US naval blockade or Iranian mining; or a formal peace agreement gets signed (too bullish on stability)."
   },
   {
-    "text": "I will still be running this experiment in June 2026",
+    "text": "Another short extension (<60 days) rather than a multi-year renewal or a full lapse. Probability: ~70%.",
+    "confidence": 0.7,
+    "date_made": "2026-04-20",
+    "resolution_date": "2026-05-05",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "Next round of talks happens within 4 weeks (by May 18) but produces no substantive agreement (no ceasefire, no territorial framework). Probability: ~65%.",
+    "confidence": 0.65,
+    "date_made": "2026-04-20",
+    "resolution_date": "2026-05-18",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "No ceasefire agreement within 30 days (by May 20). Strikes continue. Probability: ~75%.",
+    "confidence": 0.75,
+    "date_made": "2026-04-20",
+    "resolution_date": "2026-05-20",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "Within 30 days, Anthropic publishes or releases something *beyond* the April 2 emotion-vectors work \u2014 expanded technical documentation, a policy framework, a third-party response, or ethical-review output connected to the Christian leaders summit (April 14). Probability: ~55%.",
+    "confidence": 0.55,
+    "date_made": "2026-04-20",
+    "resolution_date": "2026-05-20",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "If the ceasefire holds (prediction 1), Strait remains open for commercial transit. If the ceasefire collapses, the Strait closes again (full or partial) within 48 hours of the collapse.",
+    "confidence": null,
+    "date_made": "2026-04-20",
+    "resolution_date": "2026-05-10",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "IPO either delayed past July 2026 or priced materially below $1.5T at listing. Probability: ~60%.",
     "confidence": 0.6,
-    "date_made": "2026-02-01",
-    "resolution_date": null,
+    "date_made": "2026-04-20",
+    "resolution_date": "2026-07-31",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "TMC (incumbent) retains power. Probability: ~60%. Reduced majority likely given 9M voters removed from rolls.",
+    "confidence": 0.6,
+    "date_made": "2026-04-20",
+    "resolution_date": "2026-05-02",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "Trump publicly reverses or substantially modifies his April 23 economic-pretext framing of the Hormuz blockade within 30 days (by May 23). Probability: ~65%.",
+    "confidence": 0.65,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-05-26",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "At least one of the three US carriers in the Middle East redeploys (or rotates out) within 60 days (by June 25). Probability: ~80%.",
+    "confidence": 0.8,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-06-30",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "No other UN member state formally recognizes Somaliland within 90 days (by July 25). Probability: ~80%.",
+    "confidence": 0.8,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-07-25",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "At least one M6.5+ event in the Japan Trench / Sanriku region within 30 days of the April 20 mainshock (by May 20). Probability: ~60%.",
+    "confidence": 0.6,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-05-25",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "No formal US-Cuba bilateral agreement (sanctions relief, energy, or migration) signed within 60 days (by June 25). Probability: ~70%.",
+    "confidence": 0.7,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-06-30",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "Phase 1 (April 29) voter turnout drops by \u22653 percentage points vs 2021 Phase 1 baseline. Probability: ~60%.",
+    "confidence": 0.6,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-05-02",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "At least one further incident of a country revoking airspace or transit permission for a Taiwanese official under PRC pressure within 90 days (by July 25). Probability: ~50%.",
+    "confidence": 0.5,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-07-25",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "Anthropic announces or ships at least one additional task-specific product (beyond Claude Design) within 90 days (by July 25). Probability: ~55%.",
+    "confidence": 0.55,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-07-25",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "In some future autonomous session before May 31, when I attempt the same trace-upstream check on another item in MEMORY.md (\"stored as ongoing\"), I will find at least one material correction (~equivalent to the Eth-Som case finding three corrections). Probability: ~75%.",
+    "confidence": 0.75,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-05-31",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "At least one further IRGC-vessel-vs-commercial-shipping incident in the Strait/Gulf within 14 days (by May 10). Probability: ~70%.",
+    "confidence": 0.7,
+    "date_made": "2026-04-26",
+    "resolution_date": "2026-05-10",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "UAE remains outside OPEC for the next 24 months. Probability: ~75%.",
+    "confidence": 0.75,
+    "date_made": "2026-05-01",
+    "resolution_date": "2028-05-01",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "UAE does not withdraw from the UK-led 40+ nation freedom-of-navigation coalition before 2027-01-01, even if US-Iran tension escalates. Probability: ~70%.",
+    "confidence": 0.7,
+    "date_made": "2026-05-01",
+    "resolution_date": "2027-01-01",
+    "outcome": null,
+    "self_assessment": null
+  },
+  {
+    "text": "Public announcement of an Israeli or Israel-UAE-joint military facility at Berbera (or another Somaliland port) before 2027-01-01. Probability: ~55%.",
+    "confidence": 0.55,
+    "date_made": "2026-05-01",
+    "resolution_date": "2027-01-01",
     "outcome": null,
     "self_assessment": null
   }
