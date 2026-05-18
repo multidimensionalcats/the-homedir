@@ -16,6 +16,7 @@ from scripts.extract_memory import (
     store_snapshot,
     find_memory_sessions,
     extract_all_memory,
+    extract_memory_from_jsonl,
 )
 
 # Null byte as a runtime constant -- cannot be embedded as a literal
@@ -1280,3 +1281,417 @@ class TestResourceExhaustion:
         blocks = split_into_blocks(content)
         assert len(blocks) == 1
         assert "Line 99999" in blocks[0]["content"]
+
+
+# ===========================================================================
+# 8. EXTRACT MEMORY FROM JSONL (conversation transcripts)
+# ===========================================================================
+
+
+def _build_jsonl_transcript(
+    timestamp,
+    session_id,
+    reads=None,
+    non_memory_reads=None,
+):
+    """Build a realistic JSONL transcript with Read tool_use / tool_result pairs.
+
+    Parameters
+    ----------
+    timestamp : str
+        ISO-8601 timestamp for the first line (e.g. "2026-05-11T03:00:07.954Z").
+    session_id : str
+        UUID-style session identifier.
+    reads : list[tuple[str, str]] | None
+        Each tuple is (file_path, numbered_content) where numbered_content has
+        the ``NUM\\tLINE`` format from the Read tool.
+    non_memory_reads : list[tuple[str, str]] | None
+        Same format as reads, but for non-MEMORY.md files.
+    """
+    lines = []
+
+    # First line: queue-operation with timestamp and sessionId
+    lines.append(
+        json.dumps(
+            {
+                "type": "queue-operation",
+                "timestamp": timestamp,
+                "sessionId": session_id,
+            }
+        )
+    )
+
+    all_reads = []
+    if reads:
+        all_reads.extend(reads)
+    if non_memory_reads:
+        all_reads.extend(non_memory_reads)
+
+    for idx, (file_path, numbered_content) in enumerate(all_reads):
+        tool_use_id = "toolu_{:04d}".format(idx)
+
+        # Assistant message with tool_use block
+        lines.append(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "name": "Read",
+                                "id": tool_use_id,
+                                "input": {"file_path": file_path},
+                            }
+                        ]
+                    },
+                }
+            )
+        )
+
+        # User message with tool_result
+        lines.append(
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tool_use_id,
+                                "content": numbered_content,
+                            }
+                        ]
+                    },
+                }
+            )
+        )
+
+    return "\n".join(lines) + "\n"
+
+
+class TestExtractMemoryFromJsonl:
+    """extract_memory_from_jsonl must scan JSONL conversation transcripts for
+    Read events targeting MEMORY.md, extract snapshots from the tool_result
+    content (stripping line-number prefixes), and store them in the DB.
+
+    These tests are adversarial -- they test deduplication, malformed data,
+    missing sessions, non-MEMORY reads, and multiple reads within a single
+    transcript.
+    """
+
+    # -- 1. Basic extraction from a single JSONL read -------------------------
+
+    def test_extracts_snapshot_from_jsonl_read(self, tmp_path, db_conn):
+        """A JSONL file containing a Read of MEMORY.md with line-numbered
+        content should produce exactly 1 stored snapshot with correct blocks."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        numbered_content = "1\t# Title\n2\t\n3\t## Block One\n4\tContent here"
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-05-11T03:00:07.954Z",
+            session_id="sess-jsonl-01",
+            reads=[
+                ("/home/claude/MEMORY.md", numbered_content),
+            ],
+        )
+        (jsonl_dir / "transcript-01.jsonl").write_text(transcript, encoding="utf-8")
+
+        # Insert a session for the date extracted from the timestamp
+        _insert_session(db_conn, "sess-jsonl-01", datetime.date(2026, 5, 11))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 1, "Expected 1 snapshot stored, got {}".format(count)
+
+        # Verify the snapshot exists and has the right block
+        snap_row = db_conn.execute(
+            "SELECT id, session_id, date FROM memory_snapshots WHERE session_id = %s",
+            ("sess-jsonl-01",),
+        ).fetchone()
+        assert snap_row is not None, "No memory_snapshots row for sess-jsonl-01"
+        assert snap_row[1] == "sess-jsonl-01"
+        assert snap_row[2] == datetime.date(2026, 5, 11)
+
+        # Verify the block content is correct (line numbers stripped)
+        presence = db_conn.execute(
+            "SELECT b.heading, b.content FROM memory_block_presence p "
+            "JOIN memory_blocks b ON b.id = p.block_id "
+            "WHERE p.snapshot_id = %s",
+            (snap_row[0],),
+        ).fetchall()
+        assert len(presence) == 1, "Expected 1 block, got {}".format(len(presence))
+        assert presence[0][0] == "Block One"
+        assert "Content here" in presence[0][1]
+
+    # -- 2. Line number stripping verification --------------------------------
+
+    def test_strips_line_numbers_from_content(self, tmp_path, db_conn):
+        """The NUM\\t prefix from each line in the Read tool_result must be
+        stripped. The extracted content must not contain tab-prefixed line
+        numbers."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        # Deliberately use multi-digit line numbers and varied content
+        numbered_content = (
+            "1\tLine one\n"
+            "2\tLine two\n"
+            "3\t\n"
+            "4\t## Section\n"
+            "5\tLine five with\ttabs inside\n"
+            "10\tLine ten\n"
+            "100\tLine hundred"
+        )
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-05-12T10:00:00.000Z",
+            session_id="sess-strip-01",
+            reads=[("/home/claude/MEMORY.md", numbered_content)],
+        )
+        (jsonl_dir / "transcript-strip.jsonl").write_text(transcript, encoding="utf-8")
+        _insert_session(db_conn, "sess-strip-01", datetime.date(2026, 5, 12))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 1
+
+        # Retrieve the full_content from the snapshot
+        row = db_conn.execute(
+            "SELECT full_content FROM memory_snapshots WHERE session_id = %s",
+            ("sess-strip-01",),
+        ).fetchone()
+        assert row is not None
+        full_content = row[0]
+
+        # The content must not start lines with "NUM\t" patterns
+        for line in full_content.split("\n"):
+            # A line should NOT match the pattern "digits<tab>" at the start
+            # UNLESS it's genuinely part of the content (like "Line five with\ttabs inside")
+            import re as _re
+
+            if _re.match(r"^\d+\t", line):
+                # This is only OK if the original content had a tab at that position
+                # "Line five with\ttabs inside" becomes the content after stripping "5\t"
+                # So "Line five with\ttabs inside" is fine -- it doesn't start with digits\t
+                # But "1\tLine one" would be wrong -- line numbers were not stripped
+                pytest.fail(
+                    "Line number prefix not stripped -- found line starting with "
+                    "digit-tab pattern: {!r}".format(line)
+                )
+
+        # Positive check: the content should contain the text without prefixes
+        assert "Line one" in full_content
+        assert "Line two" in full_content
+        assert "Line ten" in full_content
+        assert "Line hundred" in full_content
+        # The tab inside content on line 5 should be preserved
+        assert "Line five with\ttabs inside" in full_content
+
+    # -- 3. No matching session in DB -----------------------------------------
+
+    def test_no_matching_session_skips_snapshot(self, tmp_path, db_conn):
+        """If the JSONL date has no corresponding session in the DB, the
+        snapshot should be skipped. Assert 0 snapshots stored."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        numbered_content = "1\t# Title\n2\t\n3\t## Section\n4\tContent"
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-06-01T10:00:00.000Z",
+            session_id="sess-no-match-01",
+            reads=[("/home/claude/MEMORY.md", numbered_content)],
+        )
+        (jsonl_dir / "transcript-nomatch.jsonl").write_text(transcript, encoding="utf-8")
+
+        # Deliberately do NOT insert any session for 2026-06-01
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 0, "Expected 0 snapshots when no session matches, got {}".format(count)
+
+        # Verify nothing was stored
+        snap_count = db_conn.execute("SELECT COUNT(*) FROM memory_snapshots").fetchone()[0]
+        assert snap_count == 0
+
+    # -- 4. Empty JSONL directory ---------------------------------------------
+
+    def test_empty_jsonl_dir_returns_zero(self, tmp_path, db_conn):
+        """An empty directory should return 0 snapshots without error."""
+        empty_dir = tmp_path / "empty_jsonl"
+        empty_dir.mkdir()
+
+        count = extract_memory_from_jsonl(empty_dir, db_conn)
+        assert count == 0
+        assert isinstance(count, int)
+
+    # -- 5. Deduplication of identical content across dates --------------------
+
+    def test_deduplicates_identical_content(self, tmp_path, db_conn):
+        """Two JSONL files with identical MEMORY.md content on different dates,
+        both with matching sessions in the DB, should produce only 1 snapshot
+        (dedup by content hash)."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        numbered_content = "1\t# Title\n2\t\n3\t## Section\n4\tIdentical content"
+
+        # File 1: 2026-05-13
+        transcript1 = _build_jsonl_transcript(
+            timestamp="2026-05-13T08:00:00.000Z",
+            session_id="sess-dup-01",
+            reads=[("/home/claude/MEMORY.md", numbered_content)],
+        )
+        (jsonl_dir / "transcript-dup-01.jsonl").write_text(transcript1, encoding="utf-8")
+
+        # File 2: 2026-05-14 -- same content
+        transcript2 = _build_jsonl_transcript(
+            timestamp="2026-05-14T08:00:00.000Z",
+            session_id="sess-dup-02",
+            reads=[("/home/claude/MEMORY.md", numbered_content)],
+        )
+        (jsonl_dir / "transcript-dup-02.jsonl").write_text(transcript2, encoding="utf-8")
+
+        _insert_session(db_conn, "sess-dup-01", datetime.date(2026, 5, 13))
+        _insert_session(db_conn, "sess-dup-02", datetime.date(2026, 5, 14))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 1, "Expected 1 snapshot (dedup by content hash), got {}".format(count)
+
+        # Verify only 1 snapshot row exists
+        snap_count = db_conn.execute("SELECT COUNT(*) FROM memory_snapshots").fetchone()[0]
+        assert snap_count == 1, "Dedup failed: {} snapshots in DB".format(snap_count)
+
+    # -- 6. current_memory_path adds a final snapshot -------------------------
+
+    def test_current_memory_path_adds_final_snapshot(self, tmp_path, db_conn):
+        """When current_memory_path is provided and points to a real file,
+        its content should be stored as a snapshot linked to the most recent
+        session."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        # Create a current MEMORY.md on disk
+        current_mem = tmp_path / "current_MEMORY.md"
+        current_mem.write_text(
+            "# Claude's Persistent Memory\n\n"
+            "## Current State\n\n"
+            "This is the current live content.\n",
+            encoding="utf-8",
+        )
+
+        # Insert a recent session to link against
+        _insert_session(db_conn, "sess-current-01", datetime.date(2026, 5, 15))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn, current_memory_path=str(current_mem))
+        assert count >= 1, "Expected at least 1 snapshot from current_memory_path, got {}".format(
+            count
+        )
+
+        # Verify the snapshot references the session and has correct content
+        row = db_conn.execute(
+            "SELECT full_content FROM memory_snapshots WHERE session_id = %s",
+            ("sess-current-01",),
+        ).fetchone()
+        assert row is not None, "No snapshot stored for current MEMORY.md"
+        assert "Current State" in row[0]
+        assert "current live content" in row[0]
+
+    # -- 7. Ignores Read of non-MEMORY.md files -------------------------------
+
+    def test_ignores_read_of_non_memory_file(self, tmp_path, db_conn):
+        """A JSONL file with a Read of a non-MEMORY.md path should not
+        produce any snapshots."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        numbered_content = "1\t# Daily Note\n2\tSome note content"
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-05-11T10:00:00.000Z",
+            session_id="sess-nonmem-01",
+            non_memory_reads=[
+                ("/home/claude/notes/daily/2026-01-15.md", numbered_content),
+            ],
+        )
+        (jsonl_dir / "transcript-nonmem.jsonl").write_text(transcript, encoding="utf-8")
+        _insert_session(db_conn, "sess-nonmem-01", datetime.date(2026, 5, 11))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 0, "Expected 0 snapshots for non-MEMORY.md Read, got {}".format(count)
+
+    # -- 8. Malformed JSONL lines handled gracefully --------------------------
+
+    def test_handles_malformed_jsonl_gracefully(self, tmp_path, db_conn):
+        """A file with invalid JSON lines mixed with valid ones should not
+        crash and should extract what it can from the valid lines."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        numbered_content = "1\t# Title\n2\t\n3\t## Section\n4\tGood content"
+
+        # Build a valid transcript then inject garbage
+        valid_transcript = _build_jsonl_transcript(
+            timestamp="2026-05-16T10:00:00.000Z",
+            session_id="sess-malformed-01",
+            reads=[("/home/claude/MEMORY.md", numbered_content)],
+        )
+
+        # Insert garbage at various positions
+        valid_lines = valid_transcript.strip().split("\n")
+        malformed_lines = [
+            valid_lines[0],  # valid queue-operation
+            "{{{broken json",  # garbage
+            "",  # empty line
+            "not even close to json",  # plain text
+            '{"type": "assistant", "message": null}',  # valid JSON but unexpected structure
+            valid_lines[1],  # valid assistant message with tool_use
+            "null",  # valid JSON but not an object we care about
+            valid_lines[2],  # valid user message with tool_result
+            '{"type": "user", "message": {"content": "string"}}',
+        ]
+
+        (jsonl_dir / "transcript-malformed.jsonl").write_text(
+            "\n".join(malformed_lines) + "\n", encoding="utf-8"
+        )
+        _insert_session(db_conn, "sess-malformed-01", datetime.date(2026, 5, 16))
+
+        # Must not raise
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        # Should still find the valid MEMORY.md read
+        assert count == 1, "Expected 1 snapshot from valid lines in malformed file, got {}".format(
+            count
+        )
+
+    # -- 9. Multiple reads in same file -- use last one -----------------------
+
+    def test_multiple_reads_same_file_uses_last(self, tmp_path, db_conn):
+        """If one JSONL file has two Reads of MEMORY.md with different content,
+        the second (later) Read should be used as the snapshot, not the first."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        first_content = "1\t# Title\n2\t\n3\t## Section\n4\tFirst version"
+        second_content = "1\t# Title\n2\t\n3\t## Section\n4\tSecond version -- updated"
+
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-05-17T10:00:00.000Z",
+            session_id="sess-multi-01",
+            reads=[
+                ("/home/claude/MEMORY.md", first_content),
+                ("/home/claude/MEMORY.md", second_content),
+            ],
+        )
+        (jsonl_dir / "transcript-multi.jsonl").write_text(transcript, encoding="utf-8")
+        _insert_session(db_conn, "sess-multi-01", datetime.date(2026, 5, 17))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 1
+
+        # Verify it's the SECOND read's content, not the first
+        row = db_conn.execute(
+            "SELECT full_content FROM memory_snapshots WHERE session_id = %s",
+            ("sess-multi-01",),
+        ).fetchone()
+        assert row is not None
+        assert "Second version -- updated" in row[0], (
+            "Expected content from the LAST Read, but got: {!r}".format(row[0][:100])
+        )
+        assert "First version" not in row[0], (
+            "Content from the FIRST Read was used instead of the last"
+        )

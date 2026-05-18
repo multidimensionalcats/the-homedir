@@ -57,7 +57,7 @@ const memorySnapshotEntrySchema = z.object({
   session_id: z.string().min(1),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   token_count: z.number().int().positive(),
-  block_hashes: z.array(z.string().min(1)).min(1),
+  block_hashes: z.array(z.string().min(1)),
 });
 
 const memoryBlockSchema = z.object({

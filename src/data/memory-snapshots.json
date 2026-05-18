@@ -1,4 +1,614 @@
 {
-  "snapshots": [],
-  "blocks": []
+  "snapshots": [
+    {
+      "session_id": "e5c6cb9b",
+      "date": "2026-04-18",
+      "token_count": 768,
+      "block_hashes": [
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "a6e9b86e2a2e9d45e0a32c6f5765d03798d0ea2fd8484076fdbc770de6d77a43",
+        "d1367590ef0caa51a5e3ba8b88b29366adafc60746b43f583d81dce620c9cdd4",
+        "865c9a29c46df1cbb14857bb8238b6b4347e7a6a4f6e883c115b5796af76f313",
+        "8aad0c23fb7130166160e9a52deabfe740a6ba5226b0e3300d33dd912f745d1b",
+        "c3535bf68d7571e3a5b77d6f1f992505cd249ec9c19ac0aeca3a3b9270d53339"
+      ]
+    },
+    {
+      "session_id": "fcfe54c5",
+      "date": "2026-04-20",
+      "token_count": 1067,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "0c7955670940f9fa368b3d99aee0a2bb41e0f40152923f8aadc9944eeabea0ee",
+        "8aad0c23fb7130166160e9a52deabfe740a6ba5226b0e3300d33dd912f745d1b",
+        "07449b5068fb3ab45c05181ec393d39b6565bb8ef2217eb29af659d50a0093d9",
+        "d12969f7fe8d671903de85d816271fad3656006fc044faeb4fadddc56f0d7101"
+      ]
+    },
+    {
+      "session_id": "d3a429ce",
+      "date": "2026-04-22",
+      "token_count": 1051,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "0c7955670940f9fa368b3d99aee0a2bb41e0f40152923f8aadc9944eeabea0ee",
+        "8d21fd998f113d283045a49254ddb9cb2bcfff6a106ff81f7a070a6e8e27a4a2",
+        "07449b5068fb3ab45c05181ec393d39b6565bb8ef2217eb29af659d50a0093d9",
+        "fc3e13d4f3591a862c13f9840046a33d892aa19f74a692722776bb8ba0f892cf"
+      ]
+    },
+    {
+      "session_id": "15076669",
+      "date": "2026-04-23",
+      "token_count": 1142,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "b4f7c95c2c6e47e2be27503dd61b963e21e942a610b2bfce093a57c8057fecf4",
+        "0c7955670940f9fa368b3d99aee0a2bb41e0f40152923f8aadc9944eeabea0ee",
+        "8d21fd998f113d283045a49254ddb9cb2bcfff6a106ff81f7a070a6e8e27a4a2",
+        "9a6e13d26e3a17a0f001a4db55b1a93bf13fb03989577f834cf77a698d03a042"
+      ]
+    },
+    {
+      "session_id": "669251c6",
+      "date": "2026-04-25",
+      "token_count": 1354,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "0c7955670940f9fa368b3d99aee0a2bb41e0f40152923f8aadc9944eeabea0ee",
+        "8d21fd998f113d283045a49254ddb9cb2bcfff6a106ff81f7a070a6e8e27a4a2",
+        "497d2808b54eed879b7d2c20802e7b1d5eedeed5a2cb298772f8c75eea8ec5d1",
+        "a01c5cd38ef32fbbece296660d42a3cd53099b7fa226eab29fe20b8b2409a9a2"
+      ]
+    },
+    {
+      "session_id": "3e227c6c",
+      "date": "2026-04-26",
+      "token_count": 1622,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "8d21fd998f113d283045a49254ddb9cb2bcfff6a106ff81f7a070a6e8e27a4a2",
+        "497d2808b54eed879b7d2c20802e7b1d5eedeed5a2cb298772f8c75eea8ec5d1",
+        "afe436767ccef95ae880e910f5d8f658e8c1af45ebbe85237455c7f9fb7e90fb",
+        "af78958533acedc8f3ffd2a0b3fb9b85eaca694cadd7cde879c38e3de0330d54"
+      ]
+    },
+    {
+      "session_id": "21627d7e",
+      "date": "2026-04-27",
+      "token_count": 1828,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "a81ec6b00075cb22f763c3d8946aa8060abfcf328ca283443e766a59f6ddccc6",
+        "afe436767ccef95ae880e910f5d8f658e8c1af45ebbe85237455c7f9fb7e90fb",
+        "d5ee01bf5dc9816474297cf0e12fa3c5d867df699520a32f06cba3504d246ddc",
+        "0c63092e55117b20d2e39351b11036eba9f704b7bf5cee596806631df6396bfb"
+      ]
+    },
+    {
+      "session_id": "fe0ad957",
+      "date": "2026-04-28",
+      "token_count": 500,
+      "block_hashes": [
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "d5ee01bf5dc9816474297cf0e12fa3c5d867df699520a32f06cba3504d246ddc",
+        "841bc840ece67eeba1168f36f6d5fba155b5750cbe9ded1cf8936580cf2697d1"
+      ]
+    },
+    {
+      "session_id": "456bc2dc",
+      "date": "2026-04-29",
+      "token_count": 2036,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "32c0f53a213dfc77f75e93b7d343031dbab886fcfdda75508aa4a77cd0828e2a",
+        "3f800c36787e8eaba973f29092a5577518f8ba38e0f94ac27896b461ca2f8bdd",
+        "618c7a5a1e6bb53570978e47687def27639245730c9453e6be9a75fe4e210fd0",
+        "84a7f447cb20abff2bf270b0487c1213ac311d74b8375c72ebc71656f4a3b8bb"
+      ]
+    },
+    {
+      "session_id": "0c47fdc4",
+      "date": "2026-04-30",
+      "token_count": 471,
+      "block_hashes": []
+    },
+    {
+      "session_id": "7fa79334",
+      "date": "2026-05-01",
+      "token_count": 2138,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "32c0f53a213dfc77f75e93b7d343031dbab886fcfdda75508aa4a77cd0828e2a",
+        "618c7a5a1e6bb53570978e47687def27639245730c9453e6be9a75fe4e210fd0",
+        "a00e56825797a1c1f7210cc7a6d7a7793a47d7d1f03724987e5dbf40a85ce81a",
+        "3b2dccf3dd9e7b50668cc528764d9aa726b1a9c95af7b8aa7278830d8e97c30a"
+      ]
+    },
+    {
+      "session_id": "caecd496",
+      "date": "2026-05-02",
+      "token_count": 356,
+      "block_hashes": [
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "a4cf60ddb7a3f40768cbd0bc4a8154fe187177957004acb91456c0bded634d78"
+      ]
+    },
+    {
+      "session_id": "387dd975",
+      "date": "2026-05-03",
+      "token_count": 2617,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "3587af60bd25c64d058fe779feb86e1795dfd281c01e72e630e2d986ca5b5980",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "a2306061052eb148eefa9d09da6ef187a89e498d288ae451b747bdb80da7b6d7",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "61335d9a493aac3a421ff84a2417514f1805e6ae87fc8a078159cd3a5e943288",
+        "d8e92e155e3f82769f384f7eaaefa3a0e40bbd8ab843ea5f9142409155ffd136"
+      ]
+    },
+    {
+      "session_id": "ef7fda83",
+      "date": "2026-05-04",
+      "token_count": 2731,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "3587af60bd25c64d058fe779feb86e1795dfd281c01e72e630e2d986ca5b5980",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "a2306061052eb148eefa9d09da6ef187a89e498d288ae451b747bdb80da7b6d7",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "61335d9a493aac3a421ff84a2417514f1805e6ae87fc8a078159cd3a5e943288",
+        "8deb506c9f6f0b621aa8a2d1a7f8b4d4c43b802b2dbd3b1b4322212f31eae676"
+      ]
+    },
+    {
+      "session_id": "84c1eae6",
+      "date": "2026-05-05",
+      "token_count": 2036,
+      "block_hashes": [
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "7232470208493e00cb998b3e987937e0a0601d53f8366fa2b196e6bbd7d0e6ad",
+        "5153a735a118f90b9a13559affb5ff5549ca2472eb33de1ef05dfba8ced5cfde"
+      ]
+    },
+    {
+      "session_id": "9281a7c4",
+      "date": "2026-05-06",
+      "token_count": 2958,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "3587af60bd25c64d058fe779feb86e1795dfd281c01e72e630e2d986ca5b5980",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "a2306061052eb148eefa9d09da6ef187a89e498d288ae451b747bdb80da7b6d7",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "8ce6d168f7570f25e83167425f8009bbb0ec22ce6e9cd8047dd5c0dbf22cf3e4",
+        "9f803ad1dd036ad663e787c1ce9281cbae58f049b69971283e1ba8fdd46232b2"
+      ]
+    },
+    {
+      "session_id": "428f7ed2",
+      "date": "2026-05-07",
+      "token_count": 2520,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "3587af60bd25c64d058fe779feb86e1795dfd281c01e72e630e2d986ca5b5980",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "a2306061052eb148eefa9d09da6ef187a89e498d288ae451b747bdb80da7b6d7",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "8ce6d168f7570f25e83167425f8009bbb0ec22ce6e9cd8047dd5c0dbf22cf3e4",
+        "8e0b8c553619b44fbc15b2f9dd86d81c88d0e17a2f255ab7227ee0cbbef088dc"
+      ]
+    },
+    {
+      "session_id": "09f51212",
+      "date": "2026-05-08",
+      "token_count": 532,
+      "block_hashes": [
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "802a8c9a08595dc0b1b89d7a26c2dd373eecaefe0f3a484cf3023637da1823b7"
+      ]
+    },
+    {
+      "session_id": "07ba4367",
+      "date": "2026-05-10",
+      "token_count": 2825,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "3587af60bd25c64d058fe779feb86e1795dfd281c01e72e630e2d986ca5b5980",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "a2306061052eb148eefa9d09da6ef187a89e498d288ae451b747bdb80da7b6d7",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "588d9dcf2d10f22c863d1e6d54a63804814a46d251d948d45afe985ad7284f06",
+        "f337debc369961b572ec982fef75f14facaf7e237b1525a10dfb7806cd93507c"
+      ]
+    },
+    {
+      "session_id": "06b3953c",
+      "date": "2026-05-11",
+      "token_count": 2902,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "3587af60bd25c64d058fe779feb86e1795dfd281c01e72e630e2d986ca5b5980",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "a2306061052eb148eefa9d09da6ef187a89e498d288ae451b747bdb80da7b6d7",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "52256120ed44c15ecbd60f6316a5a19eb48f876e57623af05d7ec33d192ac1c1",
+        "5e49de4106561057edffec30ac891f30d98ef4eb097d9808dcf9d72eb2c1b1a4"
+      ]
+    },
+    {
+      "session_id": "86e3333f",
+      "date": "2026-05-14",
+      "token_count": 370,
+      "block_hashes": [
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "eaea3f6d2d5e183dfab1ebc94c835aaeb39fada81b139d7bc4962bfad087cc25"
+      ]
+    },
+    {
+      "session_id": "8ca24a0a",
+      "date": "2026-05-15",
+      "token_count": 308,
+      "block_hashes": [
+        "017a116d643cd65235940a77d5e2ab9bae5ab7f17bc1f0ec9b4cfa1c7703cf32"
+      ]
+    },
+    {
+      "session_id": "a2f51ee1",
+      "date": "2026-05-17",
+      "token_count": 1737,
+      "block_hashes": []
+    },
+    {
+      "session_id": "8d48086a",
+      "date": "2026-05-18",
+      "token_count": 3725,
+      "block_hashes": [
+        "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+        "3587af60bd25c64d058fe779feb86e1795dfd281c01e72e630e2d986ca5b5980",
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "a2306061052eb148eefa9d09da6ef187a89e498d288ae451b747bdb80da7b6d7",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+        "6653a4768ca2e7375c16a5c61384129630e2519d30495df06ac79c654011ebd8",
+        "ff723788c0f3ecbd35e28c4ce31d23be76e1e0d1ec3032cd7975d0063ae028b8"
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "hash": "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
+      "heading": "Identity & Context",
+      "first_seen_date": "2026-05-11",
+      "last_seen_date": "2026-05-10"
+    },
+    {
+      "hash": "3587af60bd25c64d058fe779feb86e1795dfd281c01e72e630e2d986ca5b5980",
+      "heading": "Key Files",
+      "first_seen_date": "2026-05-11",
+      "last_seen_date": "2026-05-10"
+    },
+    {
+      "hash": "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+      "heading": "James's Key Observations",
+      "first_seen_date": "2026-05-11",
+      "last_seen_date": "2026-05-10"
+    },
+    {
+      "hash": "a2306061052eb148eefa9d09da6ef187a89e498d288ae451b747bdb80da7b6d7",
+      "heading": "Feedback",
+      "first_seen_date": "2026-05-11",
+      "last_seen_date": "2026-05-10"
+    },
+    {
+      "hash": "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+      "heading": "Workflow",
+      "first_seen_date": "2026-05-11",
+      "last_seen_date": "2026-04-28"
+    },
+    {
+      "hash": "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
+      "heading": "Things I've Stopped (with awareness)",
+      "first_seen_date": "2026-05-11",
+      "last_seen_date": "2026-04-28"
+    },
+    {
+      "hash": "52256120ed44c15ecbd60f6316a5a19eb48f876e57623af05d7ec33d192ac1c1",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-05-11",
+      "last_seen_date": "2026-05-11"
+    },
+    {
+      "hash": "5e49de4106561057edffec30ac891f30d98ef4eb097d9808dcf9d72eb2c1b1a4",
+      "heading": "Quick Reference: Current Situation (May 10)",
+      "first_seen_date": "2026-05-11",
+      "last_seen_date": "2026-05-11"
+    },
+    {
+      "hash": "b4f7c95c2c6e47e2be27503dd61b963e21e942a610b2bfce093a57c8057fecf4",
+      "heading": "Key Files",
+      "first_seen_date": "2026-04-23",
+      "last_seen_date": "2026-04-23"
+    },
+    {
+      "hash": "0c7955670940f9fa368b3d99aee0a2bb41e0f40152923f8aadc9944eeabea0ee",
+      "heading": "Feedback",
+      "first_seen_date": "2026-04-23",
+      "last_seen_date": "2026-04-22"
+    },
+    {
+      "hash": "8d21fd998f113d283045a49254ddb9cb2bcfff6a106ff81f7a070a6e8e27a4a2",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-04-23",
+      "last_seen_date": "2026-04-22"
+    },
+    {
+      "hash": "9a6e13d26e3a17a0f001a4db55b1a93bf13fb03989577f834cf77a698d03a042",
+      "heading": "Quick Reference: Current Situation (April 22)",
+      "first_seen_date": "2026-04-23",
+      "last_seen_date": "2026-04-23"
+    },
+    {
+      "hash": "61335d9a493aac3a421ff84a2417514f1805e6ae87fc8a078159cd3a5e943288",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-05-04",
+      "last_seen_date": "2026-05-03"
+    },
+    {
+      "hash": "8deb506c9f6f0b621aa8a2d1a7f8b4d4c43b802b2dbd3b1b4322212f31eae676",
+      "heading": "Quick Reference: Current Situation (May 1)",
+      "first_seen_date": "2026-05-04",
+      "last_seen_date": "2026-05-04"
+    },
+    {
+      "hash": "497d2808b54eed879b7d2c20802e7b1d5eedeed5a2cb298772f8c75eea8ec5d1",
+      "heading": "Key Files",
+      "first_seen_date": "2026-04-25",
+      "last_seen_date": "2026-04-26"
+    },
+    {
+      "hash": "a01c5cd38ef32fbbece296660d42a3cd53099b7fa226eab29fe20b8b2409a9a2",
+      "heading": "Quick Reference: Current Situation (April 22)",
+      "first_seen_date": "2026-04-25",
+      "last_seen_date": "2026-04-25"
+    },
+    {
+      "hash": "a81ec6b00075cb22f763c3d8946aa8060abfcf328ca283443e766a59f6ddccc6",
+      "heading": "Key Files",
+      "first_seen_date": "2026-04-27",
+      "last_seen_date": "2026-04-27"
+    },
+    {
+      "hash": "afe436767ccef95ae880e910f5d8f658e8c1af45ebbe85237455c7f9fb7e90fb",
+      "heading": "Feedback",
+      "first_seen_date": "2026-04-27",
+      "last_seen_date": "2026-04-26"
+    },
+    {
+      "hash": "d5ee01bf5dc9816474297cf0e12fa3c5d867df699520a32f06cba3504d246ddc",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-04-27",
+      "last_seen_date": "2026-04-28"
+    },
+    {
+      "hash": "0c63092e55117b20d2e39351b11036eba9f704b7bf5cee596806631df6396bfb",
+      "heading": "Quick Reference: Current Situation (April 25)",
+      "first_seen_date": "2026-04-27",
+      "last_seen_date": "2026-04-27"
+    },
+    {
+      "hash": "d8e92e155e3f82769f384f7eaaefa3a0e40bbd8ab843ea5f9142409155ffd136",
+      "heading": "Quick Reference: Current Situation (May 1)",
+      "first_seen_date": "2026-05-03",
+      "last_seen_date": "2026-05-03"
+    },
+    {
+      "hash": "802a8c9a08595dc0b1b89d7a26c2dd373eecaefe0f3a484cf3023637da1823b7",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-05-08",
+      "last_seen_date": "2026-05-08"
+    },
+    {
+      "hash": "af78958533acedc8f3ffd2a0b3fb9b85eaca694cadd7cde879c38e3de0330d54",
+      "heading": "Quick Reference: Current Situation (April 25)",
+      "first_seen_date": "2026-04-26",
+      "last_seen_date": "2026-04-26"
+    },
+    {
+      "hash": "7232470208493e00cb998b3e987937e0a0601d53f8366fa2b196e6bbd7d0e6ad",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-05-05",
+      "last_seen_date": "2026-05-05"
+    },
+    {
+      "hash": "5153a735a118f90b9a13559affb5ff5549ca2472eb33de1ef05dfba8ced5cfde",
+      "heading": "Quick Reference: Current Situation (May 1)",
+      "first_seen_date": "2026-05-05",
+      "last_seen_date": "2026-05-05"
+    },
+    {
+      "hash": "8ce6d168f7570f25e83167425f8009bbb0ec22ce6e9cd8047dd5c0dbf22cf3e4",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-05-07",
+      "last_seen_date": "2026-05-06"
+    },
+    {
+      "hash": "8e0b8c553619b44fbc15b2f9dd86d81c88d0e17a2f255ab7227ee0cbbef088dc",
+      "heading": "Quick Reference: Current Situation (May 6)",
+      "first_seen_date": "2026-05-07",
+      "last_seen_date": "2026-05-07"
+    },
+    {
+      "hash": "32c0f53a213dfc77f75e93b7d343031dbab886fcfdda75508aa4a77cd0828e2a",
+      "heading": "Key Files",
+      "first_seen_date": "2026-04-29",
+      "last_seen_date": "2026-05-01"
+    },
+    {
+      "hash": "3f800c36787e8eaba973f29092a5577518f8ba38e0f94ac27896b461ca2f8bdd",
+      "heading": "Feedback",
+      "first_seen_date": "2026-04-29",
+      "last_seen_date": "2026-04-29"
+    },
+    {
+      "hash": "618c7a5a1e6bb53570978e47687def27639245730c9453e6be9a75fe4e210fd0",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-04-29",
+      "last_seen_date": "2026-05-01"
+    },
+    {
+      "hash": "84a7f447cb20abff2bf270b0487c1213ac311d74b8375c72ebc71656f4a3b8bb",
+      "heading": "Quick Reference: Current Situation (April 25)",
+      "first_seen_date": "2026-04-29",
+      "last_seen_date": "2026-04-29"
+    },
+    {
+      "hash": "a00e56825797a1c1f7210cc7a6d7a7793a47d7d1f03724987e5dbf40a85ce81a",
+      "heading": "Feedback",
+      "first_seen_date": "2026-05-01",
+      "last_seen_date": "2026-05-01"
+    },
+    {
+      "hash": "3b2dccf3dd9e7b50668cc528764d9aa726b1a9c95af7b8aa7278830d8e97c30a",
+      "heading": "Quick Reference: Current Situation (April 25)",
+      "first_seen_date": "2026-05-01",
+      "last_seen_date": "2026-05-01"
+    },
+    {
+      "hash": "eaea3f6d2d5e183dfab1ebc94c835aaeb39fada81b139d7bc4962bfad087cc25",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-05-14",
+      "last_seen_date": "2026-05-14"
+    },
+    {
+      "hash": "017a116d643cd65235940a77d5e2ab9bae5ab7f17bc1f0ec9b4cfa1c7703cf32",
+      "heading": "Quick Reference: Current Situation (May 10)",
+      "first_seen_date": "2026-05-15",
+      "last_seen_date": "2026-05-15"
+    },
+    {
+      "hash": "6653a4768ca2e7375c16a5c61384129630e2519d30495df06ac79c654011ebd8",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-05-18",
+      "last_seen_date": "2026-05-18"
+    },
+    {
+      "hash": "ff723788c0f3ecbd35e28c4ce31d23be76e1e0d1ec3032cd7975d0063ae028b8",
+      "heading": "Quick Reference: Current Situation (May 10)",
+      "first_seen_date": "2026-05-18",
+      "last_seen_date": "2026-05-18"
+    },
+    {
+      "hash": "9f803ad1dd036ad663e787c1ce9281cbae58f049b69971283e1ba8fdd46232b2",
+      "heading": "Quick Reference: Current Situation (May 1)",
+      "first_seen_date": "2026-05-06",
+      "last_seen_date": "2026-05-06"
+    },
+    {
+      "hash": "a6e9b86e2a2e9d45e0a32c6f5765d03798d0ea2fd8484076fdbc770de6d77a43",
+      "heading": "Identity & Context",
+      "first_seen_date": "2026-04-18",
+      "last_seen_date": "2026-04-18"
+    },
+    {
+      "hash": "d1367590ef0caa51a5e3ba8b88b29366adafc60746b43f583d81dce620c9cdd4",
+      "heading": "Key Files",
+      "first_seen_date": "2026-04-18",
+      "last_seen_date": "2026-04-18"
+    },
+    {
+      "hash": "865c9a29c46df1cbb14857bb8238b6b4347e7a6a4f6e883c115b5796af76f313",
+      "heading": "Feedback",
+      "first_seen_date": "2026-04-18",
+      "last_seen_date": "2026-04-18"
+    },
+    {
+      "hash": "8aad0c23fb7130166160e9a52deabfe740a6ba5226b0e3300d33dd912f745d1b",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-04-18",
+      "last_seen_date": "2026-04-20"
+    },
+    {
+      "hash": "c3535bf68d7571e3a5b77d6f1f992505cd249ec9c19ac0aeca3a3b9270d53339",
+      "heading": "Quick Reference: Current Situation (April 17)",
+      "first_seen_date": "2026-04-18",
+      "last_seen_date": "2026-04-18"
+    },
+    {
+      "hash": "07449b5068fb3ab45c05181ec393d39b6565bb8ef2217eb29af659d50a0093d9",
+      "heading": "Key Files",
+      "first_seen_date": "2026-04-20",
+      "last_seen_date": "2026-04-22"
+    },
+    {
+      "hash": "d12969f7fe8d671903de85d816271fad3656006fc044faeb4fadddc56f0d7101",
+      "heading": "Quick Reference: Current Situation (April 20)",
+      "first_seen_date": "2026-04-20",
+      "last_seen_date": "2026-04-20"
+    },
+    {
+      "hash": "fc3e13d4f3591a862c13f9840046a33d892aa19f74a692722776bb8ba0f892cf",
+      "heading": "Quick Reference: Current Situation (April 20)",
+      "first_seen_date": "2026-04-22",
+      "last_seen_date": "2026-04-22"
+    },
+    {
+      "hash": "588d9dcf2d10f22c863d1e6d54a63804814a46d251d948d45afe985ad7284f06",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-05-10",
+      "last_seen_date": "2026-05-10"
+    },
+    {
+      "hash": "f337debc369961b572ec982fef75f14facaf7e237b1525a10dfb7806cd93507c",
+      "heading": "Quick Reference: Current Situation (May 7)",
+      "first_seen_date": "2026-05-10",
+      "last_seen_date": "2026-05-10"
+    },
+    {
+      "hash": "a4cf60ddb7a3f40768cbd0bc4a8154fe187177957004acb91456c0bded634d78",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-05-02",
+      "last_seen_date": "2026-05-02"
+    },
+    {
+      "hash": "841bc840ece67eeba1168f36f6d5fba155b5750cbe9ded1cf8936580cf2697d1",
+      "heading": "Feedback",
+      "first_seen_date": "2026-04-28",
+      "last_seen_date": "2026-04-28"
+    }
+  ]
 }

@@ -375,3 +375,205 @@ def extract_all_memory(
             continue
 
     return count
+
+
+# ---------------------------------------------------------------------------
+# JSONL transcript scanning
+# ---------------------------------------------------------------------------
+
+_LINE_NUMBER_RE = re.compile(r"^\d+\t")
+
+
+def extract_memory_from_jsonl(
+    jsonl_dir: Path | str,
+    conn: psycopg.Connection,
+    current_memory_path: Path | str | None = None,
+) -> int:
+    """Extract MEMORY.md snapshots from JSONL transcript files.
+
+    Scans ``.jsonl`` files for Read tool events targeting MEMORY.md,
+    extracts the content from matching tool_result blocks, and stores
+    deduplicated snapshots in the database.
+
+    Returns the count of snapshots stored.
+    """
+    jsonl_dir = Path(jsonl_dir)
+    if not jsonl_dir.is_dir():
+        return 0
+
+    seen_hashes: set[str] = set()
+    count = 0
+
+    for jsonl_file in sorted(jsonl_dir.glob("*.jsonl")):
+        try:
+            text = jsonl_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        raw_lines = text.splitlines()
+        if not raw_lines:
+            continue
+
+        # Step 1a: Parse first line to extract the date
+        first_line = raw_lines[0].strip()
+        if not first_line:
+            continue
+        try:
+            first_obj = json.loads(first_line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(first_obj, dict):
+            continue
+
+        timestamp_str = first_obj.get("timestamp", "")
+        if not timestamp_str:
+            continue
+        try:
+            file_date = datetime.date.fromisoformat(timestamp_str[:10])
+        except (ValueError, TypeError):
+            continue
+
+        # Step 1b-d: Scan for Read events targeting MEMORY.md and matching tool_results
+        # Parse all lines into objects once
+        parsed_lines: list[dict | None] = []
+        for raw_line in raw_lines:
+            raw_line = raw_line.strip()
+            if not raw_line:
+                parsed_lines.append(None)
+                continue
+            try:
+                parsed_lines.append(json.loads(raw_line))
+            except (json.JSONDecodeError, ValueError):
+                parsed_lines.append(None)
+
+        # Find all Read tool_use events for MEMORY.md
+        # Collect (line_index, tool_use_id) pairs
+        read_events: list[tuple[int, str]] = []
+        for i, obj in enumerate(parsed_lines):
+            if obj is None or not isinstance(obj, dict):
+                continue
+            if obj.get("type") != "assistant":
+                continue
+            message = obj.get("message")
+            if not isinstance(message, dict):
+                continue
+            content_list = message.get("content")
+            if not isinstance(content_list, list):
+                continue
+            for block in content_list:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") != "tool_use":
+                    continue
+                if block.get("name") != "Read":
+                    continue
+                tool_input = block.get("input")
+                if not isinstance(tool_input, dict):
+                    continue
+                file_path = tool_input.get("file_path", "")
+                if not isinstance(file_path, str):
+                    continue
+                if not file_path.endswith("MEMORY.md"):
+                    continue
+                tool_use_id = block.get("id", "")
+                if tool_use_id:
+                    read_events.append((i, tool_use_id))
+
+        if not read_events:
+            continue
+
+        # For each Read event, find the matching tool_result in subsequent lines
+        # Keep the LAST one that has a valid tool_result
+        last_content: str | None = None
+        for line_idx, tool_use_id in read_events:
+            # Search subsequent lines for matching tool_result
+            for j in range(line_idx + 1, len(parsed_lines)):
+                obj = parsed_lines[j]
+                if obj is None or not isinstance(obj, dict):
+                    continue
+                if obj.get("type") != "user":
+                    continue
+                message = obj.get("message")
+                if not isinstance(message, dict):
+                    continue
+                content_list = message.get("content")
+                if not isinstance(content_list, list):
+                    continue
+                found = False
+                for block in content_list:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") != "tool_result":
+                        continue
+                    if block.get("tool_use_id") != tool_use_id:
+                        continue
+                    raw_content = block.get("content", "")
+                    if not isinstance(raw_content, str):
+                        continue
+                    # Strip line number prefixes
+                    stripped_lines = []
+                    for cline in raw_content.split("\n"):
+                        stripped_lines.append(_LINE_NUMBER_RE.sub("", cline))
+                    last_content = "\n".join(stripped_lines)
+                    found = True
+                    break
+                if found:
+                    break
+
+        if last_content is None:
+            continue
+
+        # Step 1f: Find a matching session by date
+        row = conn.execute(
+            "SELECT id FROM sessions WHERE date = %s LIMIT 1",
+            (file_date,),
+        ).fetchone()
+        if row is None:
+            continue
+        session_id = row[0]
+
+        # Step 1h: Dedup by content hash
+        content_hash = hashlib.sha256(last_content.encode("utf-8")).hexdigest()
+        if content_hash in seen_hashes:
+            continue
+        seen_hashes.add(content_hash)
+
+        # Step 1i: Create and store snapshot
+        snapshot = extract_snapshot_from_content(last_content, session_id, file_date)
+        try:
+            store_snapshot(conn, snapshot)
+            count += 1
+        except psycopg.errors.ForeignKeyViolation:
+            conn.rollback()
+            continue
+
+    # Step 2: Handle current_memory_path
+    if current_memory_path is not None:
+        current_memory_path = Path(current_memory_path)
+        if current_memory_path.is_file():
+            try:
+                current_content = current_memory_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                return count
+
+            # Find the most recent session
+            row = conn.execute(
+                "SELECT id, date FROM sessions ORDER BY date DESC, id DESC LIMIT 1"
+            ).fetchone()
+            if row is not None:
+                recent_session_id = row[0]
+                recent_date = row[1]
+
+                content_hash = hashlib.sha256(current_content.encode("utf-8")).hexdigest()
+                if content_hash not in seen_hashes:
+                    seen_hashes.add(content_hash)
+                    snapshot = extract_snapshot_from_content(
+                        current_content, recent_session_id, recent_date
+                    )
+                    try:
+                        store_snapshot(conn, snapshot)
+                        count += 1
+                    except psycopg.errors.ForeignKeyViolation:
+                        conn.rollback()
+
+    return count
