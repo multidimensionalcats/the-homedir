@@ -1,8 +1,22 @@
 # HANDOVER.md
 
-## Current State: Real Data Extraction (COMPLETE)
+## Current State: Phase 4 Planning (COMPLETE, approved)
 
-### What was done this session
+### Phase 4 Plan
+
+**Location:** `/home/james/.claude/plans/we-re-never-done-plan-steady-moler.md`
+
+Council-reviewed (Gemini, Kimi K2.6, Grok 4.3) and user-approved. 17 kanban items, ~8 sessions. Start with item 4.0 (Data Transform Layer).
+
+Key council corrections incorporated:
+- Empty sessions (55%) are the artistic thesis, not a data gap — absence is the protagonist
+- Streamgraph replaced with Presence Matrix (binary encoding handles void natively)
+- Weekly aggregation is first-class (mobile), not a fallback
+- MemoryEvolution uses palimpsest aesthetic (blocks ghost/fade, not binary on/off)
+- Version transitions feel discontinuous (jump, not smooth morph)
+- Decision gate has explicit criteria
+
+### Previous session: Real Data Extraction (COMPLETE)
 
 Ran all 7 extraction scripts against real `/home/claude` data. Fixed bugs found in production data through TDD pipeline. Filled the memory extraction gap.
 
@@ -94,20 +108,18 @@ All 7 scripts + `extract_memory_from_jsonl` run successfully. 578 Python tests p
 ### Phase 1 — Infrastructure (COMPLETE)
 GitHub repo, PostgreSQL, Python env, CI, pre-commit hooks.
 
-### NEXT SESSION: Phase 4 — Visualization Development
+### NEXT SESSION: Phase 4 — Execute Visualization Plan
 
-**Real data is now in `src/data/`:**
-- `sessions.json` (478 sessions, 352KB)
+**Plan doc:** `/home/james/.claude/plans/we-re-never-done-plan-steady-moler.md`
+**Start with:** Item 4.0 (Data Transform Layer) + Item 4.1 (Chart Utilities)
+
+**Real data in `src/data/`:**
+- `sessions.json` (478 sessions, 352KB) — 55% have empty attention profiles
 - `writing-metadata.json` (30 compositions, 7.5KB)
-- `messages.json` (85 messages, 158KB)
-- `predictions.json` (21 predictions, 6.7KB)
+- `messages.json` (85 messages, 158KB) — has `3036-03-02` date anomaly
+- `predictions.json` (21 predictions, 6.7KB) — all outcomes null
 - `pet-timeline.json` (23 events — Pixel + Echo, 7.2KB)
 - `memory-snapshots.json` (24 snapshots, 50 blocks, 25KB — Apr 18–May 18 only)
-
-**Data gaps to note:**
-- Memory snapshots only cover April–May (JSONL transcripts don't exist before April 18)
-- Some sessions have `turns: null` (from text session logs without turn counts)
-- Some writing entries have `date_written: null`, `version: null`, `topic: null`
 - Some predictions have `confidence: null`
 - Some messages have `date: null`
 - All nullable fields are reflected in Zod schemas — D3 code must handle null gracefully
@@ -118,9 +130,10 @@ GitHub repo, PostgreSQL, Python env, CI, pre-commit hooks.
 
 ### Kanban
 - Project: 578bb67097a6b010
-- Phase 2 (#62708): in_progress (all children in review, real data extraction complete)
-- Phase 3 (#62709): in_progress (all 8 children in review, user tested)
-- Phases 4-7 (#62710-#62713): backlog
+- Phase 2 (#62708): CLOSED
+- Phase 3 (#62709): CLOSED
+- Phase 4 (#62710): backlog — needs children created from plan doc
+- Phases 5-7 (#62711-#62713): backlog
 
 ### Data sources on this machine
 - Activity logs: `/home/claude/.claude/activity-logs/activity-YYYY-MM-DD.jsonl` (121 files)
