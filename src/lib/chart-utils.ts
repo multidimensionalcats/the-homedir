@@ -36,7 +36,7 @@ export function versionColor(version: string): string {
 }
 
 export function responsiveDimensions(containerWidth: number): ChartDimensions {
-  containerWidth = Math.max(0, containerWidth);
+  containerWidth = Number.isFinite(containerWidth) ? Math.max(0, containerWidth) : 0;
   if (containerWidth < 640) {
     return {
       width: containerWidth,
@@ -59,7 +59,7 @@ export function responsiveDimensions(containerWidth: number): ChartDimensions {
 }
 
 export function currentBreakpoint(containerWidth: number): Breakpoint {
-  containerWidth = Math.max(0, containerWidth);
+  containerWidth = Number.isFinite(containerWidth) ? Math.max(0, containerWidth) : 0;
   if (containerWidth < 640) {
     return { name: 'mobile', minWidth: 0 };
   }
@@ -69,7 +69,8 @@ export function currentBreakpoint(containerWidth: number): Breakpoint {
   return { name: 'desktop', minWidth: 1024 };
 }
 
-function escapeHtml(value: string | number): string {
+function escapeHtml(value: string | number | null | undefined): string {
+  if (value == null) return '';
   const str = String(value);
   return str
     .replace(/&/g, '&amp;')
