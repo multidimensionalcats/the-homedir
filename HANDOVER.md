@@ -1,8 +1,29 @@
 # HANDOVER.md
 
-## Current State: Phase 3 — Astro Site Scaffolding (COMPLETE, user tested)
+## Current State: Real Data Extraction (COMPLETE)
 
 ### What was done this session
+
+Ran all 7 extraction scripts against real `/home/claude` data. Fixed bugs found in production data through TDD pipeline. Filled the memory extraction gap.
+
+| Script | Records | Issues |
+|--------|---------|--------|
+| `extract_sessions` | 478 sessions | Clean |
+| `extract_writing` | 30 compositions | Clean |
+| `extract_messages` | 85 messages | Clean |
+| `extract_predictions` | 21 predictions | Clean |
+| `extract_pets` | 23 events | Fixed — greedy name extraction produced garbage |
+| `extract_memory` | 24 snapshots (50 blocks) | New function — extracts from JSONL transcripts |
+| `prebuild_export` | 6 JSON files | Clean |
+
+**Bugs fixed:**
+1. Pet extraction: removed greedy capitalized-word fallback + filtered to known names only (Pixel, Echo). 9 hostile tests added.
+2. Data contract schemas: 6 fields needed `.nullable()` to match real data. Pet event types corrected to real taxonomy.
+3. Memory extraction: new `extract_memory_from_jsonl` function scans JSONL conversation transcripts for Read events. 9 hostile tests. Covers Apr 18–May 18 only (JSONL files don't exist before April).
+
+**Total: 809 tests (231 JS + 578 Python), 488 pages building in 2.2s.**
+
+### Previous session: Phase 3 — Astro Site Scaffolding (COMPLETE, user tested)
 
 All 8 tasks for Phase 3 completed:
 
@@ -67,52 +88,38 @@ Reviewed full diff. Key issues found and addressed:
 4. **Coordinator must not write code directly** — delegate ALL implementation to agents
 5. **Agent E (code review) runs on EVERY step** — not just TDD steps
 
-### Phase 2 — Data Extraction Pipeline (COMPLETE, in review)
-All 7 scripts done, 560 tests passing. Not yet run against real data in /home/claude.
+### Phase 2 — Data Extraction Pipeline (COMPLETE, run against real data)
+All 7 scripts + `extract_memory_from_jsonl` run successfully. 578 Python tests passing.
 
 ### Phase 1 — Infrastructure (COMPLETE)
 GitHub repo, PostgreSQL, Python env, CI, pre-commit hooks.
 
-### NEXT SESSION: Run real extraction pipeline against /home/claude
+### NEXT SESSION: Phase 4 — Visualization Development
 
-**Goal:** Run all 7 Python extraction scripts against the real experiment data in `/home/claude`, then export JSON for the frontend. This is the bridge between the tested-but-never-run Phase 2 pipeline and the Phase 3 scaffold that currently has fixture data.
+**Real data is now in `src/data/`:**
+- `sessions.json` (478 sessions, 352KB)
+- `writing-metadata.json` (30 compositions, 7.5KB)
+- `messages.json` (85 messages, 158KB)
+- `predictions.json` (21 predictions, 6.7KB)
+- `pet-timeline.json` (23 events — Pixel + Echo, 7.2KB)
+- `memory-snapshots.json` (24 snapshots, 50 blocks, 25KB — Apr 18–May 18 only)
 
-**Why this first:** Every visualization depends on real data. Designing D3 charts against 3 fake sessions then swapping in 206 real ones produces broken scales, wrong layouts, and missed edge cases. Data first, then visualize.
+**Data gaps to note:**
+- Memory snapshots only cover April–May (JSONL transcripts don't exist before April 18)
+- Some sessions have `turns: null` (from text session logs without turn counts)
+- Some writing entries have `date_written: null`, `version: null`, `topic: null`
+- Some predictions have `confidence: null`
+- Some messages have `date: null`
+- All nullable fields are reflected in Zod schemas — D3 code must handle null gracefully
 
-**Steps:**
-
-1. Run `extract_sessions.py` against real JSONL + session logs in `/home/claude/.claude/`. This is the biggest script (179 tests) and most likely to hit edge cases in real data. Some paths require sudo (memory files, JSONL transcripts).
-
-2. Run `extract_writing.py` against `/home/claude/writing/*.md` (29 files). These have no YAML frontmatter — the script parses inline titles/dates.
-
-3. Run `extract_messages.py` against `/home/claude/messages_from_james.md` and `messages_to_james.md`.
-
-4. Run `extract_predictions.py` against `/home/claude/notes/predictions/` (4 files).
-
-5. Run `extract_pets.py` against `/home/claude/notes/daily/*.md` (scans for pet lifecycle events).
-
-6. Run `extract_memory.py` against `/home/claude/.claude/projects/-home-claude/memory/` (requires sudo). Reconstructs MEMORY.md evolution.
-
-7. Run `prebuild_export.py` to export Postgres → JSON files in `src/data/`, replacing the fixture data.
-
-8. Verify the site still builds with real data (`npm run build`). Fix any schema validation failures — the Zod schemas and data contract tests will catch mismatches between real pipeline output and what the frontend expects.
-
-9. Commit the real JSON data to the repo.
-
-**Expect breakage.** The scripts were tested against synthetic fixtures. Real data will have edge cases: malformed JSONL lines, unexpected file paths, encoding issues, sessions with no tool calls, empty notes, etc. Each failure is a bug to fix through the TDD pipeline.
-
-**Data access notes:**
-- Activity logs: `/home/claude/.claude/activity-logs/` — readable
-- Session logs: `/home/claude/.claude/session-logs/` — readable  
-- JSONL transcripts: `/home/claude/.claude/projects/-home-claude/*.jsonl` — requires sudo
-- Memory files: `/home/claude/.claude/projects/-home-claude/memory/` — requires sudo
-- Writing, notes, messages, predictions: `/home/claude/` — readable
-- Private journal: `/home/claude/private/` — EXCLUDED, never read
+**Permission changes made (persist across reboots):**
+- `chmod o+rx` on `/home/claude/.claude/projects/`, `.../-home-claude/`, `.../memory/`
+- `chmod o+r` on `/home/claude/.claude/projects/-home-claude/*.jsonl`
 
 ### Kanban
 - Project: 578bb67097a6b010
-- Phase 2 (#62708): in_progress (all children in review)
-- Phase 3 (#62709): in_progress (all 8 children in review, user tested — scaffold renders correctly)
+- Phase 2 (#62708): in_progress (all children in review, real data extraction complete)
+- Phase 3 (#62709): in_progress (all 8 children in review, user tested)
 - Phases 4-7 (#62710-#62713): backlog
 
 ### Data sources on this machine
