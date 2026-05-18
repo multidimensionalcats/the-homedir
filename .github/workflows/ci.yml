@@ -69,7 +69,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
       - name: Install dependencies
         run: npm ci
@@ -91,7 +91,7 @@ jobs:
         run: bandit -r scripts/ -ll -ii --skip B613
       - name: Check for secrets
         run: |
-          if grep -rn "sk-or-v1\|nvapi-\|API_KEY\|SECRET" --include="*.py" --include="*.yml" --include="*.json" scripts/ src/ .github/ 2>/dev/null; then
+          if grep -rn "sk-or-v1\|nvapi-\|API_KEY\|SECRET" --include="*.py" --include="*.yml" --include="*.json" --exclude="ci.yml" scripts/ src/ .github/ 2>/dev/null; then
             echo "FAILED: potential secrets found in tracked files"
             exit 1
           fi
