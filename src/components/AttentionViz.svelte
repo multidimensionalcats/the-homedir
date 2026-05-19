@@ -60,10 +60,12 @@
       }
     }
 
-    // Get responsive dimensions with extra left margin for category labels
-    const dims = responsiveDimensions(800);
+    // Use actual container width for responsive rendering
+    const containerWidth = container.clientWidth || 800;
+    const dims = responsiveDimensions(containerWidth);
     const margin = { ...dims.margin, left: Math.max(dims.margin.left, 110) };
-    const { width, height } = dims;
+    const width = containerWidth;
+    const { height } = dims;
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
