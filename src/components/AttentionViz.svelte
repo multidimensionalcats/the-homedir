@@ -1,6 +1,7 @@
 <script>
   import * as d3Selection from 'd3-selection';
   import * as d3Scale from 'd3-scale';
+  import * as d3Interpolate from 'd3-interpolate';
   import { categoryColor, createScreenReaderTable, responsiveDimensions } from '../lib/chart-utils';
   import { sessionsToAttentionCategories } from '../lib/transforms';
 
@@ -145,19 +146,18 @@
           const catData = profile[cat];
           const val = catData ? (catData.reads || 0) + (catData.writes || 0) : 0;
 
-          // Sqrt scale so low values (79% are ≤3) are still visually distinct
-          const normalized = maxValue > 0 ? Math.sqrt(val / maxValue) : 0;
+          const normalized = maxValue > 0 ? val / maxValue : 0;
 
           if (val > 0) {
-            const opacity = 0.30 + (normalized * 0.65);
+            const t = 0.3 + (normalized * 0.7);
+            const fill = d3Interpolate.interpolateHsl('#000', categoryColor(cat))(t);
             g.append('rect')
               .attr('class', 'data-cell')
               .attr('x', xScale(sessionKey))
               .attr('y', yScale(cat))
               .attr('width', xScale.bandwidth())
               .attr('height', yScale.bandwidth())
-              .attr('fill', categoryColor(cat))
-              .attr('opacity', opacity)
+              .attr('fill', fill)
               .attr('stroke', '#1A1D23')
               .attr('stroke-width', 0.5)
               .attr('data-date', session.date)
