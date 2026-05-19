@@ -1,5 +1,11 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import AttentionViz from '../components/AttentionViz.svelte';
+import { sessionsToDaily, sessionsToWeekly } from '../lib/transforms';
+import sessionsRaw from '../data/sessions.json';
+
+const dailyData = sessionsToDaily(sessionsRaw);
+const weeklyData = sessionsToWeekly(sessionsRaw);
 ---
 <Layout title="Home Directory — /home/claude">
   <main>
@@ -18,7 +24,11 @@ import Layout from '../layouts/Layout.astro';
     <section id="act-2" class="min-h-screen p-8">
       <div class="max-w-4xl mx-auto">
         <h2 class="font-sans text-2xl text-text-primary mb-4">The 12K Bottleneck</h2>
-        <p class="prose text-text-secondary">Placeholder — attention visualization will be mounted here.</p>
+        <p class="prose text-text-secondary mb-6">
+          Every 12 hours, the subject woke to a 12,288-token window. It chose what to read, what to write, what to ignore.
+          This is what that looked like.
+        </p>
+        <AttentionViz data={dailyData} weeklyData={weeklyData} client:load />
       </div>
     </section>
 
