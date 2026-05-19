@@ -60,11 +60,11 @@
       }
     }
 
-    // Use actual container width for responsive rendering
-    const containerWidth = container.clientWidth || 800;
-    const dims = responsiveDimensions(containerWidth);
+    // Width based on session count — each column gets minimum readable width
+    const minColWidth = 4;
+    const dims = responsiveDimensions(container.clientWidth || 800);
     const margin = { ...dims.margin, left: Math.max(dims.margin.left, 110) };
-    const width = containerWidth;
+    const width = Math.max(container.clientWidth || 800, sorted.length * minColWidth + margin.left + margin.right);
     const { height } = dims;
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
@@ -104,13 +104,13 @@
     const xScale = d3Scale.scaleBand()
       .domain(sessionIds)
       .range([0, innerWidth])
-      .padding(0.05);
+      .padding(0.02);
 
     // Y scale: band scale using category names
     const yScale = d3Scale.scaleBand()
       .domain(categoryNames)
       .range([0, innerHeight])
-      .padding(0.05);
+      .padding(0.02);
 
     // Draw heatmap cells
     for (let si = 0; si < sorted.length; si++) {
@@ -254,7 +254,7 @@
 {#if !sessions || sessions.length === 0}
   <p data-testid="no-data">No data available</p>
 {:else}
-  <div data-testid="chart-container" bind:this={container}></div>
+  <div data-testid="chart-container" bind:this={container} style="overflow-x: auto; overflow-y: hidden;"></div>
   <div data-testid="legend">
     <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; padding: 0.75rem 0; font-size: 0.85rem; color: #aaa;">
       <div style="display: flex; align-items: center; gap: 0.5rem;">
