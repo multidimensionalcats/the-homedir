@@ -145,11 +145,11 @@
           const catData = profile[cat];
           const val = catData ? (catData.reads || 0) + (catData.writes || 0) : 0;
 
-          // Compute normalized value for opacity
-          const normalized = maxValue > 0 ? val / maxValue : 0;
+          // Sqrt scale so low values (79% are ≤3) are still visually distinct
+          const normalized = maxValue > 0 ? Math.sqrt(val / maxValue) : 0;
 
           if (val > 0) {
-            const opacity = 0.20 + (normalized * 0.75);
+            const opacity = 0.30 + (normalized * 0.65);
             g.append('rect')
               .attr('class', 'data-cell')
               .attr('x', xScale(sessionKey))

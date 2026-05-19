@@ -21,7 +21,8 @@ import sessionsRaw from '../data/sessions.json';
       <div class="max-w-7xl mx-auto">
         <h2 class="font-sans text-2xl text-text-primary mb-4">The 12K Bottleneck</h2>
         <p class="prose text-text-secondary mb-6">
-          Every 12 hours, the subject woke to a 12,288-token window. It chose what to read, what to write, what to ignore.
+          Every 12 hours, the subject woke with no memory of previous sessions — only ~12,000 tokens
+          of self-authored summary carried forward. It chose what to read, what to write, what to ignore.
           This is what that looked like.
         </p>
         <AttentionViz sessions={sessionsRaw} client:load />
