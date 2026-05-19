@@ -47,8 +47,9 @@
       categoryNames = sessionsToAttentionCategories().map(c => c.name);
     }
 
-    // Compute max value across all data cells for opacity normalization
-    let maxValue = 0;
+    // Per-category max for independent normalization per row
+    const catMax = {};
+    for (const cat of categoryNames) catMax[cat] = 0;
     for (const session of sorted) {
       if (isVoidSession(session)) continue;
       const profile = session.attention_profile;
@@ -56,7 +57,7 @@
         const catData = profile[cat];
         if (catData) {
           const val = (catData.reads || 0) + (catData.writes || 0);
-          if (val > maxValue) maxValue = val;
+          if (val > catMax[cat]) catMax[cat] = val;
         }
       }
     }
@@ -146,10 +147,11 @@
           const catData = profile[cat];
           const val = catData ? (catData.reads || 0) + (catData.writes || 0) : 0;
 
-          const normalized = maxValue > 0 ? val / maxValue : 0;
+          const maxVal = catMax[cat] || 1;
+          const normalized = val / maxVal;
 
           if (val > 0) {
-            const t = 0.3 + (normalized * 0.7);
+            const t = 0.4 + (normalized * 0.6);
             const fill = d3Interpolate.interpolateHsl('#000', categoryColor(cat))(t);
             g.append('rect')
               .attr('class', 'data-cell')
