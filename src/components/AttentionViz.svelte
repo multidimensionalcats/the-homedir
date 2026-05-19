@@ -1,6 +1,7 @@
 <script>
   import * as d3Selection from 'd3-selection';
   import * as d3Scale from 'd3-scale';
+  import * as d3Color from 'd3-color';
   import * as d3Interpolate from 'd3-interpolate';
   import { categoryColor, createScreenReaderTable, responsiveDimensions } from '../lib/chart-utils';
   import { sessionsToAttentionCategories } from '../lib/transforms';
@@ -47,19 +48,34 @@
       categoryNames = sessionsToAttentionCategories().map(c => c.name);
     }
 
-    // Per-category max for independent normalization per row
-    const catMax = {};
-    for (const cat of categoryNames) catMax[cat] = 0;
-    for (const session of sorted) {
-      if (isVoidSession(session)) continue;
-      const profile = session.attention_profile;
-      for (const cat of categoryNames) {
-        const catData = profile[cat];
-        if (catData) {
-          const val = (catData.reads || 0) + (catData.writes || 0);
-          if (val > catMax[cat]) catMax[cat] = val;
-        }
-      }
+    // "Luminance flaring": V=1 = full saturated category color (vivid base),
+    // higher values flare toward white. Intensity = brightness, not darkness.
+    const INTENSITY_CAP = 6;
+    const FLARE_TARGET = '#F0F2F5';
+    const colorCache = new Map();
+
+    function heatmapColor(cat, value) {
+      if (!value || value <= 0) return null;
+      const cacheKey = `${cat}:${value}`;
+      if (colorCache.has(cacheKey)) return colorCache.get(cacheKey);
+
+      const hex = categoryColor(cat);
+      const full = d3Color.hcl(hex);
+      let h = full.h;
+      if (!Number.isFinite(h)) h = 210;
+
+      // Ensure base color is visible on dark bg (min L*55, min C*30)
+      const baseL = Math.max(full.l, 55);
+      const baseC = Math.max(full.c, 30);
+      const baseHex = d3Color.hcl(h, baseC, baseL).formatHex();
+
+      // Flare ramp: V=1 → base color, V≥CAP → near-white
+      // Lab interpolation preserves hue identity (no color-wheel rotation)
+      const t = Math.min((value - 1) / (INTENSITY_CAP - 1), 1);
+      const result = d3Interpolate.interpolateLab(baseHex, FLARE_TARGET)(t);
+
+      colorCache.set(cacheKey, result);
+      return result;
     }
 
     // Width based on session count — each column gets minimum readable width
@@ -142,17 +158,13 @@
             .attr('fill', `url(#void-hatch-${uid})`)
             .attr('pointer-events', 'none');
         } else {
-          // DATA cell: category-colored fill with opacity scaled by reads+writes
+          // DATA cell: HCL color encoding preserving category character
           const profile = session.attention_profile;
           const catData = profile[cat];
           const val = catData ? (catData.reads || 0) + (catData.writes || 0) : 0;
 
-          const maxVal = catMax[cat] || 1;
-          const normalized = val / maxVal;
-
-          if (val > 0) {
-            const t = 0.4 + (normalized * 0.6);
-            const fill = d3Interpolate.interpolateHsl('#000', categoryColor(cat))(t);
+          const fill = val > 0 ? heatmapColor(cat, val) : null;
+          if (fill) {
             g.append('rect')
               .attr('class', 'data-cell')
               .attr('x', xScale(sessionKey))

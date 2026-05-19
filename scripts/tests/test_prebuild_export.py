@@ -1614,6 +1614,433 @@ class TestEdgeCases:
             assert data is not None
 
 
+# ===========================================================================
+# 10. SESSION DEDUPLICATION AND FILTERING
+# ===========================================================================
+
+
+class TestSessionDeduplication:
+    """export_sessions must deduplicate sessions that share the same
+    date+time_of_day slot. Rules:
+      - When a slot has sessions with turns IS NOT NULL and turns IS NULL,
+        drop the NULL-turns sessions (they're shadows from session-log source).
+      - When a slot has ONLY turns IS NULL sessions, keep exactly ONE
+        (it's a genuine void — cron fired but the agent did nothing).
+      - Sessions with IDs starting "test" are test data and must be filtered out.
+      - turns=0 (not NULL) is a real session — keep it.
+    """
+
+    def test_dedup_drops_null_turns_when_real_session_exists(self, db_conn, tmp_path):
+        """For a date+time_of_day slot with both a real session (turns=5) and
+        a shadow session (turns=NULL), the shadow must be excluded."""
+        d = datetime.date(2026, 4, 1)
+        # Real session from activity log (turns populated)
+        _insert_session(
+            db_conn,
+            "activity-2026-04-01-am",
+            d,
+            time_of_day="AM",
+            turns=5,
+            source_type="jsonl",
+            source_file="activity-2026-04-01.jsonl",
+        )
+        # Shadow session from session log (turns NULL)
+        _insert_session(
+            db_conn,
+            "session-2026-04-01-am",
+            d,
+            time_of_day="AM",
+            turns=None,
+            source_type="log",
+            source_file="session-2026-04-01.log",
+        )
+
+        result_path = export_sessions(db_conn, tmp_path)
+        data = _load_json(result_path)
+
+        ids = {s["id"] for s in data}
+        assert "activity-2026-04-01-am" in ids, (
+            "Real session (turns=5) was dropped — dedup is too aggressive"
+        )
+        assert "session-2026-04-01-am" not in ids, (
+            "Shadow session (turns=NULL) was kept alongside real session — "
+            "dedup did not remove the NULL-turns duplicate"
+        )
+        assert len(data) == 1
+
+    def test_dedup_keeps_void_when_only_null_turns_in_slot(self, db_conn, tmp_path):
+        """When a date+time_of_day slot has ONLY turns=NULL sessions,
+        exactly ONE must be kept — it represents a genuine void (cron fired,
+        agent did nothing productive)."""
+        d = datetime.date(2026, 4, 2)
+        # Two session-log entries for the same cron wake, both NULL turns
+        _insert_session(
+            db_conn,
+            "log-a-2026-04-02-pm",
+            d,
+            time_of_day="PM",
+            turns=None,
+            source_type="log",
+            source_file="session-2026-04-02a.log",
+        )
+        _insert_session(
+            db_conn,
+            "log-b-2026-04-02-pm",
+            d,
+            time_of_day="PM",
+            turns=None,
+            source_type="log",
+            source_file="session-2026-04-02b.log",
+        )
+
+        result_path = export_sessions(db_conn, tmp_path)
+        data = _load_json(result_path)
+
+        assert len(data) == 1, (
+            f"Expected exactly 1 void session for PM slot, got {len(data)}: "
+            f"{[s['id'] for s in data]}"
+        )
+        # The kept session must have turns=null (it's a void)
+        assert data[0]["turns"] is None, (
+            "Void session should have turns=null, got turns={!r}".format(data[0]["turns"])
+        )
+
+    def test_dedup_keeps_all_real_sessions_same_slot(self, db_conn, tmp_path):
+        """Multiple sessions with turns IS NOT NULL for the same date+time_of_day
+        must ALL be kept — they represent genuinely separate activity sessions
+        (e.g., a crash and restart in the same cron window)."""
+        d = datetime.date(2026, 4, 3)
+        _insert_session(
+            db_conn,
+            "real-a-2026-04-03-am",
+            d,
+            time_of_day="AM",
+            turns=3,
+            source_type="jsonl",
+            source_file="activity-2026-04-03a.jsonl",
+        )
+        _insert_session(
+            db_conn,
+            "real-b-2026-04-03-am",
+            d,
+            time_of_day="AM",
+            turns=12,
+            source_type="jsonl",
+            source_file="activity-2026-04-03b.jsonl",
+        )
+        # Also a shadow — must be dropped
+        _insert_session(
+            db_conn,
+            "shadow-2026-04-03-am",
+            d,
+            time_of_day="AM",
+            turns=None,
+            source_type="log",
+            source_file="session-2026-04-03.log",
+        )
+
+        result_path = export_sessions(db_conn, tmp_path)
+        data = _load_json(result_path)
+
+        ids = {s["id"] for s in data}
+        assert "real-a-2026-04-03-am" in ids
+        assert "real-b-2026-04-03-am" in ids
+        assert "shadow-2026-04-03-am" not in ids
+        assert len(data) == 2, (
+            f"Expected 2 real sessions (shadow dropped), got {len(data)}: {[s['id'] for s in data]}"
+        )
+
+    def test_filter_removes_test_id_sessions(self, db_conn, tmp_path):
+        """Sessions whose id starts with 'test' are test data leaked into
+        the production DB and must be excluded from the export."""
+        d = datetime.date(2026, 4, 4)
+        _insert_session(
+            db_conn,
+            "test-debug-session-001",
+            d,
+            time_of_day="AM",
+            turns=10,
+        )
+        _insert_session(
+            db_conn,
+            "test-another-debug",
+            d,
+            time_of_day="PM",
+            turns=7,
+        )
+        # A real session that should survive
+        _insert_session(
+            db_conn,
+            "activity-2026-04-04-am",
+            d,
+            time_of_day="AM",
+            turns=15,
+        )
+
+        result_path = export_sessions(db_conn, tmp_path)
+        data = _load_json(result_path)
+
+        ids = {s["id"] for s in data}
+        for sid in ids:
+            assert not sid.startswith("test"), (
+                f"Test session '{sid}' was not filtered out of the export"
+            )
+        assert "activity-2026-04-04-am" in ids
+        assert len(data) == 1
+
+    def test_turns_zero_is_real_not_null(self, db_conn, tmp_path):
+        """turns=0 (integer zero) is a real activity-log session that had no
+        tool calls — it must NOT be treated as a void (turns IS NULL).
+        This is the classic 0-vs-NULL gotcha."""
+        d = datetime.date(2026, 4, 5)
+        # Real session with zero turns (legitimate: agent woke, read context, did nothing)
+        _insert_session(
+            db_conn,
+            "zero-turns-2026-04-05-am",
+            d,
+            time_of_day="AM",
+            turns=0,
+            source_type="jsonl",
+            source_file="activity-2026-04-05.jsonl",
+        )
+        # Shadow session with NULL turns
+        _insert_session(
+            db_conn,
+            "shadow-2026-04-05-am",
+            d,
+            time_of_day="AM",
+            turns=None,
+            source_type="log",
+            source_file="session-2026-04-05.log",
+        )
+
+        result_path = export_sessions(db_conn, tmp_path)
+        data = _load_json(result_path)
+
+        ids = {s["id"] for s in data}
+        assert "zero-turns-2026-04-05-am" in ids, (
+            "turns=0 session was dropped — implementation confused 0 with NULL"
+        )
+        assert "shadow-2026-04-05-am" not in ids, (
+            "Shadow (turns=NULL) kept alongside turns=0 — dedup not working"
+        )
+        assert len(data) == 1
+        # Verify the turns value is actually 0, not null
+        assert data[0]["turns"] == 0, "turns should be 0 (integer), got {!r}".format(
+            data[0]["turns"]
+        )
+
+    def test_mixed_scenario_three_groups(self, db_conn, tmp_path):
+        """Three date+time_of_day groups exercising all rules simultaneously:
+
+        Group 1 (Apr 10 AM): real + shadow -> keep only the real (1 session)
+        Group 2 (Apr 10 PM): only NULL turns (2 shadows) -> keep exactly 1 void
+        Group 3 (Apr 11 AM): two real + one shadow -> keep both real (2 sessions)
+
+        Plus a test-ID session that spans Group 1's slot -> must be filtered.
+
+        Total expected: 1 + 1 + 2 = 4 sessions.
+        """
+        d1 = datetime.date(2026, 4, 10)
+        d2 = datetime.date(2026, 4, 11)
+
+        # Group 1: Apr 10 AM — real + shadow
+        _insert_session(
+            db_conn,
+            "act-0410-am",
+            d1,
+            time_of_day="AM",
+            turns=8,
+            source_type="jsonl",
+            source_file="activity-0410-am.jsonl",
+        )
+        _insert_session(
+            db_conn,
+            "log-0410-am",
+            d1,
+            time_of_day="AM",
+            turns=None,
+            source_type="log",
+            source_file="session-0410-am.log",
+        )
+        # test-ID session in same slot — must also be filtered
+        _insert_session(
+            db_conn,
+            "test-0410-am",
+            d1,
+            time_of_day="AM",
+            turns=3,
+            source_type="jsonl",
+            source_file="test-0410.jsonl",
+        )
+
+        # Group 2: Apr 10 PM — only voids (two null-turns)
+        _insert_session(
+            db_conn,
+            "log-0410-pm-a",
+            d1,
+            time_of_day="PM",
+            turns=None,
+            source_type="log",
+            source_file="session-0410-pm-a.log",
+        )
+        _insert_session(
+            db_conn,
+            "log-0410-pm-b",
+            d1,
+            time_of_day="PM",
+            turns=None,
+            source_type="log",
+            source_file="session-0410-pm-b.log",
+        )
+
+        # Group 3: Apr 11 AM — two real sessions + shadow
+        _insert_session(
+            db_conn,
+            "act-0411-am-a",
+            d2,
+            time_of_day="AM",
+            turns=5,
+            source_type="jsonl",
+            source_file="activity-0411-a.jsonl",
+        )
+        _insert_session(
+            db_conn,
+            "act-0411-am-b",
+            d2,
+            time_of_day="AM",
+            turns=14,
+            source_type="jsonl",
+            source_file="activity-0411-b.jsonl",
+        )
+        _insert_session(
+            db_conn,
+            "log-0411-am",
+            d2,
+            time_of_day="AM",
+            turns=None,
+            source_type="log",
+            source_file="session-0411-am.log",
+        )
+
+        result_path = export_sessions(db_conn, tmp_path)
+        data = _load_json(result_path)
+
+        ids = {s["id"] for s in data}
+
+        # Group 1 checks
+        assert "act-0410-am" in ids, "Group 1 real session missing"
+        assert "log-0410-am" not in ids, "Group 1 shadow not removed"
+        assert "test-0410-am" not in ids, "Test-ID session not filtered"
+
+        # Group 2 checks — exactly 1 void
+        group2 = [s for s in data if s["date"] == "2026-04-10" and s["time_of_day"] == "PM"]
+        assert len(group2) == 1, (
+            f"Group 2 (void slot) should have exactly 1 session, got {len(group2)}: "
+            f"{[s['id'] for s in group2]}"
+        )
+        assert group2[0]["turns"] is None, "Group 2 void should have turns=null"
+
+        # Group 3 checks — both real sessions, no shadow
+        group3 = [s for s in data if s["date"] == "2026-04-11"]
+        assert len(group3) == 2, (
+            f"Group 3 should have 2 real sessions, got {len(group3)}: {[s['id'] for s in group3]}"
+        )
+        group3_ids = {s["id"] for s in group3}
+        assert "act-0411-am-a" in group3_ids
+        assert "act-0411-am-b" in group3_ids
+        assert "log-0411-am" not in group3_ids
+
+        # Total count
+        assert len(data) == 4, f"Expected 4 sessions total (1+1+2), got {len(data)}: {sorted(ids)}"
+
+    def test_dedup_preserves_attention_profile_on_kept_session(self, db_conn, tmp_path):
+        """When dedup keeps the real session and drops the shadow, the real
+        session's attention_profile and web_searches must still be correct."""
+        d = datetime.date(2026, 4, 6)
+        _insert_session(
+            db_conn,
+            "act-0406-am",
+            d,
+            time_of_day="AM",
+            turns=10,
+            source_type="jsonl",
+            source_file="activity-0406.jsonl",
+        )
+        _insert_session(
+            db_conn,
+            "log-0406-am",
+            d,
+            time_of_day="AM",
+            turns=None,
+            source_type="log",
+            source_file="session-0406.log",
+        )
+        # File ops and web searches on the real session
+        _insert_file_op(
+            db_conn,
+            "act-0406-am",
+            "/home/claude/writing/a.md",
+            "writing",
+            "Write",
+            "write",
+            0,
+        )
+        _insert_web_search(db_conn, "act-0406-am", "dedup test query")
+
+        result_path = export_sessions(db_conn, tmp_path)
+        data = _load_json(result_path)
+
+        assert len(data) == 1
+        session = data[0]
+        assert session["id"] == "act-0406-am"
+        assert session["attention_profile"]["writing"]["writes"] == 1
+        assert session["web_searches"] == ["dedup test query"]
+
+    def test_test_id_with_null_turns_still_filtered(self, db_conn, tmp_path):
+        """A test-ID session with turns=NULL must be filtered out (test-ID
+        check takes priority — don't accidentally keep it as a void)."""
+        d = datetime.date(2026, 4, 7)
+        _insert_session(
+            db_conn,
+            "test-void-session",
+            d,
+            time_of_day="AM",
+            turns=None,
+            source_type="log",
+            source_file="test-session.log",
+        )
+
+        result_path = export_sessions(db_conn, tmp_path)
+        data = _load_json(result_path)
+
+        assert len(data) == 0, (
+            "test-ID session with NULL turns should be filtered, not kept as void"
+        )
+
+    def test_test_id_prefix_is_case_sensitive(self, db_conn, tmp_path):
+        """Only IDs starting with lowercase 'test' are filtered. IDs like
+        'Testing-real' or 'TEST-real' should NOT be filtered (the production
+        test data uses lowercase 'test' prefix)."""
+        d = datetime.date(2026, 4, 8)
+        _insert_session(db_conn, "test-should-die", d, time_of_day="AM", turns=5)
+        _insert_session(db_conn, "Testing-real-session", d, time_of_day="PM", turns=7)
+        _insert_session(db_conn, "contest-results", d, time_of_day="AM", turns=3)
+
+        result_path = export_sessions(db_conn, tmp_path)
+        data = _load_json(result_path)
+
+        ids = {s["id"] for s in data}
+        assert "test-should-die" not in ids, "Lowercase 'test' prefix not filtered"
+        assert "Testing-real-session" in ids, (
+            "Capitalized 'Testing' was incorrectly filtered — only lowercase 'test' prefix"
+        )
+        assert "contest-results" in ids, (
+            "'contest' was filtered — 'test' substring match is too aggressive, "
+            "should only filter prefix"
+        )
+
+
 class TestExportAllWithData:
     """Integration tests for export_all with realistic data across all tables."""
 

@@ -241,27 +241,27 @@ export function sessionsToVersionPhases(sessions: any[]): VersionPhase[] {
 }
 
 const ATTENTION_CATEGORIES: AttentionCategory[] = [
-  { name: 'conversations', displayName: 'Conversations', color: '#78A9D4' },
-  { name: 'daily_notes', displayName: 'Daily Notes', color: '#6B8E9A' },
-  { name: 'experiments', displayName: 'Experiments', color: '#9D7CD8' },
-  { name: 'learning', displayName: 'Learning', color: '#D4A574' },
-  { name: 'memory_files', displayName: 'Memory Files', color: '#E8A838' },
+  { name: 'conversations', displayName: 'Conversations', color: '#7ea7c8' },
+  { name: 'daily_notes', displayName: 'Daily Notes', color: '#6b9a8f' },
+  { name: 'experiments', displayName: 'Experiments', color: '#8e7cc0' },
+  { name: 'learning', displayName: 'Learning', color: '#c4a36e' },
+  { name: 'memory_files', displayName: 'Memory Files', color: '#d4a020' },
   {
     name: 'msgs_from_james',
     displayName: 'Messages from James',
-    color: '#7BC48F',
+    color: '#6bb08a',
   },
   {
     name: 'msgs_to_james',
     displayName: 'Messages to James',
-    color: '#5A9E6F',
+    color: '#569672',
   },
-  { name: 'other', displayName: 'Other', color: '#555962' },
-  { name: 'predictions', displayName: 'Predictions', color: '#4ade80' },
-  { name: 'private_journal', displayName: 'Private Journal', color: '#4A1A6B' },
-  { name: 'scripts', displayName: 'Scripts', color: '#8A8A8A' },
-  { name: 'tamagotchi', displayName: 'Tamagotchi', color: '#C44B4B' },
-  { name: 'writing', displayName: 'Writing', color: '#C1665A' },
+  { name: 'other', displayName: 'Other', color: '#838997' },
+  { name: 'predictions', displayName: 'Predictions', color: '#7bc4a0' },
+  { name: 'private_journal', displayName: 'Private Journal', color: '#9e7e9a' },
+  { name: 'scripts', displayName: 'Scripts', color: '#7f8b96' },
+  { name: 'tamagotchi', displayName: 'Tamagotchi', color: '#ca6c6b' },
+  { name: 'writing', displayName: 'Writing', color: '#b07a6e' },
 ];
 
 export function sessionsToAttentionCategories(): AttentionCategory[] {

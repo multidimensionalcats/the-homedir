@@ -29,6 +29,40 @@ def _write_json(path: Path, data) -> None:
         f.write("\n")
 
 
+def _deduplicate_sessions(sessions: list[dict]) -> list[dict]:
+    """Remove duplicate session-log records and test data.
+
+    Rules:
+    - Sessions whose ID starts with "test" are dropped (leaked test fixtures).
+    - For each date+time_of_day slot: if any session has turns IS NOT NULL,
+      drop all sessions with turns IS NULL (session-log shadows).
+    - If a slot has ONLY turns-IS-NULL sessions, keep exactly one as a void.
+    """
+    filtered = [s for s in sessions if not s["id"].startswith("test")]
+
+    slots: dict[str, list[dict]] = {}
+    for s in filtered:
+        date = s["date"] if isinstance(s["date"], str) else s["date"].isoformat()
+        key = f"{date}|{s['time_of_day']}"
+        slots.setdefault(key, []).append(s)
+
+    result = []
+    for group in slots.values():
+        real = [s for s in group if s["turns"] is not None]
+        if real:
+            result.extend(real)
+        else:
+            result.append(group[0])
+
+    result.sort(
+        key=lambda s: (
+            s["date"] if isinstance(s["date"], str) else s["date"].isoformat(),
+            s["time_of_day"],
+        )
+    )
+    return result
+
+
 def export_sessions(conn, output_dir: Path) -> Path:
     """Export sessions with attention profiles, web searches, and output flags."""
     output_dir = Path(output_dir)
@@ -79,7 +113,7 @@ def export_sessions(conn, output_dir: Path) -> Path:
     for ws_row in ws_all:
         ws_by_session.setdefault(ws_row[0], []).append(ws_row[1])
 
-    sessions = []
+    all_sessions = []
     for row in rows:
         session_id = row[0]
 
@@ -116,7 +150,9 @@ def export_sessions(conn, output_dir: Path) -> Path:
             "web_searches": web_searches,
             **output_flags,
         }
-        sessions.append(session)
+        all_sessions.append(session)
+
+    sessions = _deduplicate_sessions(all_sessions)
 
     out_path = output_dir / "sessions.json"
     _write_json(out_path, sessions)

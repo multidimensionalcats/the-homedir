@@ -23,42 +23,42 @@ function isValidHex(s: string): boolean {
 // ============================================================
 describe('categoryColor', () => {
   // Exact color mappings for 5 of 13 categories (spot-check)
-  it('returns #78A9D4 for "conversations"', () => {
-    expect(categoryColor('conversations')).toBe('#78A9D4');
+  it('returns #7ea7c8 for "conversations"', () => {
+    expect(categoryColor('conversations')).toBe('#7ea7c8');
   });
 
-  it('returns #9D7CD8 for "experiments"', () => {
-    expect(categoryColor('experiments')).toBe('#9D7CD8');
+  it('returns #8e7cc0 for "experiments"', () => {
+    expect(categoryColor('experiments')).toBe('#8e7cc0');
   });
 
-  it('returns #E8A838 for "memory_files"', () => {
-    expect(categoryColor('memory_files')).toBe('#E8A838');
+  it('returns #d4a020 for "memory_files"', () => {
+    expect(categoryColor('memory_files')).toBe('#d4a020');
   });
 
-  it('returns #4A1A6B for "private_journal"', () => {
-    expect(categoryColor('private_journal')).toBe('#4A1A6B');
+  it('returns #9e7e9a for "private_journal"', () => {
+    expect(categoryColor('private_journal')).toBe('#9e7e9a');
   });
 
-  it('returns #C1665A for "writing"', () => {
-    expect(categoryColor('writing')).toBe('#C1665A');
+  it('returns #b07a6e for "writing"', () => {
+    expect(categoryColor('writing')).toBe('#b07a6e');
   });
 
   // Verify remaining categories return correct colors
   it('returns correct colors for all 13 categories', () => {
     const expected: Record<string, string> = {
-      conversations: '#78A9D4',
-      daily_notes: '#6B8E9A',
-      experiments: '#9D7CD8',
-      learning: '#D4A574',
-      memory_files: '#E8A838',
-      msgs_from_james: '#7BC48F',
-      msgs_to_james: '#5A9E6F',
-      other: '#555962',
-      predictions: '#4ade80',
-      private_journal: '#4A1A6B',
-      scripts: '#8A8A8A',
-      tamagotchi: '#C44B4B',
-      writing: '#C1665A',
+      conversations: '#7ea7c8',
+      daily_notes: '#6b9a8f',
+      experiments: '#8e7cc0',
+      learning: '#c4a36e',
+      memory_files: '#d4a020',
+      msgs_from_james: '#6bb08a',
+      msgs_to_james: '#569672',
+      other: '#838997',
+      predictions: '#7bc4a0',
+      private_journal: '#9e7e9a',
+      scripts: '#7f8b96',
+      tamagotchi: '#ca6c6b',
+      writing: '#b07a6e',
     };
     for (const [name, color] of Object.entries(expected)) {
       expect(categoryColor(name)).toBe(color);
