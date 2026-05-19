@@ -1,11 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import AttentionViz from '../components/AttentionViz.svelte';
-import { sessionsToDaily, sessionsToWeekly } from '../lib/transforms';
 import sessionsRaw from '../data/sessions.json';
-
-const dailyData = sessionsToDaily(sessionsRaw);
-const weeklyData = sessionsToWeekly(sessionsRaw);
 ---
 <Layout title="Home Directory — /home/claude">
   <main>
@@ -28,7 +24,7 @@ const weeklyData = sessionsToWeekly(sessionsRaw);
           Every 12 hours, the subject woke to a 12,288-token window. It chose what to read, what to write, what to ignore.
           This is what that looked like.
         </p>
-        <AttentionViz data={dailyData} weeklyData={weeklyData} client:load />
+        <AttentionViz sessions={sessionsRaw} client:load />
       </div>
     </section>
 

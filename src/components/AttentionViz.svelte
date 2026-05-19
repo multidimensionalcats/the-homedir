@@ -4,48 +4,39 @@
   import { categoryColor, createScreenReaderTable, responsiveDimensions } from '../lib/chart-utils';
   import { sessionsToAttentionCategories } from '../lib/transforms';
 
-  let { data = [], weeklyData = [] } = $props();
+  let { sessions = [] } = $props();
   let container = $state(null);
   let srTableHtml = $state('');
   const uid = Math.random().toString(36).slice(2, 8);
 
-  // Determine which dataset to use: daily data primary, weekly fallback
-  function resolveEntries() {
-    if (data && data.length > 0) {
-      return { entries: data, dateField: 'date', hasVersion: true };
-    }
-    if (weeklyData && weeklyData.length > 0) {
-      return { entries: weeklyData, dateField: 'weekStart', hasVersion: false };
-    }
-    return null;
+  function isVoidSession(session) {
+    const profile = session.attention_profile;
+    return !profile || Object.keys(profile).length === 0;
   }
 
-  function hasData() {
-    return (data && data.length > 0) || (weeklyData && weeklyData.length > 0);
+  function sortKey(session) {
+    // Sort by date ascending, then AM before PM
+    const tod = session.time_of_day === 'AM' ? '0' : '1';
+    return session.date + '-' + tod;
   }
 
   $effect(() => {
     if (!container) return;
+    if (!sessions || sessions.length === 0) return;
 
-    const resolved = resolveEntries();
-    if (!resolved) return;
-
-    const { entries, dateField, hasVersion } = resolved;
-
-    // Sort entries by date ascending
-    const sorted = [...entries].sort((a, b) => {
-      const aDate = a[dateField];
-      const bDate = b[dateField];
-      return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
+    // Sort sessions by date + time_of_day
+    const sorted = [...sessions].sort((a, b) => {
+      const ka = sortKey(a);
+      const kb = sortKey(b);
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
     });
 
-    // Extract all unique category names across ALL entries (including void days)
+    // Extract all unique category names across ALL sessions (including void)
     const categorySet = new Set();
-    for (const entry of sorted) {
-      if (entry.categories) {
-        for (const key of Object.keys(entry.categories)) {
-          categorySet.add(key);
-        }
+    for (const session of sorted) {
+      const profile = session.attention_profile || {};
+      for (const key of Object.keys(profile)) {
+        categorySet.add(key);
       }
     }
     let categoryNames = [...categorySet].sort();
@@ -57,10 +48,11 @@
 
     // Compute max value across all data cells for opacity normalization
     let maxValue = 0;
-    for (const entry of sorted) {
-      if (!entry.hasAttentionData || !entry.categories) continue;
+    for (const session of sorted) {
+      if (isVoidSession(session)) continue;
+      const profile = session.attention_profile;
       for (const cat of categoryNames) {
-        const catData = entry.categories[cat];
+        const catData = profile[cat];
         if (catData) {
           const val = (catData.reads || 0) + (catData.writes || 0);
           if (val > maxValue) maxValue = val;
@@ -84,7 +76,7 @@
       .attr('width', width)
       .attr('height', height)
       .attr('role', 'img')
-      .attr('aria-label', 'Attention heatmap — file access patterns across 13 categories');
+      .attr('aria-label', 'Attention heatmap — file access patterns across 13 categories per session');
 
     // Define the void hatch pattern in <defs>
     const defs = svg.append('defs');
@@ -105,10 +97,10 @@
     const g = svg.append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    // X scale: band scale using dates
-    const dates = sorted.map(d => d[dateField]);
+    // X scale: band scale using session indices (one column per session)
+    const sessionIds = sorted.map((_, i) => String(i));
     const xScale = d3Scale.scaleBand()
-      .domain(dates)
+      .domain(sessionIds)
       .range([0, innerWidth])
       .padding(0.05);
 
@@ -119,16 +111,17 @@
       .padding(0.05);
 
     // Draw heatmap cells
-    for (const entry of sorted) {
-      const entryDate = entry[dateField];
+    for (let si = 0; si < sorted.length; si++) {
+      const session = sorted[si];
+      const sessionKey = String(si);
+      const isVoid = isVoidSession(session);
 
       for (const cat of categoryNames) {
-        if (!entry.hasAttentionData) {
+        if (isVoid) {
           // VOID cell: base rect + hatch overlay
-          // Base rect
           g.append('rect')
             .attr('class', 'void-cell')
-            .attr('x', xScale(entryDate))
+            .attr('x', xScale(sessionKey))
             .attr('y', yScale(cat))
             .attr('width', xScale.bandwidth())
             .attr('height', yScale.bandwidth())
@@ -138,81 +131,81 @@
 
           // Hatch pattern overlay
           g.append('rect')
-            .attr('x', xScale(entryDate))
+            .attr('x', xScale(sessionKey))
             .attr('y', yScale(cat))
             .attr('width', xScale.bandwidth())
             .attr('height', yScale.bandwidth())
-            .attr('fill', 'url(#void-hatch-${uid})')
+            .attr('fill', `url(#void-hatch-${uid})`)
             .attr('pointer-events', 'none');
         } else {
-          // DATA cell: solid base + teal overlay
-          const catData = entry.categories && entry.categories[cat];
+          // DATA cell: category-colored fill with opacity scaled by reads+writes
+          const profile = session.attention_profile;
+          const catData = profile[cat];
           const val = catData ? (catData.reads || 0) + (catData.writes || 0) : 0;
 
-          // Compute normalized value for overlay opacity
+          // Compute normalized value for opacity
           const normalized = maxValue > 0 ? val / maxValue : 0;
-          // Floor of 0.12, ceiling of 0.95
-          const overlayOpacity = 0.12 + (normalized * 0.83);
 
-          // Base rect (teal-tinted floor)
+          let fillColor;
+          let opacity;
+
+          if (val > 0 || catData) {
+            // Category present in this session — use category color with scaled opacity
+            fillColor = categoryColor(cat);
+            opacity = 0.15 + (normalized * 0.80);
+          } else {
+            // Category NOT present in this session but present in others — dim version
+            fillColor = categoryColor(cat);
+            opacity = 0.08;
+          }
+
           g.append('rect')
             .attr('class', 'data-cell')
-            .attr('x', xScale(entryDate))
+            .attr('x', xScale(sessionKey))
             .attr('y', yScale(cat))
             .attr('width', xScale.bandwidth())
             .attr('height', yScale.bandwidth())
-            .attr('fill', '#1C2425')
+            .attr('fill', fillColor)
+            .attr('opacity', opacity)
             .attr('stroke', '#252B2C')
             .attr('stroke-width', 0.5)
-            .attr('data-date', entryDate)
+            .attr('data-date', session.date)
             .attr('data-category', cat);
-
-          // Teal overlay
-          g.append('rect')
-            .attr('x', xScale(entryDate))
-            .attr('y', yScale(cat))
-            .attr('width', xScale.bandwidth())
-            .attr('height', yScale.bandwidth())
-            .attr('fill', '#2AA9A9')
-            .attr('opacity', overlayOpacity)
-            .attr('pointer-events', 'none');
         }
       }
     }
 
-    // Version boundary markers (only for daily data with version field)
-    if (hasVersion) {
-      for (let i = 1; i < sorted.length; i++) {
-        if (sorted[i].version && sorted[i - 1].version &&
-            sorted[i].version !== sorted[i - 1].version) {
-          const x1 = xScale(sorted[i - 1][dateField]);
-          const x2 = xScale(sorted[i][dateField]);
-          if (x1 == null || x2 == null) continue;
+    // Version boundary markers
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].version && sorted[i - 1].version &&
+          sorted[i].version !== sorted[i - 1].version) {
+        const x1 = xScale(String(i - 1));
+        const x2 = xScale(String(i));
+        if (x1 == null || x2 == null) continue;
 
-          const bw = xScale.bandwidth();
-          const xMid = (x1 + bw + x2) / 2;
+        const bw = xScale.bandwidth();
+        const xMid = (x1 + bw + x2) / 2;
 
-          // Boundary line
-          g.append('line')
-            .attr('class', 'version-boundary')
-            .attr('x1', xMid)
-            .attr('x2', xMid)
-            .attr('y1', 0)
-            .attr('y2', innerHeight)
-            .attr('stroke', '#888')
-            .attr('stroke-width', 1)
-            .attr('stroke-dasharray', '4,4');
+        // Boundary line
+        g.append('line')
+          .attr('class', 'version-boundary')
+          .attr('x1', xMid)
+          .attr('x2', xMid)
+          .attr('y1', 0)
+          .attr('y2', innerHeight)
+          .attr('stroke', '#888')
+          .attr('stroke-width', 1)
+          .attr('stroke-dasharray', '4,4');
 
-          // Version label
-          g.append('text')
-            .attr('class', 'version-boundary')
-            .attr('x', xMid)
-            .attr('y', -8)
-            .attr('text-anchor', 'middle')
-            .attr('fill', '#888')
-            .attr('font-size', '10px')
-            .text(sorted[i].version);
-        }
+        // Version label
+        g.append('text')
+          .attr('class', 'version-boundary')
+          .attr('x', xMid)
+          .attr('y', -8)
+          .attr('text-anchor', 'middle')
+          .attr('fill', '#888')
+          .attr('font-size', '10px')
+          .text(sorted[i].version);
       }
     }
 
@@ -229,14 +222,16 @@
     }
 
     // Build screen reader table
-    const headers = ['Date', ...categoryNames];
-    const rows = sorted.map((entry) => {
-      const row = [entry[dateField]];
+    const headers = ['Session', ...categoryNames];
+    const rows = sorted.map((session, i) => {
+      const label = `${session.date} ${session.time_of_day || ''}`.trim();
+      const row = [label];
       for (const cat of categoryNames) {
-        if (!entry.hasAttentionData) {
-          row.push('∅'); // ∅ for void cells
+        if (isVoidSession(session)) {
+          row.push('∅');
         } else {
-          const catData = entry.categories && entry.categories[cat];
+          const profile = session.attention_profile;
+          const catData = profile[cat];
           const val = catData ? (catData.reads || 0) + (catData.writes || 0) : 0;
           row.push(val);
         }
@@ -254,7 +249,7 @@
   });
 </script>
 
-{#if !hasData()}
+{#if !sessions || sessions.length === 0}
   <p data-testid="no-data">No data available</p>
 {:else}
   <div data-testid="chart-container" bind:this={container}></div>
@@ -267,20 +262,10 @@
           <line x1="5" y1="0" x2="20" y2="10" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
           <line x1="10" y1="0" x2="20" y2="7" stroke="rgba(255,255,255,0.06)" stroke-width="1" />
         </svg>
-        <span>Unrecorded</span>
+        <span>Unrecorded (55%)</span>
       </div>
       <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <svg width="80" height="14" role="presentation">
-          <defs>
-            <linearGradient id="legend-teal-gradient-{uid}" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#1C2425" />
-              <stop offset="30%" stop-color="#2AA9A9" stop-opacity="0.3" />
-              <stop offset="100%" stop-color="#2AA9A9" stop-opacity="0.95" />
-            </linearGradient>
-          </defs>
-          <rect width="80" height="14" fill="url(#legend-teal-gradient-{uid})" rx="2" />
-        </svg>
-        <span>Engagement level</span>
+        <span>Category colors</span>
       </div>
     </div>
   </div>
