@@ -1,14 +1,93 @@
 # HANDOVER.md
 
-## Current State: Phase 4 Planning (COMPLETE, approved)
+## Current State: Phase 4 Execution — Sessions 1-2 Complete
 
 ### Phase 4 Plan
 
 **Location:** `/home/james/.claude/plans/we-re-never-done-plan-steady-moler.md`
 
-Council-reviewed (Gemini, Kimi K2.6, Grok 4.3) and user-approved. 17 kanban items, ~8 sessions. Start with item 4.0 (Data Transform Layer).
+### Completed Items
 
-Key council corrections incorporated:
+| # | Item | Tests | Status |
+|---|------|-------|--------|
+| 4.0 | Data Transform Layer (`src/lib/transforms.ts`) | 82 | closed |
+| 4.1 | Chart Utilities (`src/lib/chart-utils.ts`) | 55 | closed |
+| 4.2 | Stacked Area Prototype | 16 | review |
+| 4.3 | Heatmap Prototype | 16 | review |
+| 4.4 | Presence Matrix Prototype | 16 | review |
+| 4.5 | Ridge Plot Prototype | 14 | review |
+| 4.6 | Small Multiples Prototype | 14 | review |
+| 4.7 | Evaluation Page (`/prototypes/attention`) | — | review |
+| 4.8 | **AttentionViz Production** (`src/components/AttentionViz.svelte`) | 33 | review |
+
+**Total: 477 JS tests, 578 Python tests. All CI green. 10 commits pushed.**
+
+### Decision Gate (COMPLETE)
+
+User preference: **Heatmap** — most readable, preserves magnitude data.
+Council (Qwen, Gemini, Grok) recommended Presence Matrix for void dominance.
+User counter: magnitude IS meaningful data — how interested the subject was matters.
+**Resolution:** Council cross-pollinated a hybrid design — heatmap with structural void treatment.
+
+### Council-Designed Void Treatment (implemented in AttentionViz)
+
+Three simultaneous deltas make void unmistakable from low-intensity data:
+1. **Luminance** — void `#0F1115` (recessed, darker than bg), data `#1C2425` (teal floor)
+2. **Hue** — void is neutral gray, data has teal chroma `#2AA9A9`
+3. **Texture** — void has 45° diagonal hatch pattern, data is smooth
+
+- Opacity floor: 0.12 (lowest engagement still visibly teal)
+- Opacity ceiling: 0.95
+- SVG hatch via `<defs><pattern>` with unique IDs per instance
+- Left margin 110px for full category labels
+- Legend: "Unrecorded" (hatched swatch) + "Engagement level" (teal gradient)
+
+### OPEN: AttentionViz color/intensity tuning
+
+The production heatmap (per-session, per-category colors, void hatch treatment) is structurally complete but the **color intensity tuning is unsatisfying**. Iterations tried:
+1. Single teal color → rejected (no category distinction)
+2. Category colors with opacity → muddy on dark background
+3. HSL interpolation from black → better saturation but still dim
+4. Sqrt normalization → compressed dynamic range, peaks lost vibrancy
+5. Per-category normalization → reduced color range, less readable
+6. Global normalization with higher floor → constant dim bands for frequent-but-low categories
+
+**The core tension:** 79% of active cell values are ≤3 (max is 22). Linear normalization makes most cells dim. Nonlinear makes peaks dull. Per-category removes cross-category comparison. The data is genuinely sparse.
+
+**Next session should:** Consider whether heatmap is the right final form, or if a hybrid (heatmap + morphing radar for version summaries) better serves the exhibit. The user asked about the morphing radar (item 4.11). Also consider whether the council's Kimi should prototype an alternative approach.
+
+**Current state:** Per-category normalization with HSL interpolation. Not the final version — needs design iteration.
+
+### Bottleneck description correction
+
+The ~12K figure is the auto-loaded identity context (MEMORY.md + topic files), NOT a session limit. The subject had full 200K→1M context windows. The bottleneck is identity persistence, not session capacity. Copy on index.astro has been corrected.
+
+### Next: Items 4.9–4.16 (Production Components)
+
+Per the plan, remaining items:
+- 4.9 MemoryEvolution — palimpsest swimlane (Apr–May only)
+- 4.10 ReconstructIdentity — interactive 12K token budget
+- 4.11 MorphingRadar — version transition radar (user expressed interest)
+- 4.12 MessageTimeline — two swim lanes, 3036 anomaly
+- 4.13 PredictionTracker — unresolved phantom dots
+- 4.14 PetTimeline — Pixel + Echo lifecycles
+- 4.15 SessionExplorer — single session detail
+- 4.16 Page Integration Pass — mount all, delete prototypes
+
+### Key architecture established in Sessions 1-2
+
+- **Transform layer** (`src/lib/transforms.ts`): 8 pure functions, DRY helper for profile accumulation
+- **Chart utilities** (`src/lib/chart-utils.ts`): colors derived from transforms (single source), responsive breakpoints, WCAG screen reader tables with scope/caption/HTML escaping
+- **Prototype pattern**: Svelte 5 $effect + D3 .join(), data-testid, ARIA attrs, sr-table, cleanup function
+- **All prototypes in** `src/components/prototypes/` — deleted after decision gate (item 4.16)
+
+### External model attack notes
+
+- Qwen 3.6 Max reviews worked for transforms (found 6 defensive-coding issues, all dismissed as prevented by Zod data contract)
+- OpenRouter API response capture was unreliable for later calls (empty output files). External attacks completed for 4.0, attempted but capture failed for 4.1+
+- Agent E (code-reviewer) ran successfully on all items, found real issues (DRY, WCAG scope/caption, XSS single-quote, negative width)
+
+### Council corrections (from planning phase)
 - Empty sessions (55%) are the artistic thesis, not a data gap — absence is the protagonist
 - Streamgraph replaced with Presence Matrix (binary encoding handles void natively)
 - Weekly aggregation is first-class (mobile), not a fallback
