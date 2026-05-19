@@ -1,0 +1,103 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { sessionsToDaily } from '../../lib/transforms';
+import AttentionStackedArea from '../../components/prototypes/AttentionStackedArea.svelte';
+import AttentionHeatmap from '../../components/prototypes/AttentionHeatmap.svelte';
+import AttentionPresenceMatrix from '../../components/prototypes/AttentionPresenceMatrix.svelte';
+import AttentionRidgePlot from '../../components/prototypes/AttentionRidgePlot.svelte';
+import AttentionSmallMultiples from '../../components/prototypes/AttentionSmallMultiples.svelte';
+
+import sessionsRaw from '../../data/sessions.json';
+
+const dailyData = sessionsToDaily(sessionsRaw);
+const totalDays = dailyData.length;
+const voidDays = dailyData.filter(d => !d.hasAttentionData).length;
+const voidPct = Math.round((voidDays / totalDays) * 100);
+
+---
+<Layout title="Attention Viz — Decision Gate">
+  <main class="max-w-6xl mx-auto px-4 py-8">
+    <header class="mb-12">
+      <p class="font-mono text-text-muted text-xs mb-2 uppercase tracking-widest">prototype evaluation / decision gate</p>
+      <h1 class="font-sans text-3xl text-text-primary mb-4">Attention Visualization Candidates</h1>
+      <div class="font-mono text-sm text-text-secondary space-y-1">
+        <p>{totalDays} days &middot; {voidDays} void ({voidPct}%) &middot; {totalDays - voidDays} observed</p>
+        <p>478 sessions across 3 model versions (4.5 &rarr; 4.6 &rarr; 4.7)</p>
+      </div>
+      <div class="mt-4 p-4 border border-surface-raised rounded bg-surface">
+        <p class="font-sans text-sm text-text-secondary">
+          <strong class="text-text-primary">Decision criteria:</strong>
+          Which best communicates the constrained-attention thesis?
+          Which handles the 55% void most honestly?
+          Which works on mobile?
+          Which matches the clinical/archival tone?
+        </p>
+      </div>
+    </header>
+
+    <section id="stacked-area" class="mb-16 pb-8 border-b border-surface-raised">
+      <div class="mb-4">
+        <h2 class="font-sans text-xl text-text-primary mb-2">1. Stacked Area</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-mono">
+          <div><span class="text-predictions">+</span><span class="text-text-secondary"> Familiar chart type. Shows magnitude over time. Category proportions visible.</span></div>
+          <div><span class="text-disruption">&minus;</span><span class="text-text-secondary"> Empty sessions collapse to baseline — void is implicit, not explicit. Categories stack, making individual reading harder.</span></div>
+        </div>
+      </div>
+      <div class="bg-surface rounded p-4">
+        <AttentionStackedArea data={dailyData} client:load />
+      </div>
+    </section>
+
+    <section id="heatmap" class="mb-16 pb-8 border-b border-surface-raised">
+      <div class="mb-4">
+        <h2 class="font-sans text-xl text-text-primary mb-2">2. Heatmap</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-mono">
+          <div><span class="text-predictions">+</span><span class="text-text-secondary"> Shows all 13 categories simultaneously. Intensity encoding reveals patterns. Compact.</span></div>
+          <div><span class="text-disruption">&minus;</span><span class="text-text-secondary"> Opacity on dark background reduces dynamic range. Hard to compare magnitudes across categories.</span></div>
+        </div>
+      </div>
+      <div class="bg-surface rounded p-4">
+        <AttentionHeatmap data={dailyData} client:load />
+      </div>
+    </section>
+
+    <section id="presence-matrix" class="mb-16 pb-8 border-b border-surface-raised">
+      <div class="mb-4">
+        <h2 class="font-sans text-xl text-text-primary mb-2">3. Presence Matrix</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-mono">
+          <div><span class="text-predictions">+</span><span class="text-text-secondary"> Binary encoding handles 55% void natively — void IS the dominant visual. Honest. No magnitude distortion. Grid hairlines give archival feel.</span></div>
+          <div><span class="text-disruption">&minus;</span><span class="text-text-secondary"> Loses magnitude information. Cannot tell "read once" from "read fifty times". All presence is equal.</span></div>
+        </div>
+      </div>
+      <div class="bg-surface rounded p-4">
+        <AttentionPresenceMatrix data={dailyData} client:load />
+      </div>
+    </section>
+
+    <section id="ridge-plot" class="mb-16 pb-8 border-b border-surface-raised">
+      <div class="mb-4">
+        <h2 class="font-sans text-xl text-text-primary mb-2">4. Ridge Plot</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-mono">
+          <div><span class="text-predictions">+</span><span class="text-text-secondary"> Joy Division aesthetic. Each category independently readable. Dramatic visual presence. Void periods as flat baselines.</span></div>
+          <div><span class="text-disruption">&minus;</span><span class="text-text-secondary"> 13 overlapping ridges may occlude each other. Comparison across categories harder than small multiples.</span></div>
+        </div>
+      </div>
+      <div class="bg-surface rounded p-4">
+        <AttentionRidgePlot data={dailyData} client:load />
+      </div>
+    </section>
+
+    <section id="small-multiples" class="mb-16 pb-8 border-b border-surface-raised">
+      <div class="mb-4">
+        <h2 class="font-sans text-xl text-text-primary mb-2">5. Small Multiples</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-mono">
+          <div><span class="text-predictions">+</span><span class="text-text-secondary"> Maximum clarity — each category independently readable with shared x-axis. No occlusion. Strongest candidate per Grok.</span></div>
+          <div><span class="text-disruption">&minus;</span><span class="text-text-secondary"> Takes most vertical space. Individual charts are small. Void indistinguishable from zero activity.</span></div>
+        </div>
+      </div>
+      <div class="bg-surface rounded p-4">
+        <AttentionSmallMultiples data={dailyData} client:load />
+      </div>
+    </section>
+  </main>
+</Layout>
