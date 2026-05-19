@@ -159,7 +159,7 @@ describe('AttentionViz -- SVG structure', () => {
     expect(hasCategoryLabel).toBe(true);
   });
 
-  it('renders correct cell count for 3 sessions x 3 categories = at least 9 rects', () => {
+  it('renders rects only for categories with actual activity (val > 0)', () => {
     const sessions = [
       makeSession({
         id: 'sess-001',
@@ -196,8 +196,9 @@ describe('AttentionViz -- SVG structure', () => {
       props: { sessions },
     });
     const containerEl = getByTestId('chart-container');
-    const rects = containerEl.querySelectorAll('rect');
-    expect(rects.length).toBeGreaterThanOrEqual(9);
+    const rects = containerEl.querySelectorAll('.data-cell');
+    // 3+3+2 = 8 active cells (sess-003 writing has 0 activity, no rect)
+    expect(rects.length).toBe(8);
   });
 
   it('renders one column per session not per day', () => {

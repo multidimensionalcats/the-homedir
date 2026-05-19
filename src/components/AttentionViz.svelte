@@ -148,31 +148,21 @@
           // Compute normalized value for opacity
           const normalized = maxValue > 0 ? val / maxValue : 0;
 
-          let fillColor;
-          let opacity;
-
-          if (val > 0 || catData) {
-            // Category present in this session — use category color with scaled opacity
-            fillColor = categoryColor(cat);
-            opacity = 0.15 + (normalized * 0.80);
-          } else {
-            // Category NOT present in this session but present in others — dim version
-            fillColor = categoryColor(cat);
-            opacity = 0.08;
+          if (val > 0) {
+            const opacity = 0.20 + (normalized * 0.75);
+            g.append('rect')
+              .attr('class', 'data-cell')
+              .attr('x', xScale(sessionKey))
+              .attr('y', yScale(cat))
+              .attr('width', xScale.bandwidth())
+              .attr('height', yScale.bandwidth())
+              .attr('fill', categoryColor(cat))
+              .attr('opacity', opacity)
+              .attr('stroke', '#1A1D23')
+              .attr('stroke-width', 0.5)
+              .attr('data-date', session.date)
+              .attr('data-category', cat);
           }
-
-          g.append('rect')
-            .attr('class', 'data-cell')
-            .attr('x', xScale(sessionKey))
-            .attr('y', yScale(cat))
-            .attr('width', xScale.bandwidth())
-            .attr('height', yScale.bandwidth())
-            .attr('fill', fillColor)
-            .attr('opacity', opacity)
-            .attr('stroke', '#252B2C')
-            .attr('stroke-width', 0.5)
-            .attr('data-date', session.date)
-            .attr('data-category', cat);
         }
       }
     }
@@ -254,7 +244,7 @@
 {#if !sessions || sessions.length === 0}
   <p data-testid="no-data">No data available</p>
 {:else}
-  <div data-testid="chart-container" bind:this={container} style="overflow-x: auto; overflow-y: hidden;"></div>
+  <div data-testid="chart-container" bind:this={container} class="chart-scroll" style="overflow-x: auto; overflow-y: hidden;"></div>
   <div data-testid="legend">
     <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; padding: 0.75rem 0; font-size: 0.85rem; color: #aaa;">
       <div style="display: flex; align-items: center; gap: 0.5rem;">

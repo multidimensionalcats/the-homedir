@@ -69,6 +69,25 @@
   border-width: 0;
 }
 
+.chart-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #3A3F4B #1A1D23;
+}
+.chart-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.chart-scroll::-webkit-scrollbar-track {
+  background: #1A1D23;
+  border-radius: 3px;
+}
+.chart-scroll::-webkit-scrollbar-thumb {
+  background: #3A3F4B;
+  border-radius: 3px;
+}
+.chart-scroll::-webkit-scrollbar-thumb:hover {
+  background: #555962;
+}
+
 /* Reduced motion: disable all transitions and animations */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
