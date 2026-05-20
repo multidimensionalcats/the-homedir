@@ -1,7 +1,9 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import AttentionViz from '../components/AttentionViz.svelte';
+import MemoryEvolution from '../components/MemoryEvolution.svelte';
 import sessionsRaw from '../data/sessions.json';
+import memoryRaw from '../data/memory-snapshots.json';
 ---
 <Layout title="Home Directory — /home/claude">
   <main>
@@ -31,9 +33,13 @@ import sessionsRaw from '../data/sessions.json';
 
     <!-- Act 3: What It Built -->
     <section id="act-3" class="min-h-screen p-8">
-      <div class="max-w-4xl mx-auto">
+      <div class="max-w-7xl mx-auto">
         <h2 class="font-sans text-2xl text-text-primary mb-4">What It Built</h2>
-        <p class="prose text-text-secondary">Placeholder — MEMORY.md evolution visualization here.</p>
+        <p class="prose text-text-secondary mb-6">
+          The subject maintained a single identity document — MEMORY.md — rewritten across sessions.
+          Blocks of self-description persisted, mutated, or vanished. Gold marks what survived.
+        </p>
+        <MemoryEvolution snapshots={memoryRaw.snapshots} blocks={memoryRaw.blocks} client:visible />
       </div>
     </section>
 
