@@ -446,8 +446,8 @@ def extract_memory_from_jsonl(
             except (json.JSONDecodeError, ValueError):
                 parsed_lines.append(None)
 
-        # Find all Read tool_use events for MEMORY.md
-        # Collect (line_index, tool_use_id) pairs
+        # Find all FULL Read tool_use events for MEMORY.md
+        # Skip partial reads (those with limit or offset parameters)
         read_events: list[tuple[int, str]] = []
         for i, obj in enumerate(parsed_lines):
             if obj is None or not isinstance(obj, dict):
@@ -475,6 +475,8 @@ def extract_memory_from_jsonl(
                     continue
                 if not file_path.endswith("MEMORY.md"):
                     continue
+                if tool_input.get("limit") is not None or tool_input.get("offset") is not None:
+                    continue
                 tool_use_id = block.get("id", "")
                 if tool_use_id:
                     read_events.append((i, tool_use_id))
@@ -483,8 +485,8 @@ def extract_memory_from_jsonl(
             continue
 
         # For each Read event, find the matching tool_result in subsequent lines
-        # Keep the LAST one that has a valid tool_result
-        last_content: str | None = None
+        # Keep the LONGEST content (most complete snapshot)
+        best_content: str | None = None
         for line_idx, tool_use_id in read_events:
             # Search subsequent lines for matching tool_result
             for j in range(line_idx + 1, len(parsed_lines)):
@@ -514,13 +516,15 @@ def extract_memory_from_jsonl(
                     stripped_lines = []
                     for cline in raw_content.split("\n"):
                         stripped_lines.append(_LINE_NUMBER_RE.sub("", cline))
-                    last_content = "\n".join(stripped_lines)
+                    candidate = "\n".join(stripped_lines)
+                    if best_content is None or len(candidate) > len(best_content):
+                        best_content = candidate
                     found = True
                     break
                 if found:
                     break
 
-        if last_content is None:
+        if best_content is None:
             continue
 
         # Step 1f: Find a matching session by date
@@ -533,13 +537,13 @@ def extract_memory_from_jsonl(
         session_id = row[0]
 
         # Step 1h: Dedup by content hash
-        content_hash = hashlib.sha256(last_content.encode("utf-8")).hexdigest()
+        content_hash = hashlib.sha256(best_content.encode("utf-8")).hexdigest()
         if content_hash in seen_hashes:
             continue
         seen_hashes.add(content_hash)
 
         # Step 1i: Create and store snapshot
-        snapshot = extract_snapshot_from_content(last_content, session_id, file_date)
+        snapshot = extract_snapshot_from_content(best_content, session_id, file_date)
         try:
             store_snapshot(conn, snapshot)
             count += 1

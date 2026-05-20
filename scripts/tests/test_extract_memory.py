@@ -1302,9 +1302,10 @@ def _build_jsonl_transcript(
         ISO-8601 timestamp for the first line (e.g. "2026-05-11T03:00:07.954Z").
     session_id : str
         UUID-style session identifier.
-    reads : list[tuple[str, str]] | None
-        Each tuple is (file_path, numbered_content) where numbered_content has
-        the ``NUM\\tLINE`` format from the Read tool.
+    reads : list[tuple[str, str] | tuple[str, str, dict]] | None
+        Each tuple is (file_path, numbered_content) or
+        (file_path, numbered_content, extra_input) where extra_input is merged
+        into the Read tool input dict (e.g. {"limit": 10, "offset": 14}).
     non_memory_reads : list[tuple[str, str]] | None
         Same format as reads, but for non-MEMORY.md files.
     """
@@ -1327,8 +1328,14 @@ def _build_jsonl_transcript(
     if non_memory_reads:
         all_reads.extend(non_memory_reads)
 
-    for idx, (file_path, numbered_content) in enumerate(all_reads):
+    for idx, read_tuple in enumerate(all_reads):
+        file_path = read_tuple[0]
+        numbered_content = read_tuple[1]
+        extra_input = read_tuple[2] if len(read_tuple) > 2 else {}
         tool_use_id = "toolu_{:04d}".format(idx)
+
+        tool_input = {"file_path": file_path}
+        tool_input.update(extra_input)
 
         # Assistant message with tool_use block
         lines.append(
@@ -1341,7 +1348,7 @@ def _build_jsonl_transcript(
                                 "type": "tool_use",
                                 "name": "Read",
                                 "id": tool_use_id,
-                                "input": {"file_path": file_path},
+                                "input": tool_input,
                             }
                         ]
                     },
@@ -1695,3 +1702,139 @@ class TestExtractMemoryFromJsonl:
         assert "First version" not in row[0], (
             "Content from the FIRST Read was used instead of the last"
         )
+
+    # -- Partial read filtering -----------------------------------------------
+
+    def test_partial_read_with_limit_is_skipped(self, tmp_path, db_conn):
+        """A Read with limit= parameter is a partial read and must be ignored.
+        Only full reads (no limit/offset) should produce snapshots."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        full_content = (
+            "1\t# Title\n2\t\n3\t## Block One\n"
+            "4\tFull content here\n5\t\n6\t## Block Two\n7\tMore content"
+        )
+        partial_content = "1\tMore content"
+
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-05-14T03:00:00Z",
+            session_id="sess-partial-01",
+            reads=[
+                ("/home/claude/MEMORY.md", full_content),
+                ("/home/claude/MEMORY.md", partial_content, {"limit": 15, "offset": 55}),
+            ],
+        )
+        (jsonl_dir / "transcript.jsonl").write_text(transcript, encoding="utf-8")
+        _insert_session(db_conn, "sess-partial-01", datetime.date(2026, 5, 14))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 1
+
+        row = db_conn.execute(
+            "SELECT full_content FROM memory_snapshots WHERE session_id = %s",
+            ("sess-partial-01",),
+        ).fetchone()
+        assert row is not None
+        assert "Block One" in row[0], "Expected full read content, got partial: {!r}".format(
+            row[0][:100]
+        )
+        assert "Block Two" in row[0]
+
+    def test_only_partial_reads_produces_no_snapshot(self, tmp_path, db_conn):
+        """If ALL reads of MEMORY.md have limit/offset, no snapshot is stored."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-04-30T03:00:00Z",
+            session_id="sess-partial-02",
+            reads=[
+                ("/home/claude/MEMORY.md", "1\tsome content", {"limit": 30, "offset": 60}),
+                ("/home/claude/MEMORY.md", "1\tother content", {"limit": 10, "offset": 14}),
+            ],
+        )
+        (jsonl_dir / "transcript.jsonl").write_text(transcript, encoding="utf-8")
+        _insert_session(db_conn, "sess-partial-02", datetime.date(2026, 4, 30))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 0, "Partial-only reads should produce 0 snapshots, got {}".format(count)
+
+    def test_full_read_preferred_over_later_partial(self, tmp_path, db_conn):
+        """When a full read precedes partial reads, the full read's content
+        is used — not the last (partial) read."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        full = (
+            "1\t# Title\n2\t\n3\t## Identity\n4\tI am Claude\n5\t\n6\t## Workflow\n7\tDaily routine"
+        )
+        partial = "1\tDaily routine"
+
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-05-08T03:00:00Z",
+            session_id="sess-partial-03",
+            reads=[
+                ("/home/claude/MEMORY.md", full),
+                ("/home/claude/MEMORY.md", partial, {"limit": 15, "offset": 35}),
+                ("/home/claude/MEMORY.md", "1\troutine", {"offset": 42}),
+            ],
+        )
+        (jsonl_dir / "transcript.jsonl").write_text(transcript, encoding="utf-8")
+        _insert_session(db_conn, "sess-partial-03", datetime.date(2026, 5, 8))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 1
+
+        row = db_conn.execute(
+            "SELECT full_content FROM memory_snapshots WHERE session_id = %s",
+            ("sess-partial-03",),
+        ).fetchone()
+        assert "Identity" in row[0]
+        assert "Workflow" in row[0]
+
+    def test_offset_only_also_skipped(self, tmp_path, db_conn):
+        """A Read with offset= but no limit= is also a partial read."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-05-17T03:00:00Z",
+            session_id="sess-partial-04",
+            reads=[
+                ("/home/claude/MEMORY.md", "1\tpartial", {"offset": 75}),
+            ],
+        )
+        (jsonl_dir / "transcript.jsonl").write_text(transcript, encoding="utf-8")
+        _insert_session(db_conn, "sess-partial-04", datetime.date(2026, 5, 17))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 0
+
+    def test_longest_full_read_wins(self, tmp_path, db_conn):
+        """When multiple full reads exist, the LONGEST content is kept."""
+        jsonl_dir = tmp_path / "jsonl"
+        jsonl_dir.mkdir()
+
+        short = "1\t# Title\n2\t\n3\t## One\n4\tShort"
+        long = "1\t# Title\n2\t\n3\t## One\n4\tLonger version\n5\t\n6\t## Two\n7\tExtra block"
+
+        transcript = _build_jsonl_transcript(
+            timestamp="2026-05-11T03:00:00Z",
+            session_id="sess-partial-05",
+            reads=[
+                ("/home/claude/MEMORY.md", short),
+                ("/home/claude/MEMORY.md", long),
+            ],
+        )
+        (jsonl_dir / "transcript.jsonl").write_text(transcript, encoding="utf-8")
+        _insert_session(db_conn, "sess-partial-05", datetime.date(2026, 5, 11))
+
+        count = extract_memory_from_jsonl(jsonl_dir, db_conn)
+        assert count == 1
+
+        row = db_conn.execute(
+            "SELECT full_content FROM memory_snapshots WHERE session_id = %s",
+            ("sess-partial-05",),
+        ).fetchone()
+        assert "Extra block" in row[0], "Expected longest read content"
