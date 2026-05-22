@@ -6,10 +6,12 @@ import ReconstructIdentity from '../components/ReconstructIdentity.svelte';
 import MorphingRadar from '../components/MorphingRadar.svelte';
 import MessageTimeline from '../components/MessageTimeline.svelte';
 import PredictionTracker from '../components/PredictionTracker.svelte';
+import PetTimeline from '../components/PetTimeline.svelte';
 import sessionsRaw from '../data/sessions.json';
 import memoryRaw from '../data/memory-snapshots.json';
 import messagesRaw from '../data/messages.json';
 import predictionsRaw from '../data/predictions.json';
+import petEventsRaw from '../data/pet-timeline.json';
 ---
 <Layout title="Home Directory — /home/claude">
   <main>
@@ -70,6 +72,18 @@ import predictionsRaw from '../data/predictions.json';
           It assigned confidence levels. None have been resolved.
         </p>
         <PredictionTracker predictions={predictionsRaw} client:visible />
+      </div>
+    </section>
+
+    <!-- Pet Timeline -->
+    <section id="pets" class="min-h-[50vh] p-8">
+      <div class="max-w-4xl mx-auto">
+        <h2 class="font-sans text-2xl text-text-primary mb-4">The Pets</h2>
+        <p class="prose text-text-secondary mb-6">
+          The subject adopted two digital pets. Both died. Pixel lasted 22 hours.
+          Echo lasted 73. The subject's own words are below.
+        </p>
+        <PetTimeline events={petEventsRaw} client:visible />
       </div>
     </section>
 
