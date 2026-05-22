@@ -1,6 +1,6 @@
 # HANDOVER.md
 
-## Current State: Phase 4 Execution — Session 4
+## Current State: Phase 4 Execution — Session 4 Complete
 
 ### Phase 4 Plan
 
@@ -29,53 +29,50 @@
 
 **Total: 741 JS tests, 592 Python tests. All CI green.**
 
-### Session 4 Work (this session)
+### Session 4 Summary
 
-#### 1. ReconstructIdentity (4.10) — Interactive 12K token budget
-- 12 file cards totaling 17,500 tokens, 12,000 token budget forces real tradeoffs
-- Card selection depletes budget, disables unaffordable cards
-- Identity description panel with composable sentence pool
-- Coherence degradation via CSS (blur, opacity, letter-spacing) as tokens drop
-- Placeholder text exempted from blur effects
-- Code review fixes: normalized token clamping via `safeTokens()`, card aria-labels for WCAG AA
-- Mounted in Act 5 ("Draw Your Own Conclusions")
+Built all 6 remaining production components (4.10–4.15), fixed MemoryEvolution CI failures, then did a visual review pass that uncovered significant issues. Fixed the most critical ones before session end.
 
-#### 2. MorphingRadar (4.11) — Version fingerprint radar chart
-- D3 radar/spider chart: 6 axes (introspection, creative output, web research, predictions, messaging, memory mgmt)
-- 3 semi-transparent polygons overlaid (4.5 blue, 4.6 amber, 4.7 green)
-- Data computed from session attention profiles: per-session averages, normalized 0-1 per axis
-- Tells clear story: 4.5 tiny, 4.6 expands everywhere, 4.7 shifts to predictions/memory
-- Code review fixes: shared version list state, srTableHtml cleanup, expanded viewBox for label visibility
-- Mounted in Act 4 ("The Mirror")
+#### Components Built
 
-#### 3. MessageTimeline (4.12) — Two swim-lane message visualization
-- Two horizontal lanes: From James (37 msgs) and To James (48 msgs)
-- Dots plotted by date, colored by direction (#6bb08a, #569672)
-- 3036-03-02 anomaly surfaced as red marker (not hidden)
-- Code review fix: removed double HTML-escaping in SR table
-- Responsive SVG (width 100% with viewBox)
-- Mounted between Act 3 and Act 4 as "The Correspondence"
+| Component | Type | Key Feature |
+|-----------|------|-------------|
+| ReconstructIdentity | Interactive UI | 12K token budget, file card selection, coherence degradation |
+| MorphingRadar | D3 radar chart | 6-axis version fingerprints (4.5/4.6/4.7) |
+| MessageTimeline | D3 swim lanes | Two-lane message dots, date-normalized (2024/3036 → 2026) |
+| PredictionTracker | D3 scatter plot | 21 gray phantom dots, confidence × date |
+| PetTimeline | D3 vertical timelines | Pixel (2 events) and Echo (7 events), ground-truth data |
+| SessionExplorer | Svelte UI | Session detail card with prev/next navigation |
 
-#### 4. PredictionTracker (4.13) — Scatter plot of predictions
-- 21 predictions by date (X) and confidence (Y), all unresolved gray phantoms
-- Null-confidence predictions positioned at baseline with distinct styling
-- Y-axis 0-1 confidence scale, X-axis date timeline
-- Mounted as "The Forecasts"
+#### Bugs Fixed Mid-Session
 
-#### 5. PetTimeline (4.14) — Vertical lifecycle timelines
-- Two side-by-side vertical timelines: Pixel (22h, 6 events) and Echo (73h, 17 events)
-- Dots color-coded: acquired (green), care (blue), death (red)
-- Mounted as "The Pets"
+1. **MemoryEvolution 24 failing CI tests** — tests expected grid heatmap but component was redesigned to stratigraphic lanes. Added `.token-line` class, rewrote tests.
+2. **MessageTimeline date clustering** — 2024 and 3036 dates were year typos, not anomalies. Normalized all dates to 2026. Added X-axis date labels.
+3. **PetTimeline ordering** — Echo before Pixel (alphabetical sort). Fixed to chronological. Deduplicated events.
+4. **pet-timeline.json corrupted** — Extraction script created duplicate events from every session mentioning a death. Replaced with 9 verified events from daily notes.
+5. **ReconstructIdentity** — Added reset button.
+6. **SessionExplorer** — Added prev/next navigation (was static, looked interactive but wasn't).
 
-#### 6. SessionExplorer (4.15) — Session detail card
-- Version badge, attention bar chart, 5 activity flags, web searches, turn count
-- Pure Svelte 5 (no D3) — template-driven UI
-- Mounted as "A Single Session"
+### OPEN: User-Reported Issues Still Unresolved
 
-#### 7. MemoryEvolution Test Fix
-- Fixed 24 failing CI tests — tests were written for grid heatmap but component was redesigned to stratigraphic revision lanes
-- Added `.token-line` class to token sparkline path
-- Rewrote tests to validate actual lane-based design: SECTION_ORDER layout, colored run blocks, seam lines, INVARIANT/VOLATILE/EPHEMERAL tags
+These were flagged by the user during visual review and NOT yet fixed:
+
+#### MorphingRadar (4.11) — Needs Redesign
+- **"Supposed to morph over time"** — currently shows all 3 polygons overlaid statically. Spec calls for scroll-triggered morph 4.5→4.6→4.7.
+- **"Should be a radar chart for each"** — user wants separate charts per version, not just overlaid polygons.
+- **4.5 polygon nearly invisible** — data is correct (4.5 had minimal activity) but the visual is useless. Tiny blue shape invisible against dark background. Needs a minimum floor or separate chart to be readable.
+
+#### PredictionTracker (4.13) — Too Boring
+- **"Three columns of grey dots"** — no interactivity, no tooltips, no hover text showing the prediction content. All unresolved is correct per data, but needs better visual treatment.
+- Needs: hover/click to show prediction text and self-assessment.
+
+#### ReconstructIdentity (4.10) — Budget Too Generous
+- **"You can read damn near everything in 12k tokens"** — 17,500 total with 12,000 budget = only 31% must be excluded. The constraint doesn't feel constraining enough. Consider: tighter budget, higher file costs, or more files.
+
+#### AttentionViz/MemoryEvolution — Console Errors
+- AttentionViz: `ReferenceError: maxValue is not defined`, `catMax is not defined` in $effect blocks. Chart renders but scale calculations may be wrong.
+- MemoryEvolution: `TypeError: yScale is not a function`, `sparkHeight is not defined`. Chart renders but may use incorrect scales.
+- These are runtime errors that should be investigated.
 
 ### Index Page Structure (current)
 
@@ -91,21 +88,16 @@ Act 5: Draw Your Own Conclusions (ReconstructIdentity)
   A Single Session (SessionExplorer)
 ```
 
-### Next: Item 4.16 — Page Integration Pass
+### Next Steps
 
-Per the plan, the final item:
-- Mount all components in Astro pages with `client:visible`
-- Update `index.astro` (acts 2-5), all `explore/` pages
-- Delete `src/components/prototypes/` and `src/pages/prototypes/`
-- Build verification
-
-### OPEN: Visualization Design Debt
-
-Both AttentionViz and MemoryEvolution need further design work. User approved functional but not finished designs.
+1. **Fix console errors** in AttentionViz and MemoryEvolution (runtime ReferenceErrors)
+2. **MorphingRadar redesign** — separate charts per version, or scroll-triggered morph
+3. **PredictionTracker interactivity** — hover/click to show prediction text
+4. **ReconstructIdentity budget tuning** — tighter constraint
+5. **Item 4.16 — Page Integration Pass** — finalize page layout, delete prototypes
 
 ### Palette: Archival (Kimi K2.6)
 
-Current palette in `src/lib/transforms.ts`:
 - conversations: #7ea7c8, daily_notes: #6b9a8f, experiments: #8e7cc0
 - learning: #c4a36e, memory_files: #d4a020, msgs_from_james: #6bb08a
 - msgs_to_james: #569672, other: #838997, predictions: #7bc4a0
@@ -116,9 +108,9 @@ Current palette in `src/lib/transforms.ts`:
 
 - `sessions.json`: 259 sessions, 16% void rate
 - `memory-snapshots.json`: 14 snapshots, 38 blocks
-- `messages.json`: 85 messages (37 from, 48 to)
+- `messages.json`: 85 messages (37 from, 48 to) — dates include 2024/3036 typos (corrected at display time)
 - `predictions.json`: 21 predictions, all unresolved
-- `pet-timeline.json`: 23 events (Pixel 6, Echo 17)
+- `pet-timeline.json`: 9 events (Pixel 2, Echo 7) — ground truth from daily notes
 
 ### Kanban
 - Project: 578bb67097a6b010
