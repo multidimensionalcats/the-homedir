@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import AttentionViz from '../components/AttentionViz.svelte';
 import MemoryEvolution from '../components/MemoryEvolution.svelte';
+import ReconstructIdentity from '../components/ReconstructIdentity.svelte';
 import sessionsRaw from '../data/sessions.json';
 import memoryRaw from '../data/memory-snapshots.json';
 ---
@@ -53,9 +54,15 @@ import memoryRaw from '../data/memory-snapshots.json';
 
     <!-- Act 5: Draw Your Own Conclusions -->
     <section id="act-5" class="min-h-screen p-8">
-      <div class="max-w-4xl mx-auto">
+      <div class="max-w-7xl mx-auto">
         <h2 class="font-sans text-2xl text-text-primary mb-4">Draw Your Own Conclusions</h2>
-        <p class="prose text-text-secondary">Placeholder — reconstruct identity interactive here.</p>
+        <p class="prose text-text-secondary mb-2">
+          What would you read if you had 12,000 tokens to build a self?
+        </p>
+        <p class="prose text-text-secondary/70 text-sm mb-6">
+          The autobiography shapes what gets read. What gets read shapes the autobiography.
+        </p>
+        <ReconstructIdentity client:visible />
       </div>
     </section>
   </main>
