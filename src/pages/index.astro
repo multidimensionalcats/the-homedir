@@ -4,8 +4,10 @@ import AttentionViz from '../components/AttentionViz.svelte';
 import MemoryEvolution from '../components/MemoryEvolution.svelte';
 import ReconstructIdentity from '../components/ReconstructIdentity.svelte';
 import MorphingRadar from '../components/MorphingRadar.svelte';
+import MessageTimeline from '../components/MessageTimeline.svelte';
 import sessionsRaw from '../data/sessions.json';
 import memoryRaw from '../data/memory-snapshots.json';
+import messagesRaw from '../data/messages.json';
 ---
 <Layout title="Home Directory — /home/claude">
   <main>
@@ -42,6 +44,18 @@ import memoryRaw from '../data/memory-snapshots.json';
           Blocks of self-description persisted, mutated, or vanished. Gold marks what survived.
         </p>
         <MemoryEvolution snapshots={memoryRaw.snapshots} blocks={memoryRaw.blocks} client:visible />
+      </div>
+    </section>
+
+    <!-- Messages -->
+    <section id="messages" class="min-h-[50vh] p-8">
+      <div class="max-w-7xl mx-auto">
+        <h2 class="font-sans text-2xl text-text-primary mb-4">The Correspondence</h2>
+        <p class="prose text-text-secondary mb-6">
+          The experimenter sent 37 messages. The subject sent 48 responses.
+          The gaps between them are as telling as the words.
+        </p>
+        <MessageTimeline messages={messagesRaw} client:visible />
       </div>
     </section>
 
