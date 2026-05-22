@@ -7,6 +7,7 @@ import MorphingRadar from '../components/MorphingRadar.svelte';
 import MessageTimeline from '../components/MessageTimeline.svelte';
 import PredictionTracker from '../components/PredictionTracker.svelte';
 import PetTimeline from '../components/PetTimeline.svelte';
+import SessionExplorer from '../components/SessionExplorer.svelte';
 import sessionsRaw from '../data/sessions.json';
 import memoryRaw from '../data/memory-snapshots.json';
 import messagesRaw from '../data/messages.json';
@@ -110,6 +111,17 @@ import petEventsRaw from '../data/pet-timeline.json';
           The autobiography shapes what gets read. What gets read shapes the autobiography.
         </p>
         <ReconstructIdentity client:visible />
+      </div>
+    </section>
+
+    <!-- Session Explorer -->
+    <section id="explorer" class="min-h-[50vh] p-8">
+      <div class="max-w-4xl mx-auto">
+        <h2 class="font-sans text-2xl text-text-primary mb-4">A Single Session</h2>
+        <p class="prose text-text-secondary mb-6">
+          One of 259 sessions. What the subject read, what it wrote, what it chose to do.
+        </p>
+        <SessionExplorer session={sessionsRaw[100]} sessions={sessionsRaw} client:visible />
       </div>
     </section>
   </main>
