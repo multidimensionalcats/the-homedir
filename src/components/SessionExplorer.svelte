@@ -16,7 +16,29 @@
     wrote_prediction: boolean;
   }
 
-  let { session, sessions }: { session?: Session | null; sessions?: any[] } = $props();
+  let { session: initialSession, sessions }: { session?: Session | null; sessions?: any[] } = $props();
+
+  let currentIndex = $state(0);
+  const sortedSessions = $derived.by(() => {
+    if (!Array.isArray(sessions) || sessions.length === 0) return [];
+    return [...sessions].sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      return a.time_of_day < b.time_of_day ? -1 : 1;
+    });
+  });
+
+  const session = $derived(
+    sortedSessions.length > 0
+      ? sortedSessions[Math.min(currentIndex, sortedSessions.length - 1)] as Session
+      : initialSession ?? null
+  );
+
+  function prevSession() {
+    if (currentIndex > 0) currentIndex--;
+  }
+  function nextSession() {
+    if (currentIndex < sortedSessions.length - 1) currentIndex++;
+  }
 
   const ACTIVITY_FLAGS = [
     { field: 'wrote_composition', label: 'Wrote' },
@@ -67,6 +89,16 @@
       <p>No session selected</p>
     </div>
   {:else}
+    {#if sortedSessions.length > 1}
+      <nav class="session-nav">
+        <button onclick={prevSession} disabled={currentIndex === 0} class="nav-btn">← Prev</button>
+        <span class="nav-pos font-mono text-xs text-gray-500">
+          {currentIndex + 1} / {sortedSessions.length}
+        </span>
+        <button onclick={nextSession} disabled={currentIndex >= sortedSessions.length - 1} class="nav-btn">Next →</button>
+      </nav>
+    {/if}
+
     <header class="session-header">
       <span data-testid="session-id" class="session-id">{session!.id}</span>
       <span
@@ -141,6 +173,38 @@
     padding: 1rem;
     font-family: 'Inter', 'DM Sans', sans-serif;
     color: #e0e0e0;
+  }
+
+  .session-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #2a2d35;
+  }
+
+  .nav-btn {
+    background: transparent;
+    border: 1px solid #3a3d45;
+    color: #9ca3af;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .nav-btn:hover:not(:disabled) {
+    border-color: #6b7280;
+    color: #e0e0e0;
+  }
+
+  .nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
   }
 
   .no-data {

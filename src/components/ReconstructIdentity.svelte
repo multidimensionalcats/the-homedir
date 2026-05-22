@@ -116,6 +116,10 @@
       toggleCard(file);
     }
   }
+
+  function resetAll(): void {
+    selectedIds = new Set<string>();
+  }
 </script>
 
 {#if !hasFiles}
@@ -151,8 +155,16 @@
           style="width: {Math.min(100, budgetPercent)}%"
         ></div>
       </div>
-      <div data-testid="budget-display" class="text-sm text-gray-400 font-mono">
-        {tokensUsed.toLocaleString()} / {budget.toLocaleString()} tokens used
+      <div class="flex items-center justify-between">
+        <div data-testid="budget-display" class="text-sm text-gray-400 font-mono">
+          {tokensUsed.toLocaleString()} / {budget.toLocaleString()} tokens used
+        </div>
+        {#if selectedIds.size > 0}
+          <button
+            onclick={resetAll}
+            class="text-xs text-gray-500 hover:text-gray-300 font-mono px-2 py-1 border border-gray-700 rounded hover:border-gray-500 transition-colors"
+          >Reset</button>
+        {/if}
       </div>
     </div>
 

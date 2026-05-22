@@ -242,72 +242,54 @@ describe('MessageTimeline -- swim lanes', () => {
 // ============================================================
 // 4. Anomaly Handling
 // ============================================================
-describe('MessageTimeline -- anomaly handling', () => {
-  it('anomalous date (year > 2030) produces anomaly-marker element', () => {
+describe('MessageTimeline -- date normalization', () => {
+  it('dates with wrong year (3036) are normalized to 2026 and rendered as normal dots', () => {
     const { getByTestId } = render(MessageTimeline, {
       props: { messages: MESSAGES_WITH_ANOMALY },
     });
     const containerEl = getByTestId('chart-container');
-    const anomalyMarkers = containerEl.querySelectorAll('.anomaly-marker');
-    expect(anomalyMarkers.length).toBeGreaterThan(0);
+    // Anomalous dates are normalized — no special markers, just normal dots
+    const allDots = containerEl.querySelectorAll('.msg-dot-from, .msg-dot-to');
+    expect(allDots.length).toBe(MESSAGES_WITH_ANOMALY.length);
   });
 
-  it('non-anomalous dates do NOT produce anomaly-marker', () => {
-    // All dates within 2020-2030 range -- no anomaly markers expected
-    const normalMessages = [
-      makeMessage({ direction: 'from_james', date: '2026-01-01' }),
-      makeMessage({ direction: 'to_james', date: '2026-06-15' }),
-      makeMessage({ direction: 'from_james', date: '2026-12-31' }),
+  it('dates with wrong year (2024) are normalized to 2026', () => {
+    const msgs = [
+      makeMessage({ direction: 'from_james', date: '2024-02-24' }),
+      makeMessage({ direction: 'from_james', date: '2026-05-18' }),
     ];
     const { getByTestId } = render(MessageTimeline, {
-      props: { messages: normalMessages },
+      props: { messages: msgs },
+    });
+    const containerEl = getByTestId('chart-container');
+    const fromDots = Array.from(containerEl.querySelectorAll('.msg-dot-from'));
+    expect(fromDots.length).toBe(2);
+    // Both dates normalized to 2026 — Feb 24 and May 18 should be at different cx
+    const cxValues = fromDots.map((d) => parseFloat(d.getAttribute('cx') || '0'));
+    expect(cxValues[0]).not.toBe(cxValues[1]);
+  });
+
+  it('no anomaly-marker elements are produced (dates are corrected, not flagged)', () => {
+    const { getByTestId } = render(MessageTimeline, {
+      props: { messages: MESSAGES_WITH_ANOMALY },
     });
     const containerEl = getByTestId('chart-container');
     const anomalyMarkers = containerEl.querySelectorAll('.anomaly-marker');
     expect(anomalyMarkers.length).toBe(0);
   });
 
-  it('anomaly marker has distinct visual treatment (different fill or stroke)', () => {
-    const { getByTestId } = render(MessageTimeline, {
-      props: { messages: MESSAGES_WITH_ANOMALY },
-    });
-    const containerEl = getByTestId('chart-container');
-    const anomalyMarker = containerEl.querySelector('.anomaly-marker');
-    expect(anomalyMarker).not.toBeNull();
-    // Anomaly marker must have SOME visual distinction -- fill, stroke, or a child with color
-    const fill = anomalyMarker!.getAttribute('fill');
-    const stroke = anomalyMarker!.getAttribute('stroke');
-    const style = anomalyMarker!.getAttribute('style');
-    const hasVisualTreatment =
-      (fill && fill !== 'none') ||
-      (stroke && stroke !== 'none') ||
-      (style && style.length > 0) ||
-      anomalyMarker!.children.length > 0;
-    expect(hasVisualTreatment).toBe(true);
-
-    // It must also look different from normal dots
-    const normalDot = containerEl.querySelector('.msg-dot-from') || containerEl.querySelector('.msg-dot-to');
-    if (normalDot) {
-      const normalFill = normalDot.getAttribute('fill');
-      const anomalyFill = anomalyMarker!.getAttribute('fill');
-      // If both have fill attributes, they should differ
-      if (normalFill && anomalyFill) {
-        expect(anomalyFill).not.toBe(normalFill);
-      }
-    }
-  });
-
-  it('message with date "3036-03-02" triggers anomaly annotation', () => {
+  it('all messages render as normal dots regardless of original year', () => {
     const msgs = [
-      makeMessage({ direction: 'to_james', date: '3036-03-02', content: 'Future anomaly' }),
-      makeMessage({ direction: 'from_james', date: '2026-01-01', content: 'Normal' }),
+      makeMessage({ direction: 'to_james', date: '3036-03-02', content: 'Future typo' }),
+      makeMessage({ direction: 'from_james', date: '2024-01-01', content: 'Past typo' }),
+      makeMessage({ direction: 'from_james', date: '2026-04-15', content: 'Normal' }),
     ];
     const { getByTestId } = render(MessageTimeline, {
       props: { messages: msgs },
     });
     const containerEl = getByTestId('chart-container');
-    const anomalyMarkers = containerEl.querySelectorAll('.anomaly-marker');
-    expect(anomalyMarkers.length).toBeGreaterThanOrEqual(1);
+    const allDots = containerEl.querySelectorAll('.msg-dot-from, .msg-dot-to');
+    expect(allDots.length).toBe(3);
   });
 });
 
@@ -640,19 +622,18 @@ describe('MessageTimeline -- adversarial inputs', () => {
     expect(cxValues[0]).not.toBe(cxValues[1]);
   });
 
-  it('handles multiple anomalous dates producing multiple anomaly-markers', () => {
+  it('handles messages with various wrong years — all rendered as normal dots', () => {
     const msgs = [
-      makeMessage({ direction: 'to_james', date: '3036-03-02', content: 'Future 1' }),
-      makeMessage({ direction: 'from_james', date: '2099-12-31', content: 'Future 2' }),
+      makeMessage({ direction: 'to_james', date: '3036-03-02', content: 'Future typo' }),
+      makeMessage({ direction: 'from_james', date: '2099-12-31', content: 'Far future typo' }),
       makeMessage({ direction: 'from_james', date: '2026-01-01', content: 'Normal' }),
     ];
     const { getByTestId } = render(MessageTimeline, {
       props: { messages: msgs },
     });
     const containerEl = getByTestId('chart-container');
-    const anomalyMarkers = containerEl.querySelectorAll('.anomaly-marker');
-    // Both far-future dates (>2030) should be flagged as anomalous
-    expect(anomalyMarkers.length).toBeGreaterThanOrEqual(2);
+    const allDots = containerEl.querySelectorAll('.msg-dot-from, .msg-dot-to');
+    expect(allDots.length).toBe(3);
   });
 
   it('cleans up on unmount -- chart-container gone from DOM', () => {
