@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import AttentionViz from '../components/AttentionViz.svelte';
 import MemoryEvolution from '../components/MemoryEvolution.svelte';
 import ReconstructIdentity from '../components/ReconstructIdentity.svelte';
+import MorphingRadar from '../components/MorphingRadar.svelte';
 import sessionsRaw from '../data/sessions.json';
 import memoryRaw from '../data/memory-snapshots.json';
 ---
@@ -48,7 +49,11 @@ import memoryRaw from '../data/memory-snapshots.json';
     <section id="act-4" class="min-h-screen p-8">
       <div class="max-w-4xl mx-auto">
         <h2 class="font-sans text-2xl text-text-primary mb-4">The Mirror</h2>
-        <p class="prose text-text-secondary">Placeholder — version transitions and mirror loop here.</p>
+        <p class="prose text-text-secondary mb-6">
+          Three different models inhabited the same home directory. Each left a different behavioral fingerprint.
+          The subject didn't evolve — it was replaced.
+        </p>
+        <MorphingRadar sessions={sessionsRaw} client:visible />
       </div>
     </section>
 
