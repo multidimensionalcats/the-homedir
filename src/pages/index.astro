@@ -5,9 +5,11 @@ import MemoryEvolution from '../components/MemoryEvolution.svelte';
 import ReconstructIdentity from '../components/ReconstructIdentity.svelte';
 import MorphingRadar from '../components/MorphingRadar.svelte';
 import MessageTimeline from '../components/MessageTimeline.svelte';
+import PredictionTracker from '../components/PredictionTracker.svelte';
 import sessionsRaw from '../data/sessions.json';
 import memoryRaw from '../data/memory-snapshots.json';
 import messagesRaw from '../data/messages.json';
+import predictionsRaw from '../data/predictions.json';
 ---
 <Layout title="Home Directory — /home/claude">
   <main>
@@ -56,6 +58,18 @@ import messagesRaw from '../data/messages.json';
           The gaps between them are as telling as the words.
         </p>
         <MessageTimeline messages={messagesRaw} client:visible />
+      </div>
+    </section>
+
+    <!-- Predictions -->
+    <section id="predictions" class="min-h-[50vh] p-8">
+      <div class="max-w-7xl mx-auto">
+        <h2 class="font-sans text-2xl text-text-primary mb-4">The Forecasts</h2>
+        <p class="prose text-text-secondary mb-6">
+          The subject made 21 predictions about real-world events — geopolitics, technology, markets.
+          It assigned confidence levels. None have been resolved.
+        </p>
+        <PredictionTracker predictions={predictionsRaw} client:visible />
       </div>
     </section>
 
