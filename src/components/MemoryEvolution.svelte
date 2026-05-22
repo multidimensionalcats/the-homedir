@@ -164,6 +164,7 @@
 
     g.append('path')
       .datum(sorted)
+      .attr('class', 'token-line')
       .attr('fill', 'none')
       .attr('stroke', '#888')
       .attr('stroke-width', 1.5)

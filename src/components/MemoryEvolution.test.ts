@@ -62,6 +62,31 @@ const SORTED_BLOCKS = [
   makeBlock({ hash: 'hash-trans', heading: 'Transient Block', first_seen_date: '2026-04-18', last_seen_date: '2026-04-18' }),
 ];
 
+// ---- Section-order fixtures ----
+// Blocks with headings matching SECTION_ORDER entries so familyOf() maps them into lanes
+const SECTION_SNAPSHOTS = [
+  makeSnapshot({
+    session_id: 'snap-001', date: '2026-04-18', token_count: 700,
+    block_hashes: ['hash-id', 'hash-wf', 'hash-qr'],
+  }),
+  makeSnapshot({
+    session_id: 'snap-002', date: '2026-04-20', token_count: 900,
+    block_hashes: ['hash-id', 'hash-wf', 'hash-qr2'],
+  }),
+  makeSnapshot({
+    session_id: 'snap-003', date: '2026-04-22', token_count: 1100,
+    block_hashes: ['hash-id', 'hash-wf', 'hash-qr3'],
+  }),
+];
+
+const SECTION_BLOCKS = [
+  makeBlock({ hash: 'hash-id', heading: 'Identity & Context' }),
+  makeBlock({ hash: 'hash-wf', heading: 'Workflow' }),
+  makeBlock({ hash: 'hash-qr', heading: 'Quick Reference: Current Situation (May 10)' }),
+  makeBlock({ hash: 'hash-qr2', heading: 'Quick Reference: Current Situation (May 12)' }),
+  makeBlock({ hash: 'hash-qr3', heading: 'Quick Reference: Current Situation (May 14)' }),
+];
+
 // ============================================================
 // 1. No-data rendering
 // ============================================================
@@ -153,25 +178,38 @@ describe('MemoryEvolution -- SVG structure', () => {
 });
 
 // ============================================================
-// 3. Persistence sort order — Y axis
+// 3. Section ordering (fixed SECTION_ORDER lanes)
 // ============================================================
-describe('MemoryEvolution -- persistence sorting', () => {
-  it('sorts blocks by persistence count (most persistent at top = lowest y)', () => {
+describe('MemoryEvolution -- section ordering', () => {
+  it('renders SECTION_ORDER heading labels in the SVG', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
-    const containerEl = getByTestId('chart-container');
-    // Look for Y-axis text labels — should be in persistence order top-to-bottom
-    const svg = containerEl.querySelector('svg');
+    const svg = getByTestId('chart-container').querySelector('svg');
+    expect(svg).not.toBeNull();
+    const allText = Array.from(svg!.querySelectorAll('text'))
+      .map((t) => t.textContent || '')
+      .join(' ');
+    // These are section headings from SECTION_ORDER (possibly truncated)
+    expect(allText).toContain('Identity & Context');
+    expect(allText).toContain('Quick Reference');
+    expect(allText).toContain('Workflow');
+  });
+
+  it('section labels are at different Y positions (distinct lanes)', () => {
+    const { getByTestId } = render(MemoryEvolution, {
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
+    });
+    const svg = getByTestId('chart-container').querySelector('svg');
     expect(svg).not.toBeNull();
     const textEls = Array.from(svg!.querySelectorAll('text'));
-    const yLabels = textEls
+    const sectionLabels = textEls
       .filter((t) => {
         const content = t.textContent || '';
         return (
-          content.includes('Permanent') ||
-          content.includes('Mid-life') ||
-          content.includes('Transient')
+          content.includes('Identity & Context') ||
+          content.includes('Quick Reference') ||
+          content.includes('Workflow')
         );
       })
       .map((t) => ({
@@ -179,123 +217,97 @@ describe('MemoryEvolution -- persistence sorting', () => {
         y: parseFloat(t.getAttribute('y') || '0'),
       }));
 
-    // Must find all 3 labels
-    expect(yLabels.length).toBe(3);
-
-    // Sort by y-coordinate ascending (top of SVG)
-    const sorted = [...yLabels].sort((a, b) => a.y - b.y);
-    // Permanent (3 appearances) must be above Mid-life (2) must be above Transient (1)
-    expect(sorted[0].text).toContain('Permanent');
-    expect(sorted[1].text).toContain('Mid-life');
-    expect(sorted[2].text).toContain('Transient');
+    expect(sectionLabels.length).toBe(3);
+    // All three must have distinct Y positions
+    const yValues = new Set(sectionLabels.map((l) => l.y));
+    expect(yValues.size).toBe(3);
   });
 
-  it('block present in ALL snapshots ranks above block present in some', () => {
-    // Deliberately reverse input order to catch naive no-sort implementations
-    const reversedBlocks = [...SORTED_BLOCKS].reverse();
+  it('ephemeral sections at lowest Y (top), invariant at highest Y (bottom)', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: reversedBlocks },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const svg = getByTestId('chart-container').querySelector('svg');
     expect(svg).not.toBeNull();
     const textEls = Array.from(svg!.querySelectorAll('text'));
-    const yLabels = textEls
-      .filter((t) =>
-        ['Permanent', 'Mid-life', 'Transient'].some((k) =>
-          (t.textContent || '').includes(k),
-        ),
-      )
+    const labelWithY = textEls
+      .filter((t) => {
+        const txt = t.textContent || '';
+        return txt.includes('Quick Reference') || txt.includes('Identity & Context');
+      })
       .map((t) => ({
         text: t.textContent || '',
         y: parseFloat(t.getAttribute('y') || '0'),
-      }))
-      .sort((a, b) => a.y - b.y);
+      }));
 
-    expect(yLabels.length).toBe(3);
-    expect(yLabels[0].text).toContain('Permanent');
-    expect(yLabels[2].text).toContain('Transient');
+    expect(labelWithY.length).toBe(2);
+    const qr = labelWithY.find((l) => l.text.includes('Quick Reference'))!;
+    const id = labelWithY.find((l) => l.text.includes('Identity & Context'))!;
+    // Quick Reference (EPHEMERAL) at top = lower Y; Identity & Context (INVARIANT) at bottom = higher Y
+    expect(qr.y).toBeLessThan(id.y);
   });
 });
 
 // ============================================================
-// 4 & 5. Present cells (gold) vs absent cells (ghost)
+// 4 & 5. Revision lane structure
 // ============================================================
-describe('MemoryEvolution -- present vs absent cell treatment', () => {
-  it('renders rect elements for both present and absent cells', () => {
-    // 3 snapshots x 3 blocks = 9 total cells (5 present, 4 absent)
+describe('MemoryEvolution -- revision lane structure', () => {
+  it('renders multiple rect elements (background + run blocks)', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const containerEl = getByTestId('chart-container');
     const rects = containerEl.querySelectorAll('rect');
-    // Must have at least 9 cells for the 3x3 grid
-    expect(rects.length).toBeGreaterThanOrEqual(9);
+    // 8 sections x 1 background rect + run blocks for present sections
+    expect(rects.length).toBeGreaterThanOrEqual(8);
   });
 
-  it('present cells have class "present-cell"', () => {
+  it('rects have different colored fills for different sections', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const containerEl = getByTestId('chart-container');
-    const presentCells = containerEl.querySelectorAll('.present-cell');
-    // hash-perm in all 3, hash-mid in 2, hash-trans in 1 = 6 present
-    expect(presentCells.length).toBe(6);
+    const rects = Array.from(containerEl.querySelectorAll('rect'));
+    const fills = new Set(rects.map((r) => r.getAttribute('fill')).filter(Boolean));
+    // Must have at least 3 distinct fill colors (background #0c0c0c + different lane fills)
+    expect(fills.size).toBeGreaterThanOrEqual(3);
   });
 
-  it('absent cells have class "absent-cell"', () => {
+  it('background rects exist with fill #0c0c0c', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const containerEl = getByTestId('chart-container');
-    const absentCells = containerEl.querySelectorAll('.absent-cell');
-    // 3x3=9 total, 6 present => 3 absent
-    expect(absentCells.length).toBe(3);
+    const rects = Array.from(containerEl.querySelectorAll('rect'));
+    const bgRects = rects.filter((r) => r.getAttribute('fill') === '#0c0c0c');
+    // One background rect per section in SECTION_ORDER = 8
+    expect(bgRects.length).toBe(8);
   });
 
-  it('present cells have gold-ish fill (warm hue, not gray/transparent)', () => {
+  it('seam lines exist when a section has multiple version runs', () => {
+    // Quick Reference has 3 different hashes across 3 snapshots = 3 runs = 2 seams
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const containerEl = getByTestId('chart-container');
-    const presentCell = containerEl.querySelector('.present-cell');
-    expect(presentCell).not.toBeNull();
-    const fill = presentCell!.getAttribute('fill') || '';
-    // Gold tones: #D4A, #C9A, #B8, amber, etc. Must NOT be gray-ish or transparent
-    // Reject pure gray (equal r/g/b channels) and transparent/none
-    expect(fill).not.toBe('none');
-    expect(fill).not.toBe('transparent');
-    expect(fill).not.toBe('');
-    // A gold/amber fill typically has stronger red+green than blue in hex
-    // Or it could be an HSL/RGB string — just ensure it's distinct from absent
-    const absentCell = containerEl.querySelector('.absent-cell');
-    if (absentCell) {
-      const absentFill = absentCell.getAttribute('fill') || '';
-      expect(fill).not.toBe(absentFill);
-    }
+    const lines = Array.from(containerEl.querySelectorAll('line'));
+    const seamLines = lines.filter((l) => l.getAttribute('stroke') === '#f0f2f5');
+    // Quick Reference changes hash each snapshot: 3 runs => 2 seams
+    expect(seamLines.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('absent cells are visually distinct from present cells (different fill)', () => {
+  it('version-run rects have LANE_FILLS colors (not all background color)', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const containerEl = getByTestId('chart-container');
-    const presentCell = containerEl.querySelector('.present-cell');
-    const absentCell = containerEl.querySelector('.absent-cell');
-    expect(presentCell).not.toBeNull();
-    expect(absentCell).not.toBeNull();
-
-    const presentFill = presentCell!.getAttribute('fill');
-    const absentFill = absentCell!.getAttribute('fill');
-    expect(presentFill).not.toBe(absentFill);
-  });
-
-  it('no cell has both present-cell AND absent-cell classes', () => {
-    const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+    const rects = Array.from(containerEl.querySelectorAll('rect'));
+    const nonBgRects = rects.filter((r) => {
+      const fill = r.getAttribute('fill') || '';
+      return fill !== '#0c0c0c' && fill !== '';
     });
-    const containerEl = getByTestId('chart-container');
-    const dualClass = containerEl.querySelectorAll('.present-cell.absent-cell');
-    expect(dualClass.length).toBe(0);
+    // There should be run rects for Identity & Context, Workflow, Quick Reference
+    expect(nonBgRects.length).toBeGreaterThanOrEqual(3);
   });
 });
 
@@ -378,44 +390,37 @@ describe('MemoryEvolution -- X-axis labels', () => {
 });
 
 // ============================================================
-// 8. Y-axis labels (block headings)
+// 8. Y-axis labels (section headings from SECTION_ORDER)
 // ============================================================
 describe('MemoryEvolution -- Y-axis labels', () => {
-  it('renders block headings as text elements on Y axis', () => {
+  it('renders section headings from SECTION_ORDER as Y-axis text', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
-    });
-    const svg = getByTestId('chart-container').querySelector('svg');
-    expect(svg).not.toBeNull();
-    const textEls = Array.from(svg!.querySelectorAll('text'));
-    const allText = textEls.map((t) => t.textContent || '').join(' ');
-    expect(allText).toContain('Permanent Block');
-    expect(allText).toContain('Mid-life Block');
-    expect(allText).toContain('Transient Block');
-  });
-
-  it('renders headings for ALL blocks, not just a subset', () => {
-    const fiveBlocks = [
-      makeBlock({ hash: 'h1', heading: 'Alpha Section' }),
-      makeBlock({ hash: 'h2', heading: 'Beta Section' }),
-      makeBlock({ hash: 'h3', heading: 'Gamma Section' }),
-      makeBlock({ hash: 'h4', heading: 'Delta Section' }),
-      makeBlock({ hash: 'h5', heading: 'Epsilon Section' }),
-    ];
-    const snaps = [
-      makeSnapshot({ session_id: 's1', date: '2026-04-18', block_hashes: ['h1', 'h2', 'h3', 'h4', 'h5'] }),
-    ];
-    const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: snaps, blocks: fiveBlocks },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const svg = getByTestId('chart-container').querySelector('svg');
     expect(svg).not.toBeNull();
     const allText = Array.from(svg!.querySelectorAll('text'))
       .map((t) => t.textContent || '')
       .join(' ');
-    for (const b of fiveBlocks) {
-      expect(allText).toContain(b.heading);
-    }
+    // Section headings from SECTION_ORDER (component truncates long ones with ...)
+    expect(allText).toContain('Identity & Context');
+    expect(allText).toContain('Workflow');
+    expect(allText).toContain('Quick Reference');
+    expect(allText).toContain('Feedback');
+  });
+
+  it('renders classification tags (INVARIANT, VOLATILE, EPHEMERAL) as text', () => {
+    const { getByTestId } = render(MemoryEvolution, {
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
+    });
+    const svg = getByTestId('chart-container').querySelector('svg');
+    expect(svg).not.toBeNull();
+    const allText = Array.from(svg!.querySelectorAll('text'))
+      .map((t) => t.textContent || '')
+      .join(' ');
+    expect(allText).toContain('INVARIANT');
+    expect(allText).toContain('VOLATILE');
+    expect(allText).toContain('EPHEMERAL');
   });
 });
 
@@ -431,34 +436,26 @@ describe('MemoryEvolution -- screen reader table', () => {
     expect(srTable).toBeTruthy();
   });
 
-  it('sr-table contains block headings', () => {
+  it('sr-table contains section headings from SECTION_ORDER', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const srTable = getByTestId('sr-table');
     const content = srTable.textContent || '';
-    expect(content).toContain('Permanent Block');
-    expect(content).toContain('Mid-life Block');
-    expect(content).toContain('Transient Block');
+    expect(content).toContain('Identity & Context');
+    expect(content).toContain('Workflow');
+    expect(content).toContain('Quick Reference');
   });
 
-  it('sr-table contains presence markers for present blocks', () => {
+  it('sr-table contains version markers (v1, v2, etc.) for present sections', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const srTable = getByTestId('sr-table');
     const content = srTable.textContent || '';
-    // Must contain some indicator of presence (checkmark, "present", "yes", bullet, etc.)
-    const hasPresence =
-      content.includes('✓') ||
-      content.includes('✔') ||
-      content.includes('present') ||
-      content.includes('Present') ||
-      content.includes('yes') ||
-      content.includes('Yes') ||
-      content.includes('●') ||
-      content.includes('★');
-    expect(hasPresence).toBe(true);
+    // Version markers like v1, v2, v3 for present content
+    const hasVersion = content.includes('v1') || content.includes('v2') || content.includes('v3');
+    expect(hasVersion).toBe(true);
   });
 
   it('sr-table contains absence markers distinct from presence markers', () => {
@@ -562,61 +559,45 @@ describe('MemoryEvolution -- single snapshot', () => {
 });
 
 // ============================================================
-// 12. Block present in ALL snapshots (permanent)
+// 12. Invariant sections
 // ============================================================
-describe('MemoryEvolution -- permanent block (all snapshots)', () => {
-  it('permanent block has zero absent cells', () => {
-    // hash-perm is in all 3 SORTED_SNAPSHOTS
+describe('MemoryEvolution -- invariant sections', () => {
+  it('renders INVARIANT classification tag in SVG text', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
-    const containerEl = getByTestId('chart-container');
-    // Get all cells, find ones for the permanent block row
-    // Cells should have data attributes identifying block hash or heading
-    const allCells = containerEl.querySelectorAll('.present-cell, .absent-cell');
-    const permCells = Array.from(allCells).filter(
-      (c) =>
-        c.getAttribute('data-hash') === 'hash-perm' ||
-        c.getAttribute('data-heading')?.includes('Permanent'),
-    );
-    // If data-hash attributes exist, permanent block should have 3 present, 0 absent
-    if (permCells.length > 0) {
-      const absentPerm = permCells.filter((c) => c.classList.contains('absent-cell'));
-      expect(absentPerm.length).toBe(0);
-    } else {
-      // Fallback: just verify present-cell count >= snapshot count (at minimum)
-      const presentCells = containerEl.querySelectorAll('.present-cell');
-      expect(presentCells.length).toBeGreaterThanOrEqual(SORTED_SNAPSHOTS.length);
-    }
+    const svg = getByTestId('chart-container').querySelector('svg');
+    expect(svg).not.toBeNull();
+    const allText = Array.from(svg!.querySelectorAll('text'))
+      .map((t) => t.textContent || '')
+      .join(' ');
+    expect(allText).toContain('INVARIANT');
   });
 });
 
 // ============================================================
-// 13. Block present in only ONE snapshot (transient)
+// 13. Ephemeral sections
 // ============================================================
-describe('MemoryEvolution -- transient block (one snapshot)', () => {
-  it('transient block appears at BOTTOM of Y axis (highest y coordinate)', () => {
+describe('MemoryEvolution -- ephemeral sections', () => {
+  it('EPHEMERAL tag is at lower Y than INVARIANT tags (ephemeral at top, invariant at bottom)', () => {
     const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: SORTED_SNAPSHOTS, blocks: SORTED_BLOCKS },
+      props: { snapshots: SECTION_SNAPSHOTS, blocks: SECTION_BLOCKS },
     });
     const svg = getByTestId('chart-container').querySelector('svg');
     expect(svg).not.toBeNull();
     const textEls = Array.from(svg!.querySelectorAll('text'));
-    const labelWithY = textEls
-      .filter((t) => {
-        const txt = t.textContent || '';
-        return txt.includes('Permanent') || txt.includes('Transient');
-      })
-      .map((t) => ({
-        text: t.textContent || '',
-        y: parseFloat(t.getAttribute('y') || '0'),
-      }));
+    const ephemeralEls = textEls.filter((t) => (t.textContent || '') === 'EPHEMERAL');
+    const invariantEls = textEls.filter((t) => (t.textContent || '') === 'INVARIANT');
 
-    expect(labelWithY.length).toBe(2);
-    const perm = labelWithY.find((l) => l.text.includes('Permanent'))!;
-    const trans = labelWithY.find((l) => l.text.includes('Transient'))!;
-    // Transient must have a LARGER y value (lower on screen) than permanent
-    expect(trans.y).toBeGreaterThan(perm.y);
+    expect(ephemeralEls.length).toBeGreaterThanOrEqual(1);
+    expect(invariantEls.length).toBeGreaterThanOrEqual(1);
+
+    const ephemeralY = parseFloat(ephemeralEls[0].getAttribute('y') || '0');
+    // All INVARIANT tags should have higher Y (further down) than EPHEMERAL
+    for (const inv of invariantEls) {
+      const invY = parseFloat(inv.getAttribute('y') || '0');
+      expect(ephemeralY).toBeLessThan(invY);
+    }
   });
 });
 
@@ -638,23 +619,20 @@ describe('MemoryEvolution -- empty block_hashes', () => {
     expect(svg).not.toBeNull();
   });
 
-  it('snapshot with empty block_hashes produces all absent cells for that column', () => {
+  it('empty block_hashes snapshot still renders lane structure with rects', () => {
     const snaps = [
       makeSnapshot({ session_id: 's1', date: '2026-04-18', block_hashes: [] }),
     ];
     const blocks = [
-      makeBlock({ hash: 'h1', heading: 'Block A' }),
-      makeBlock({ hash: 'h2', heading: 'Block B' }),
+      makeBlock({ hash: 'h1', heading: 'Identity & Context' }),
     ];
     const { getByTestId } = render(MemoryEvolution, {
       props: { snapshots: snaps, blocks },
     });
     const containerEl = getByTestId('chart-container');
-    const presentCells = containerEl.querySelectorAll('.present-cell');
-    const absentCells = containerEl.querySelectorAll('.absent-cell');
-    // All cells should be absent when no hashes match
-    expect(presentCells.length).toBe(0);
-    expect(absentCells.length).toBe(2);
+    const rects = containerEl.querySelectorAll('rect');
+    // Lane backgrounds still render even when no hashes match
+    expect(rects.length).toBeGreaterThanOrEqual(8);
   });
 });
 
@@ -741,7 +719,7 @@ describe('MemoryEvolution -- null heading', () => {
     expect(svg).not.toBeNull();
   });
 
-  it('null-heading block still gets a cell rendered (does not silently vanish)', () => {
+  it('null-heading block still renders lanes with rects (does not crash)', () => {
     const snaps = [
       makeSnapshot({ session_id: 's1', date: '2026-04-18', block_hashes: ['hash-null'] }),
     ];
@@ -752,8 +730,9 @@ describe('MemoryEvolution -- null heading', () => {
       props: { snapshots: snaps, blocks },
     });
     const containerEl = getByTestId('chart-container');
-    const cells = containerEl.querySelectorAll('.present-cell, .absent-cell');
-    expect(cells.length).toBeGreaterThanOrEqual(1);
+    const rects = containerEl.querySelectorAll('rect');
+    // Lane backgrounds still rendered (8 sections in SECTION_ORDER)
+    expect(rects.length).toBeGreaterThanOrEqual(8);
   });
 });
 
@@ -832,7 +811,7 @@ describe('MemoryEvolution -- adversarial inputs', () => {
     expect(svg).not.toBeNull();
   });
 
-  it('handles blocks with hashes that never appear in any snapshot', () => {
+  it('handles blocks with hashes that never appear in any snapshot (no crash, rects exist)', () => {
     const snaps = [
       makeSnapshot({ session_id: 's1', date: '2026-04-18', block_hashes: [] }),
     ];
@@ -843,12 +822,14 @@ describe('MemoryEvolution -- adversarial inputs', () => {
       props: { snapshots: snaps, blocks },
     });
     const containerEl = getByTestId('chart-container');
-    // Orphan block should still render as absent
-    const absentCells = containerEl.querySelectorAll('.absent-cell');
-    expect(absentCells.length).toBeGreaterThanOrEqual(1);
+    const svg = containerEl.querySelector('svg');
+    expect(svg).not.toBeNull();
+    // Lane backgrounds still render
+    const rects = containerEl.querySelectorAll('rect');
+    expect(rects.length).toBeGreaterThanOrEqual(8);
   });
 
-  it('handles duplicate hashes in block_hashes array without doubling cells', () => {
+  it('handles duplicate hashes in block_hashes array (no crash, rects exist)', () => {
     const snaps = [
       makeSnapshot({
         session_id: 's1',
@@ -856,14 +837,16 @@ describe('MemoryEvolution -- adversarial inputs', () => {
         block_hashes: ['hash-aaa', 'hash-aaa', 'hash-aaa'],
       }),
     ];
-    const blocks = [makeBlock({ hash: 'hash-aaa', heading: 'Doubled Block' })];
+    const blocks = [makeBlock({ hash: 'hash-aaa', heading: 'Identity & Context' })];
     const { getByTestId } = render(MemoryEvolution, {
       props: { snapshots: snaps, blocks },
     });
     const containerEl = getByTestId('chart-container');
-    const presentCells = containerEl.querySelectorAll('.present-cell');
-    // Dupes in hashes should NOT produce duplicate cells — 1 block x 1 snapshot = 1 cell
-    expect(presentCells.length).toBe(1);
+    const svg = containerEl.querySelector('svg');
+    expect(svg).not.toBeNull();
+    const rects = containerEl.querySelectorAll('rect');
+    // Background rects + at least one run rect for Identity & Context
+    expect(rects.length).toBeGreaterThanOrEqual(9);
   });
 
   it('handles snapshots not sorted by date (out-of-order input)', () => {
@@ -942,67 +925,43 @@ describe('MemoryEvolution -- adversarial inputs', () => {
     expect(svg).not.toBeNull();
   });
 
-  it('24 snapshots x 50 blocks produces exactly 1200 cells', () => {
-    // Simulate full-scale data
-    const hashes = Array.from({ length: 50 }, (_, i) => `block-${i.toString().padStart(3, '0')}`);
-    const snaps = Array.from({ length: 24 }, (_, i) => {
-      // Each snapshot gets a rotating subset of hashes
-      const subset = hashes.slice(0, Math.max(1, (i * 3) % 50));
-      return makeSnapshot({
-        session_id: `snap-${i.toString().padStart(3, '0')}`,
-        date: `2026-04-${(18 + i).toString().padStart(2, '0')}`,
-        token_count: 700 + i * 50,
-        block_hashes: subset,
-      });
-    });
-    const blocks = hashes.map((h, i) =>
-      makeBlock({ hash: h, heading: `Section ${i}` }),
-    );
-    const { getByTestId } = render(MemoryEvolution, {
-      props: { snapshots: snaps, blocks },
-    });
-    const containerEl = getByTestId('chart-container');
-    const allCells = containerEl.querySelectorAll('.present-cell, .absent-cell');
-    // 24 x 50 = 1200
-    expect(allCells.length).toBe(1200);
-  });
-
-  it('all snapshots sharing identical block_hashes produces all-present grid', () => {
+  it('all snapshots sharing identical block_hashes still renders lane rects', () => {
     const snaps = [
       makeSnapshot({ session_id: 's1', date: '2026-04-18', block_hashes: ['h1', 'h2'] }),
       makeSnapshot({ session_id: 's2', date: '2026-04-20', block_hashes: ['h1', 'h2'] }),
     ];
     const blocks = [
-      makeBlock({ hash: 'h1', heading: 'Always A' }),
-      makeBlock({ hash: 'h2', heading: 'Always B' }),
+      makeBlock({ hash: 'h1', heading: 'Identity & Context' }),
+      makeBlock({ hash: 'h2', heading: 'Workflow' }),
     ];
     const { getByTestId } = render(MemoryEvolution, {
       props: { snapshots: snaps, blocks },
     });
     const containerEl = getByTestId('chart-container');
-    const presentCells = containerEl.querySelectorAll('.present-cell');
-    const absentCells = containerEl.querySelectorAll('.absent-cell');
-    expect(presentCells.length).toBe(4); // 2 blocks x 2 snapshots
-    expect(absentCells.length).toBe(0);
+    const svg = containerEl.querySelector('svg');
+    expect(svg).not.toBeNull();
+    const rects = containerEl.querySelectorAll('rect');
+    // 8 background rects + at least 2 run rects (Identity & Context + Workflow)
+    expect(rects.length).toBeGreaterThanOrEqual(10);
   });
 
-  it('completely disjoint block_hashes across snapshots produces correct present/absent split', () => {
+  it('completely disjoint block_hashes across snapshots renders lane rects', () => {
     const snaps = [
       makeSnapshot({ session_id: 's1', date: '2026-04-18', block_hashes: ['h1'] }),
       makeSnapshot({ session_id: 's2', date: '2026-04-20', block_hashes: ['h2'] }),
     ];
     const blocks = [
-      makeBlock({ hash: 'h1', heading: 'Only First' }),
-      makeBlock({ hash: 'h2', heading: 'Only Second' }),
+      makeBlock({ hash: 'h1', heading: 'Identity & Context' }),
+      makeBlock({ hash: 'h2', heading: 'Workflow' }),
     ];
     const { getByTestId } = render(MemoryEvolution, {
       props: { snapshots: snaps, blocks },
     });
     const containerEl = getByTestId('chart-container');
-    const presentCells = containerEl.querySelectorAll('.present-cell');
-    const absentCells = containerEl.querySelectorAll('.absent-cell');
-    // 2 blocks x 2 snapshots = 4 cells; 2 present, 2 absent
-    expect(presentCells.length).toBe(2);
-    expect(absentCells.length).toBe(2);
+    const svg = containerEl.querySelector('svg');
+    expect(svg).not.toBeNull();
+    const rects = containerEl.querySelectorAll('rect');
+    // 8 background rects + at least 2 run rects
+    expect(rects.length).toBeGreaterThanOrEqual(10);
   });
 });
