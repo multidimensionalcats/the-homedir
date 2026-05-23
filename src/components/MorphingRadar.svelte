@@ -376,15 +376,18 @@
     const handleScroll = () => {
       if (!morphSectionEl) return;
       const rect = morphSectionEl.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
+      const stickyTop = window.innerHeight * 0.1;
 
-      // Progress: 0 when section enters viewport at bottom, 1 when it exits at top
-      const sectionHeight = rect.height;
-      const totalTravel = viewportHeight + sectionHeight;
-      const traveled = viewportHeight - rect.top;
-      const progress = Math.max(0, Math.min(1, traveled / totalTravel));
+      // Progress stays 0 until the section top reaches the sticky pin point
+      if (rect.top > stickyTop) {
+        morphProgress = 0;
+        return;
+      }
 
-      morphProgress = progress;
+      // Ramp 0→1 from pin point until section bottom exits viewport
+      const scrolled = stickyTop - rect.top;
+      const totalScroll = rect.height - (window.innerHeight - stickyTop);
+      morphProgress = Math.max(0, Math.min(1, scrolled / Math.max(1, totalScroll)));
     };
 
     // Use IntersectionObserver to know when to listen for scroll
