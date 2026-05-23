@@ -90,15 +90,24 @@ function makeThreeVersionDataset(): ReturnType<typeof makeSession>[] {
 }
 
 // ============================================================
-// 1. Rendering
+// Helper: extract polygon path coordinates as numbers
 // ============================================================
-describe('MorphingRadar -- rendering', () => {
+
+function extractPathNumbers(d: string): number[] {
+  const matches = d.match(/-?\d+\.?\d*/g);
+  return matches ? matches.map(Number) : [];
+}
+
+// ============================================================
+// 1. Rendering Basics
+// ============================================================
+describe('MorphingRadar -- rendering basics', () => {
   it('renders without crashing with session data', () => {
     const { container } = render(MorphingRadar, {
       props: { sessions: [makeSession()] },
     });
     expect(container).toBeTruthy();
-    // Must actually produce content, not just an empty div
+    // Must actually produce content, not just an empty wrapper
     expect(container.innerHTML.length).toBeGreaterThan(10);
   });
 
@@ -108,6 +117,7 @@ describe('MorphingRadar -- rendering', () => {
     });
     const noData = getByTestId('no-data');
     expect(noData).toBeTruthy();
+    expect(noData.textContent!.length).toBeGreaterThan(0);
   });
 
   it('shows no-data when sessions is undefined', () => {
@@ -127,23 +137,22 @@ describe('MorphingRadar -- rendering', () => {
 });
 
 // ============================================================
-// 2. SVG Structure
+// 2. Morph Chart Structure
 // ============================================================
-describe('MorphingRadar -- SVG structure', () => {
-  it('creates SVG element inside chart-container', () => {
+describe('MorphingRadar -- morph chart structure', () => {
+  it('morph-section container exists when sessions provided', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const svg = containerEl.querySelector('svg');
-    expect(svg).not.toBeNull();
+    expect(getByTestId('morph-section')).toBeTruthy();
   });
 
-  it('SVG has role="img" and a non-empty aria-label', () => {
+  it('morph-chart contains an SVG with role="img" and non-empty aria-label', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const svg = getByTestId('chart-container').querySelector('svg');
+    const morphChart = getByTestId('morph-chart');
+    const svg = morphChart.querySelector('svg');
     expect(svg).not.toBeNull();
     expect(svg!.getAttribute('role')).toBe('img');
     const ariaLabel = svg!.getAttribute('aria-label');
@@ -151,175 +160,239 @@ describe('MorphingRadar -- SVG structure', () => {
     expect(ariaLabel!.length).toBeGreaterThan(5);
   });
 
-  it('renders exactly 6 axis lines (class="axis-line")', () => {
+  it('morph chart SVG has exactly 6 .axis-line elements', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const axisLines = containerEl.querySelectorAll('.axis-line');
+    const morphChart = getByTestId('morph-chart');
+    const axisLines = morphChart.querySelectorAll('.axis-line');
     expect(axisLines.length).toBe(6);
   });
 
-  it('renders exactly 6 axis labels (class="axis-label")', () => {
+  it('morph chart SVG has exactly 6 .axis-label elements', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const axisLabels = containerEl.querySelectorAll('.axis-label');
+    const morphChart = getByTestId('morph-chart');
+    const axisLabels = morphChart.querySelectorAll('.axis-label');
     expect(axisLabels.length).toBe(6);
   });
 
-  it('renders at least 2 grid rings (class="grid-ring")', () => {
+  it('morph chart SVG has at least 2 .grid-ring circles', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const gridRings = containerEl.querySelectorAll('.grid-ring');
+    const morphChart = getByTestId('morph-chart');
+    const gridRings = morphChart.querySelectorAll('.grid-ring');
     expect(gridRings.length).toBeGreaterThanOrEqual(2);
   });
-});
 
-// ============================================================
-// 3. Version Polygons
-// ============================================================
-describe('MorphingRadar -- version polygons', () => {
-  it('renders polygon paths with class "version-polygon"', () => {
+  it('morph chart has exactly 1 .version-polygon (the morphing one)', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    expect(polygons.length).toBeGreaterThan(0);
-  });
-
-  it('three polygons when three versions present in data', () => {
-    const { getByTestId } = render(MorphingRadar, {
-      props: { sessions: makeThreeVersionDataset() },
-    });
-    const containerEl = getByTestId('chart-container');
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    expect(polygons.length).toBe(3);
-  });
-
-  it('each polygon has a data-version attribute matching a version string', () => {
-    const { getByTestId } = render(MorphingRadar, {
-      props: { sessions: makeThreeVersionDataset() },
-    });
-    const containerEl = getByTestId('chart-container');
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    const versions = new Set<string>();
-    polygons.forEach((p) => {
-      const v = p.getAttribute('data-version');
-      expect(v).toBeTruthy();
-      // Must be a known version string from the data
-      expect(['4.5', '4.6', '4.7']).toContain(v);
-      versions.add(v!);
-    });
-    // All three versions must be represented
-    expect(versions.size).toBe(3);
-  });
-
-  it('polygons have different fill colors (distinct visual identity)', () => {
-    const { getByTestId } = render(MorphingRadar, {
-      props: { sessions: makeThreeVersionDataset() },
-    });
-    const containerEl = getByTestId('chart-container');
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    const fills = new Set<string>();
-    polygons.forEach((p) => {
-      const fill = p.getAttribute('fill') || p.getAttribute('stroke') || '';
-      expect(fill).toBeTruthy();
-      fills.add(fill);
-    });
-    // All three polygons must have distinct fill/stroke colors
-    expect(fills.size).toBe(3);
-  });
-
-  it('polygons have fill-opacity less than 1 (semi-transparent)', () => {
-    const { getByTestId } = render(MorphingRadar, {
-      props: { sessions: makeThreeVersionDataset() },
-    });
-    const containerEl = getByTestId('chart-container');
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    expect(polygons.length).toBeGreaterThan(0);
-    polygons.forEach((p) => {
-      const opacity = p.getAttribute('fill-opacity');
-      // fill-opacity must exist and be < 1 for semi-transparency
-      expect(opacity).toBeTruthy();
-      const opacityNum = parseFloat(opacity!);
-      expect(opacityNum).toBeLessThan(1);
-      expect(opacityNum).toBeGreaterThan(0);
-    });
-  });
-
-  it('single version in data renders only one polygon', () => {
-    const singleVersionSessions = [
-      makeSessionWithActivity('4.6', 'web', 5, { id: 's1', date: '2026-02-01' }),
-      makeSessionWithActivity('4.6', 'creative', 3, { id: 's2', date: '2026-02-02' }),
-      makeSessionWithActivity('4.6', 'memory', 7, { id: 's3', date: '2026-02-03' }),
-    ];
-    const { getByTestId } = render(MorphingRadar, {
-      props: { sessions: singleVersionSessions },
-    });
-    const containerEl = getByTestId('chart-container');
-    const polygons = containerEl.querySelectorAll('.version-polygon');
+    const morphChart = getByTestId('morph-chart');
+    const polygons = morphChart.querySelectorAll('.version-polygon');
     expect(polygons.length).toBe(1);
-    expect(polygons[0].getAttribute('data-version')).toBe('4.6');
+  });
+
+  it('morph-label element exists and has text content', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    const morphLabel = getByTestId('morph-label');
+    expect(morphLabel).toBeTruthy();
+    expect(morphLabel.textContent!.trim().length).toBeGreaterThan(0);
   });
 });
 
 // ============================================================
-// 4. Data-Driven Shape
+// 3. Small Multiples Structure
 // ============================================================
-describe('MorphingRadar -- data-driven shape', () => {
-  it('version with heavy introspection has larger shape on introspection axis than version with none', () => {
-    // 4.5 has massive introspection, 4.6 has zero
+describe('MorphingRadar -- small multiples structure', () => {
+  it('multiples-section container exists', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    expect(getByTestId('multiples-section')).toBeTruthy();
+  });
+
+  it('three version charts exist: version-chart-4.5, version-chart-4.6, version-chart-4.7', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    expect(getByTestId('version-chart-4.5')).toBeTruthy();
+    expect(getByTestId('version-chart-4.6')).toBeTruthy();
+    expect(getByTestId('version-chart-4.7')).toBeTruthy();
+  });
+
+  it('each version chart contains an SVG with role="img"', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const svg = chart.querySelector('svg');
+      expect(svg).not.toBeNull();
+      expect(svg!.getAttribute('role')).toBe('img');
+    }
+  });
+
+  it('each version chart SVG has 6 .axis-line elements', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const axisLines = chart.querySelectorAll('.axis-line');
+      expect(axisLines.length).toBe(6);
+    }
+  });
+
+  it('each version chart SVG has 6 .axis-label elements', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const axisLabels = chart.querySelectorAll('.axis-label');
+      expect(axisLabels.length).toBe(6);
+    }
+  });
+
+  it('each version chart SVG has at least 2 .grid-ring circles', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const gridRings = chart.querySelectorAll('.grid-ring');
+      expect(gridRings.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('each version chart has exactly 1 .version-polygon', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const polygons = chart.querySelectorAll('.version-polygon');
+      expect(polygons.length).toBe(1);
+    }
+  });
+
+  it('each version chart polygon has data-version matching the version string', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const polygon = chart.querySelector('.version-polygon');
+      expect(polygon).not.toBeNull();
+      expect(polygon!.getAttribute('data-version')).toBe(v);
+    }
+  });
+});
+
+// ============================================================
+// 4. Session Scrubbing
+// ============================================================
+describe('MorphingRadar -- session scrubbing', () => {
+  it('each version chart has a session-scrubber-{v} input[type="range"]', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const scrubber = getByTestId(`session-scrubber-${v}`);
+      expect(scrubber).toBeTruthy();
+      expect(scrubber.tagName.toLowerCase()).toBe('input');
+      expect(scrubber.getAttribute('type')).toBe('range');
+    }
+  });
+
+  it('each version chart has a session-label-{v} with text content', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const label = getByTestId(`session-label-${v}`);
+      expect(label).toBeTruthy();
+      expect(label.textContent!.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it('scrubber min is "0" and max equals version session count minus 1', () => {
+    const dataset = makeThreeVersionDataset();
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: dataset },
+    });
+    // Count sessions per version from the dataset
+    const versionCounts: Record<string, number> = {};
+    for (const s of dataset) {
+      versionCounts[s.version] = (versionCounts[s.version] || 0) + 1;
+    }
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const scrubber = getByTestId(`session-scrubber-${v}`) as HTMLInputElement;
+      expect(scrubber.min).toBe('0');
+      // max should be count - 1 (zero-indexed)
+      const expectedMax = String(versionCounts[v] - 1);
+      expect(scrubber.max).toBe(expectedMax);
+    }
+  });
+
+  it('scrubber for version with single session has min=0 and max=0', () => {
     const sessions = [
-      makeSessionWithActivity('4.5', 'introspection', 20, { id: 's1', date: '2026-01-10' }),
-      makeSessionWithActivity('4.5', 'web', 1, { id: 's2', date: '2026-01-11' }),
-      makeSessionWithActivity('4.6', 'web', 5, { id: 's3', date: '2026-02-10' }),
-      makeSessionWithActivity('4.6', 'creative', 3, { id: 's4', date: '2026-02-11' }),
+      makeSessionWithActivity('4.5', 'introspection', 5, { id: 's1', date: '2026-01-10' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
-    const containerEl = getByTestId('chart-container');
-    const poly45 = containerEl.querySelector('.version-polygon[data-version="4.5"]');
-    const poly46 = containerEl.querySelector('.version-polygon[data-version="4.6"]');
+    const scrubber = getByTestId('session-scrubber-4.5') as HTMLInputElement;
+    expect(scrubber.min).toBe('0');
+    expect(scrubber.max).toBe('0');
+  });
+});
+
+// ============================================================
+// 5. Data-Driven Shape
+// ============================================================
+describe('MorphingRadar -- data-driven shape', () => {
+  it('version with heavy introspection produces different polygon path than version with heavy web research', () => {
+    // Enough sessions that the rolling window (5) doesn't average everything together
+    const sessions = [
+      makeSessionWithActivity('4.5', 'introspection', 20, { id: 's1', date: '2026-01-10' }),
+      makeSessionWithActivity('4.5', 'introspection', 18, { id: 's2', date: '2026-01-11' }),
+      makeSessionWithActivity('4.5', 'introspection', 15, { id: 's3', date: '2026-01-12' }),
+      makeSessionWithActivity('4.5', 'introspection', 12, { id: 's4', date: '2026-01-13' }),
+      makeSessionWithActivity('4.5', 'introspection', 10, { id: 's5', date: '2026-01-14' }),
+      makeSessionWithActivity('4.5', 'web', 1, { id: 's6', date: '2026-01-15' }),
+      makeSessionWithActivity('4.6', 'web', 20, { id: 's7', date: '2026-02-10' }),
+      makeSessionWithActivity('4.6', 'web', 18, { id: 's8', date: '2026-02-11' }),
+      makeSessionWithActivity('4.6', 'web', 15, { id: 's9', date: '2026-02-12' }),
+      makeSessionWithActivity('4.6', 'web', 12, { id: 's10', date: '2026-02-13' }),
+      makeSessionWithActivity('4.6', 'web', 10, { id: 's11', date: '2026-02-14' }),
+      makeSessionWithActivity('4.6', 'introspection', 1, { id: 's12', date: '2026-02-15' }),
+    ];
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions },
+    });
+    const chart45 = getByTestId('version-chart-4.5');
+    const chart46 = getByTestId('version-chart-4.6');
+    const poly45 = chart45.querySelector('.version-polygon');
+    const poly46 = chart46.querySelector('.version-polygon');
     expect(poly45).not.toBeNull();
     expect(poly46).not.toBeNull();
 
-    // Parse the path d attribute to compare vertex positions
-    // For a 6-axis radar, the introspection axis is the first axis (index 0 by convention).
-    // The polygon with introspection activity should extend further from center on that axis.
     const d45 = poly45!.getAttribute('d') || '';
     const d46 = poly46!.getAttribute('d') || '';
     expect(d45.length).toBeGreaterThan(0);
     expect(d46.length).toBeGreaterThan(0);
-    // Polygons must be different shapes since their data differs
+    // Different behavioral profiles must produce different shapes
     expect(d45).not.toBe(d46);
   });
 
-  it('version with more web searches has larger web research axis value', () => {
-    const sessions = [
-      makeSessionWithActivity('4.5', 'web', 1, { id: 's1', date: '2026-01-10' }),
-      makeSessionWithActivity('4.6', 'web', 15, { id: 's2', date: '2026-02-10' }),
-    ];
-    const { getByTestId } = render(MorphingRadar, {
-      props: { sessions },
-    });
-    const containerEl = getByTestId('chart-container');
-    const poly45 = containerEl.querySelector('.version-polygon[data-version="4.5"]');
-    const poly46 = containerEl.querySelector('.version-polygon[data-version="4.6"]');
-    expect(poly45).not.toBeNull();
-    expect(poly46).not.toBeNull();
-    // Different amounts of web research must produce different polygon shapes
-    const d45 = poly45!.getAttribute('d') || '';
-    const d46 = poly46!.getAttribute('d') || '';
-    expect(d45).not.toBe(d46);
-  });
-
-  it('all-void sessions (empty profiles, no web searches) produce polygons at center', () => {
+  it('all-void sessions (empty profiles) produce polygon at center with all finite coordinates, no NaN', () => {
     const sessions = [
       makeSession({ id: 's1', version: '4.5', date: '2026-01-10', attention_profile: {}, web_searches: [] }),
       makeSession({ id: 's2', version: '4.5', date: '2026-01-11', attention_profile: {}, web_searches: [] }),
@@ -327,18 +400,15 @@ describe('MorphingRadar -- data-driven shape', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
-    const containerEl = getByTestId('chart-container');
-    const polygon = containerEl.querySelector('.version-polygon');
+    const chart = getByTestId('version-chart-4.5');
+    const polygon = chart.querySelector('.version-polygon');
     expect(polygon).not.toBeNull();
     const d = polygon!.getAttribute('d') || '';
-    // Parse numeric coordinates from path. All points should be clustered near center.
-    const numbers = d.match(/-?\d+\.?\d*/g);
-    expect(numbers).not.toBeNull();
-    expect(numbers!.length).toBeGreaterThan(0);
-    // No coordinate should be NaN or Infinity
-    numbers!.forEach((n) => {
-      const val = parseFloat(n);
-      expect(Number.isFinite(val)).toBe(true);
+    const numbers = extractPathNumbers(d);
+    expect(numbers.length).toBeGreaterThan(0);
+    numbers.forEach((n) => {
+      expect(Number.isFinite(n)).toBe(true);
+      expect(Number.isNaN(n)).toBe(false);
     });
   });
 
@@ -346,30 +416,32 @@ describe('MorphingRadar -- data-driven shape', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const svg = containerEl.querySelector('svg');
-    expect(svg).not.toBeNull();
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const svg = chart.querySelector('svg');
+      expect(svg).not.toBeNull();
 
-    // Get SVG dimensions
-    const width = parseFloat(svg!.getAttribute('width') || svg!.getAttribute('viewBox')?.split(' ')[2] || '1000');
-    const height = parseFloat(svg!.getAttribute('height') || svg!.getAttribute('viewBox')?.split(' ')[3] || '1000');
+      // Parse viewBox to get bounds
+      const viewBox = svg!.getAttribute('viewBox') || '';
+      const vbParts = viewBox.split(/\s+/).map(Number);
+      const vbWidth = vbParts[2] || 1000;
+      const vbHeight = vbParts[3] || 1000;
 
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    polygons.forEach((p) => {
-      const d = p.getAttribute('d') || '';
-      const numbers = d.match(/-?\d+\.?\d*/g);
-      expect(numbers).not.toBeNull();
-      numbers!.forEach((n) => {
-        const val = parseFloat(n);
-        expect(Number.isFinite(val)).toBe(true);
-        expect(Number.isNaN(val)).toBe(false);
-        // Points should be within reasonable bounds (within 2x the SVG dimensions)
-        expect(Math.abs(val)).toBeLessThan(width * 2 + height * 2);
+      const polygon = chart.querySelector('.version-polygon');
+      expect(polygon).not.toBeNull();
+      const d = polygon!.getAttribute('d') || '';
+      const numbers = extractPathNumbers(d);
+      expect(numbers.length).toBeGreaterThan(0);
+      numbers.forEach((n) => {
+        expect(Number.isFinite(n)).toBe(true);
+        expect(Number.isNaN(n)).toBe(false);
+        // Points should be within reasonable bounds
+        expect(Math.abs(n)).toBeLessThan(vbWidth * 2 + vbHeight * 2);
       });
-    });
+    }
   });
 
-  it('two versions with identical data produce overlapping polygons (same path d values)', () => {
+  it('two versions with identical data produce identical polygon path d attributes in their respective version charts', () => {
     // Give both versions identical activity on every axis
     const sessions = [
       makeSessionWithActivity('4.5', 'introspection', 5, { id: 's1', date: '2026-01-10' }),
@@ -389,49 +461,67 @@ describe('MorphingRadar -- data-driven shape', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
-    const containerEl = getByTestId('chart-container');
-    const poly45 = containerEl.querySelector('.version-polygon[data-version="4.5"]');
-    const poly46 = containerEl.querySelector('.version-polygon[data-version="4.6"]');
+    // When scrubbed to the same session index, the per-session polygons for matching
+    // activity sessions should produce the same shape. But since this is per-session
+    // scrubbing, we test the initial polygon (session index 0) for both — both start
+    // at their first session which has introspection=5 and the same structure.
+    const chart45 = getByTestId('version-chart-4.5');
+    const chart46 = getByTestId('version-chart-4.6');
+    const poly45 = chart45.querySelector('.version-polygon');
+    const poly46 = chart46.querySelector('.version-polygon');
     expect(poly45).not.toBeNull();
     expect(poly46).not.toBeNull();
-    // Identical input data -> identical polygon shape (same d attribute)
+    // The initial session (index 0) for both is introspection=5, so shapes should match
     expect(poly45!.getAttribute('d')).toBe(poly46!.getAttribute('d'));
+  });
+
+  it('single version in data renders only 1 version chart (not 3)', () => {
+    const sessions = [
+      makeSessionWithActivity('4.6', 'web', 5, { id: 's1', date: '2026-02-01' }),
+      makeSessionWithActivity('4.6', 'creative', 3, { id: 's2', date: '2026-02-02' }),
+    ];
+    const { getByTestId, queryByTestId } = render(MorphingRadar, {
+      props: { sessions },
+    });
+    // Should have the 4.6 chart
+    expect(getByTestId('version-chart-4.6')).toBeTruthy();
+    // Should NOT have 4.5 or 4.7 charts
+    expect(queryByTestId('version-chart-4.5')).toBeNull();
+    expect(queryByTestId('version-chart-4.7')).toBeNull();
   });
 });
 
 // ============================================================
-// 5. Axis Labels
+// 6. Axis Labels
 // ============================================================
 describe('MorphingRadar -- axis labels', () => {
-  it('axis labels include text for all 6 dimensions (case-insensitive)', () => {
+  it('all 6 axis dimension names present in morph chart labels (case-insensitive)', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const axisLabels = containerEl.querySelectorAll('.axis-label');
+    const morphChart = getByTestId('morph-chart');
+    const axisLabels = morphChart.querySelectorAll('.axis-label');
     expect(axisLabels.length).toBe(6);
     const allLabelText = Array.from(axisLabels)
       .map((l) => (l.textContent || '').toLowerCase())
       .join(' ');
 
-    // All six axis dimensions must be represented
     expect(allLabelText).toMatch(/introspection/);
-    expect(allLabelText).toMatch(/creativ/); // creative, creativity
-    expect(allLabelText).toMatch(/web/); // web, web research
-    expect(allLabelText).toMatch(/predict/); // predictions, prediction
-    expect(allLabelText).toMatch(/messag/); // messaging, messages
-    expect(allLabelText).toMatch(/memory/); // memory, memory mgmt
+    expect(allLabelText).toMatch(/creativ/);
+    expect(allLabelText).toMatch(/web/);
+    expect(allLabelText).toMatch(/predict/);
+    expect(allLabelText).toMatch(/messag/);
+    expect(allLabelText).toMatch(/memory/);
   });
 
-  it('axis labels are text elements positioned around the chart perimeter (y coordinates vary)', () => {
+  it('labels positioned around perimeter (y coordinates vary, not all same)', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const axisLabels = containerEl.querySelectorAll('.axis-label');
+    const morphChart = getByTestId('morph-chart');
+    const axisLabels = morphChart.querySelectorAll('.axis-label');
     expect(axisLabels.length).toBe(6);
 
-    // Collect y coordinates (or transform-translated y values)
     const yCoords = new Set<number>();
     axisLabels.forEach((label) => {
       const y = parseFloat(label.getAttribute('y') || '0');
@@ -441,19 +531,18 @@ describe('MorphingRadar -- axis labels', () => {
       yCoords.add(Math.round(effectiveY));
     });
 
-    // Labels positioned around a hexagonal perimeter must NOT all share the same y
+    // Labels around a hexagonal perimeter must NOT all share the same y
     expect(yCoords.size).toBeGreaterThan(1);
   });
 
-  it('labels do not overlap with each other (each has distinct position)', () => {
+  it('labels have distinct positions (no overlaps)', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const axisLabels = containerEl.querySelectorAll('.axis-label');
+    const morphChart = getByTestId('morph-chart');
+    const axisLabels = morphChart.querySelectorAll('.axis-label');
     expect(axisLabels.length).toBe(6);
 
-    // Extract (x, y) or transform positions for each label
     const positions: string[] = [];
     axisLabels.forEach((label) => {
       const x = label.getAttribute('x') || '0';
@@ -463,25 +552,26 @@ describe('MorphingRadar -- axis labels', () => {
       positions.push(posKey);
     });
 
-    // All 6 labels must have unique positions
     const uniquePositions = new Set(positions);
     expect(uniquePositions.size).toBe(6);
   });
 });
 
 // ============================================================
-// 6. Accessibility
+// 7. Accessibility
 // ============================================================
 describe('MorphingRadar -- accessibility', () => {
-  it('screen reader table exists with data-testid="sr-table"', () => {
+  it('sr-table exists with a <table> inside', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
     const srTable = getByTestId('sr-table');
     expect(srTable).toBeTruthy();
+    const table = srTable.querySelector('table');
+    expect(table).not.toBeNull();
   });
 
-  it('screen reader table has headers for version and each axis', () => {
+  it('SR table has headers including "Version" and axis names', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
@@ -491,9 +581,8 @@ describe('MorphingRadar -- accessibility', () => {
     const headerTexts = Array.from(headers)
       .map((th) => (th.textContent || '').toLowerCase())
       .join(' ');
-    // Must have a version column header
+
     expect(headerTexts).toMatch(/version/);
-    // Must have headers for each axis (at least a few)
     expect(headerTexts).toMatch(/introspection/);
     expect(headerTexts).toMatch(/creativ/);
     expect(headerTexts).toMatch(/web/);
@@ -502,51 +591,61 @@ describe('MorphingRadar -- accessibility', () => {
     expect(headerTexts).toMatch(/memory/);
   });
 
-  it('legend exists with data-testid="legend"', () => {
+  it('legend exists and mentions version numbers present in data (4.5, 4.6, 4.7)', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
     const legend = getByTestId('legend');
     expect(legend).toBeTruthy();
-  });
-
-  it('legend contains entries mentioning version numbers (4.5, 4.6, 4.7)', () => {
-    const { getByTestId } = render(MorphingRadar, {
-      props: { sessions: makeThreeVersionDataset() },
-    });
-    const legend = getByTestId('legend');
     const legendText = legend.textContent || '';
     expect(legendText).toContain('4.5');
     expect(legendText).toContain('4.6');
     expect(legendText).toContain('4.7');
   });
+
+  it('SVG elements have role="img" in both morph and version charts', () => {
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions: makeThreeVersionDataset() },
+    });
+    // Morph chart SVG
+    const morphChart = getByTestId('morph-chart');
+    const morphSvg = morphChart.querySelector('svg');
+    expect(morphSvg).not.toBeNull();
+    expect(morphSvg!.getAttribute('role')).toBe('img');
+
+    // Version chart SVGs
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const svg = chart.querySelector('svg');
+      expect(svg).not.toBeNull();
+      expect(svg!.getAttribute('role')).toBe('img');
+    }
+  });
 });
 
 // ============================================================
-// 7. Edge Cases
+// 8. Edge Cases
 // ============================================================
 describe('MorphingRadar -- edge cases', () => {
-  it('single session produces a valid polygon (no crash)', () => {
+  it('single session produces valid polygon (no crash)', () => {
     const sessions = [
       makeSessionWithActivity('4.5', 'introspection', 5, { id: 's1', date: '2026-01-10' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
-    const containerEl = getByTestId('chart-container');
-    const svg = containerEl.querySelector('svg');
+    const chart = getByTestId('version-chart-4.5');
+    const svg = chart.querySelector('svg');
     expect(svg).not.toBeNull();
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    expect(polygons.length).toBe(1);
-    // The polygon must have a valid d attribute
-    const d = polygons[0].getAttribute('d') || '';
+    const polygon = chart.querySelector('.version-polygon');
+    expect(polygon).not.toBeNull();
+    const d = polygon!.getAttribute('d') || '';
     expect(d.length).toBeGreaterThan(0);
-    // No NaN in path
     expect(d).not.toContain('NaN');
     expect(d).not.toContain('Infinity');
   });
 
-  it('missing attention_profile on sessions does not crash (treated as zeros)', () => {
+  it('missing attention_profile on sessions does not crash', () => {
     const sessions = [
       {
         id: 'sess-bad-1',
@@ -568,15 +667,14 @@ describe('MorphingRadar -- edge cases', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
-    const containerEl = getByTestId('chart-container');
-    const svg = containerEl.querySelector('svg');
+    const chart = getByTestId('version-chart-4.5');
+    const svg = chart.querySelector('svg');
     expect(svg).not.toBeNull();
-    // Must still render polygon(s)
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    expect(polygons.length).toBeGreaterThan(0);
+    const polygon = chart.querySelector('.version-polygon');
+    expect(polygon).not.toBeNull();
   });
 
-  it('sessions with only one axis of activity still renders 6-axis polygon', () => {
+  it('sessions with only one axis of activity still renders 6-axis polygon with 6 axis lines and labels', () => {
     // All activity on introspection only, nothing else
     const sessions = [
       makeSessionWithActivity('4.5', 'introspection', 10, { id: 's1', date: '2026-01-10' }),
@@ -585,21 +683,20 @@ describe('MorphingRadar -- edge cases', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
-    const containerEl = getByTestId('chart-container');
+    const chart = getByTestId('version-chart-4.5');
     // Still must have 6 axis lines and 6 axis labels
-    expect(containerEl.querySelectorAll('.axis-line').length).toBe(6);
-    expect(containerEl.querySelectorAll('.axis-label').length).toBe(6);
+    expect(chart.querySelectorAll('.axis-line').length).toBe(6);
+    expect(chart.querySelectorAll('.axis-label').length).toBe(6);
     // Polygon must exist
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    expect(polygons.length).toBe(1);
-    // The polygon d should contain at least 6 points (6 vertices of the radar)
-    const d = polygons[0].getAttribute('d') || '';
-    const numbers = d.match(/-?\d+\.?\d*/g) || [];
-    // 6 vertices = at least 12 coordinate values (x,y pairs), plus the close command
+    const polygon = chart.querySelector('.version-polygon');
+    expect(polygon).not.toBeNull();
+    // The polygon d should contain at least 6 coordinate pairs (12 numbers) for 6 vertices
+    const d = polygon!.getAttribute('d') || '';
+    const numbers = extractPathNumbers(d);
     expect(numbers.length).toBeGreaterThanOrEqual(12);
   });
 
-  it('very large values (reads: 999) still renders without overflow or NaN', () => {
+  it('very large values (reads: 999) render without NaN/Infinity/overflow', () => {
     const sessions = [
       makeSessionWithActivity('4.5', 'introspection', 999, { id: 's1', date: '2026-01-10' }),
       makeSessionWithActivity('4.5', 'web', 999, { id: 's2', date: '2026-01-11' }),
@@ -608,21 +705,20 @@ describe('MorphingRadar -- edge cases', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
-    const containerEl = getByTestId('chart-container');
-    const polygon = containerEl.querySelector('.version-polygon');
+    const chart = getByTestId('version-chart-4.5');
+    const polygon = chart.querySelector('.version-polygon');
     expect(polygon).not.toBeNull();
     const d = polygon!.getAttribute('d') || '';
     expect(d).not.toContain('NaN');
     expect(d).not.toContain('Infinity');
     expect(d).not.toContain('undefined');
-    // All coordinates must be finite numbers
-    const numbers = d.match(/-?\d+\.?\d*/g) || [];
+    const numbers = extractPathNumbers(d);
     numbers.forEach((n) => {
-      expect(Number.isFinite(parseFloat(n))).toBe(true);
+      expect(Number.isFinite(n)).toBe(true);
     });
   });
 
-  it('unknown version string ("5.0") still renders polygon for that version', () => {
+  it('unknown version string ("5.0") still renders a version chart for it', () => {
     const sessions = [
       makeSessionWithActivity('5.0', 'creative', 5, { id: 's1', date: '2026-04-10' }),
       makeSessionWithActivity('5.0', 'web', 3, { id: 's2', date: '2026-04-11' }),
@@ -630,21 +726,19 @@ describe('MorphingRadar -- edge cases', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
-    const containerEl = getByTestId('chart-container');
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    expect(polygons.length).toBe(1);
-    expect(polygons[0].getAttribute('data-version')).toBe('5.0');
-    // Must have a fill color (even if fallback)
-    const fill = polygons[0].getAttribute('fill');
-    expect(fill).toBeTruthy();
+    const chart = getByTestId('version-chart-5.0');
+    expect(chart).toBeTruthy();
+    const polygon = chart.querySelector('.version-polygon');
+    expect(polygon).not.toBeNull();
+    expect(polygon!.getAttribute('data-version')).toBe('5.0');
   });
 });
 
 // ============================================================
-// 8. Adversarial / Structural Integrity
+// 9. Adversarial / Structural
 // ============================================================
-describe('MorphingRadar -- adversarial inputs', () => {
-  it('handles sessions with web_searches undefined (not just empty array)', () => {
+describe('MorphingRadar -- adversarial / structural', () => {
+  it('web_searches: undefined handled without crash', () => {
     const sessions = [
       makeSession({
         id: 's1',
@@ -657,12 +751,14 @@ describe('MorphingRadar -- adversarial inputs', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: sessions as any },
     });
-    const containerEl = getByTestId('chart-container');
-    const svg = containerEl.querySelector('svg');
+    const chart = getByTestId('version-chart-4.5');
+    const svg = chart.querySelector('svg');
     expect(svg).not.toBeNull();
+    const polygon = chart.querySelector('.version-polygon');
+    expect(polygon).not.toBeNull();
   });
 
-  it('handles sessions with null web_searches', () => {
+  it('web_searches: null handled without crash', () => {
     const sessions = [
       makeSession({
         id: 's1',
@@ -675,12 +771,14 @@ describe('MorphingRadar -- adversarial inputs', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: sessions as any },
     });
-    const containerEl = getByTestId('chart-container');
-    const svg = containerEl.querySelector('svg');
+    const chart = getByTestId('version-chart-4.5');
+    const svg = chart.querySelector('svg');
     expect(svg).not.toBeNull();
+    const polygon = chart.querySelector('.version-polygon');
+    expect(polygon).not.toBeNull();
   });
 
-  it('handles mixed versions where one version has many sessions and another has one', () => {
+  it('mixed versions with very unequal session counts (10 vs 1) still render all version charts', () => {
     const sessions = [
       // 10 sessions for 4.5
       ...Array.from({ length: 10 }, (_, i) =>
@@ -695,52 +793,145 @@ describe('MorphingRadar -- adversarial inputs', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
-    const containerEl = getByTestId('chart-container');
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    expect(polygons.length).toBe(2);
-    const versions = Array.from(polygons).map((p) => p.getAttribute('data-version'));
-    expect(versions).toContain('4.5');
-    expect(versions).toContain('4.7');
+    // Both version charts must exist
+    expect(getByTestId('version-chart-4.5')).toBeTruthy();
+    expect(getByTestId('version-chart-4.7')).toBeTruthy();
+    // Each must have a polygon
+    const chart45 = getByTestId('version-chart-4.5');
+    const chart47 = getByTestId('version-chart-4.7');
+    expect(chart45.querySelector('.version-polygon')).not.toBeNull();
+    expect(chart47.querySelector('.version-polygon')).not.toBeNull();
   });
 
-  it('polygon paths are closed (end where they start)', () => {
+  it('all polygon paths are closed (end with Z)', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const polygons = containerEl.querySelectorAll('.version-polygon');
-    expect(polygons.length).toBeGreaterThan(0);
-    polygons.forEach((p) => {
-      const d = p.getAttribute('d') || '';
-      // A closed path must end with 'Z' (SVG close-path command)
+    // Check morph chart polygon
+    const morphChart = getByTestId('morph-chart');
+    const morphPolygon = morphChart.querySelector('.version-polygon');
+    expect(morphPolygon).not.toBeNull();
+    const morphD = morphPolygon!.getAttribute('d') || '';
+    expect(morphD.trim().toUpperCase().endsWith('Z')).toBe(true);
+
+    // Check version chart polygons
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const polygon = chart.querySelector('.version-polygon');
+      expect(polygon).not.toBeNull();
+      const d = polygon!.getAttribute('d') || '';
       expect(d.trim().toUpperCase().endsWith('Z')).toBe(true);
-    });
+    }
   });
 
-  it('grid rings are circle or ellipse elements (not rectangles)', () => {
+  it('grid rings are circles/ellipses (not rects)', () => {
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    const containerEl = getByTestId('chart-container');
-    const gridRings = containerEl.querySelectorAll('.grid-ring');
-    expect(gridRings.length).toBeGreaterThanOrEqual(2);
-    gridRings.forEach((ring) => {
+    // Check morph chart grid rings
+    const morphChart = getByTestId('morph-chart');
+    const morphRings = morphChart.querySelectorAll('.grid-ring');
+    expect(morphRings.length).toBeGreaterThanOrEqual(2);
+    morphRings.forEach((ring) => {
       const tag = ring.tagName.toLowerCase();
-      // Grid rings on a radar chart should be circles, ellipses, or polygon paths -- not rects
       expect(['circle', 'ellipse', 'path', 'polygon']).toContain(tag);
       expect(tag).not.toBe('rect');
     });
+
+    // Check version chart grid rings
+    for (const v of ['4.5', '4.6', '4.7']) {
+      const chart = getByTestId(`version-chart-${v}`);
+      const rings = chart.querySelectorAll('.grid-ring');
+      expect(rings.length).toBeGreaterThanOrEqual(2);
+      rings.forEach((ring) => {
+        const tag = ring.tagName.toLowerCase();
+        expect(['circle', 'ellipse', 'path', 'polygon']).toContain(tag);
+        expect(tag).not.toBe('rect');
+      });
+    }
   });
 
-  it('cleans up on unmount -- chart-container gone from DOM', () => {
+  it('component cleans up on unmount (radar-container gone from DOM)', () => {
     const { getByTestId, unmount } = render(MorphingRadar, {
       props: { sessions: makeThreeVersionDataset() },
     });
-    expect(getByTestId('chart-container')).toBeTruthy();
+    expect(getByTestId('radar-container')).toBeTruthy();
 
     unmount();
 
-    const orphan = document.querySelector('[data-testid="chart-container"]');
+    const orphan = document.querySelector('[data-testid="radar-container"]');
     expect(orphan).toBeNull();
+  });
+});
+
+// ============================================================
+// 10. Single-version edge case
+// ============================================================
+describe('MorphingRadar -- single-version edge case', () => {
+  it('when data has only one version: morph chart shows that version shape statically', () => {
+    const sessions = [
+      makeSessionWithActivity('4.6', 'web', 8, { id: 's1', date: '2026-02-01' }),
+      makeSessionWithActivity('4.6', 'creative', 4, { id: 's2', date: '2026-02-02' }),
+      makeSessionWithActivity('4.6', 'memory', 6, { id: 's3', date: '2026-02-03' }),
+    ];
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions },
+    });
+    // Morph chart should still render with its single-polygon morph
+    const morphChart = getByTestId('morph-chart');
+    const svg = morphChart.querySelector('svg');
+    expect(svg).not.toBeNull();
+    const polygon = morphChart.querySelector('.version-polygon');
+    expect(polygon).not.toBeNull();
+    // Polygon path should be valid
+    const d = polygon!.getAttribute('d') || '';
+    expect(d.length).toBeGreaterThan(0);
+    expect(d).not.toContain('NaN');
+  });
+
+  it('when data has only one version: only 1 version chart in multiples section', () => {
+    const sessions = [
+      makeSessionWithActivity('4.6', 'web', 8, { id: 's1', date: '2026-02-01' }),
+      makeSessionWithActivity('4.6', 'creative', 4, { id: 's2', date: '2026-02-02' }),
+    ];
+    const { getByTestId, queryByTestId } = render(MorphingRadar, {
+      props: { sessions },
+    });
+    const multiples = getByTestId('multiples-section');
+    expect(multiples).toBeTruthy();
+    // Only version-chart-4.6 should exist
+    expect(getByTestId('version-chart-4.6')).toBeTruthy();
+    expect(queryByTestId('version-chart-4.5')).toBeNull();
+    expect(queryByTestId('version-chart-4.7')).toBeNull();
+  });
+
+  it('morph-label shows the single version name when only one version present', () => {
+    const sessions = [
+      makeSessionWithActivity('4.7', 'memory', 5, { id: 's1', date: '2026-03-01' }),
+    ];
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions },
+    });
+    const morphLabel = getByTestId('morph-label');
+    expect(morphLabel.textContent).toContain('4.7');
+  });
+
+  it('scrubber and session-label exist even for single-version data', () => {
+    const sessions = [
+      makeSessionWithActivity('4.7', 'memory', 5, { id: 's1', date: '2026-03-01' }),
+      makeSessionWithActivity('4.7', 'web', 3, { id: 's2', date: '2026-03-02' }),
+    ];
+    const { getByTestId } = render(MorphingRadar, {
+      props: { sessions },
+    });
+    const scrubber = getByTestId('session-scrubber-4.7') as HTMLInputElement;
+    expect(scrubber).toBeTruthy();
+    expect(scrubber.getAttribute('type')).toBe('range');
+    expect(scrubber.min).toBe('0');
+    expect(scrubber.max).toBe('1');
+
+    const label = getByTestId('session-label-4.7');
+    expect(label).toBeTruthy();
+    expect(label.textContent!.trim().length).toBeGreaterThan(0);
   });
 });
