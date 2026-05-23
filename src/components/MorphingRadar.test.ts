@@ -31,61 +31,37 @@ function makeSessionWithActivity(
   overrides: Record<string, any> = {},
 ) {
   const profile: Record<string, { reads: number; writes: number }> = {};
-  const webSearches: string[] = [];
 
-  switch (axis) {
-    case 'introspection':
-      profile.private_journal = { reads: amount, writes: 0 };
-      break;
-    case 'creative':
-      profile.writing = { reads: amount, writes: 0 };
-      break;
-    case 'web':
-      for (let i = 0; i < amount; i++) webSearches.push(`search-${i}`);
-      break;
-    case 'predictions':
-      profile.predictions = { reads: amount, writes: 0 };
-      break;
-    case 'messaging':
-      profile.msgs_from_james = { reads: Math.floor(amount / 2), writes: 0 };
-      profile.msgs_to_james = { reads: 0, writes: Math.ceil(amount / 2) };
-      break;
-    case 'memory':
-      profile.memory_files = { reads: amount, writes: 0 };
-      break;
-  }
+  // axis is a direct attention_profile key (e.g., 'private_journal', 'writing', 'experiments')
+  profile[axis] = { reads: amount, writes: 0 };
 
   return makeSession({
     version,
     attention_profile: profile,
-    web_searches: webSearches,
     ...overrides,
   });
 }
 
 /**
  * Build a full three-version dataset with distinct behavioral fingerprints.
- * 4.5: heavy introspection + creative, low web
- * 4.6: heavy web + predictions, low creative
- * 4.7: heavy memory + messaging, moderate everything
+ * 4.5: heavy journal + writing
+ * 4.6: heavy experiments + predictions
+ * 4.7: heavy memory_files + msgs_to_james
  */
 function makeThreeVersionDataset(): ReturnType<typeof makeSession>[] {
   return [
-    // Version 4.5 sessions — introspective writer
-    makeSessionWithActivity('4.5', 'introspection', 10, { id: 's45-a', date: '2026-01-10' }),
-    makeSessionWithActivity('4.5', 'creative', 8, { id: 's45-b', date: '2026-01-11' }),
-    makeSessionWithActivity('4.5', 'web', 1, { id: 's45-c', date: '2026-01-12' }),
-    makeSessionWithActivity('4.5', 'memory', 2, { id: 's45-d', date: '2026-01-13' }),
-    // Version 4.6 sessions — researcher
-    makeSessionWithActivity('4.6', 'web', 12, { id: 's46-a', date: '2026-02-10' }),
+    makeSessionWithActivity('4.5', 'private_journal', 10, { id: 's45-a', date: '2026-01-10' }),
+    makeSessionWithActivity('4.5', 'writing', 8, { id: 's45-b', date: '2026-01-11' }),
+    makeSessionWithActivity('4.5', 'daily_notes', 3, { id: 's45-c', date: '2026-01-12' }),
+    makeSessionWithActivity('4.5', 'memory_files', 2, { id: 's45-d', date: '2026-01-13' }),
+    makeSessionWithActivity('4.6', 'experiments', 12, { id: 's46-a', date: '2026-02-10' }),
     makeSessionWithActivity('4.6', 'predictions', 9, { id: 's46-b', date: '2026-02-11' }),
-    makeSessionWithActivity('4.6', 'creative', 1, { id: 's46-c', date: '2026-02-12' }),
-    makeSessionWithActivity('4.6', 'introspection', 2, { id: 's46-d', date: '2026-02-13' }),
-    // Version 4.7 sessions — communicator
-    makeSessionWithActivity('4.7', 'memory', 11, { id: 's47-a', date: '2026-03-10' }),
-    makeSessionWithActivity('4.7', 'messaging', 10, { id: 's47-b', date: '2026-03-11' }),
-    makeSessionWithActivity('4.7', 'web', 4, { id: 's47-c', date: '2026-03-12' }),
-    makeSessionWithActivity('4.7', 'creative', 5, { id: 's47-d', date: '2026-03-13' }),
+    makeSessionWithActivity('4.6', 'learning', 5, { id: 's46-c', date: '2026-02-12' }),
+    makeSessionWithActivity('4.6', 'scripts', 4, { id: 's46-d', date: '2026-02-13' }),
+    makeSessionWithActivity('4.7', 'memory_files', 11, { id: 's47-a', date: '2026-03-10' }),
+    makeSessionWithActivity('4.7', 'msgs_to_james', 10, { id: 's47-b', date: '2026-03-11' }),
+    makeSessionWithActivity('4.7', 'conversations', 6, { id: 's47-c', date: '2026-03-12' }),
+    makeSessionWithActivity('4.7', 'writing', 5, { id: 's47-d', date: '2026-03-13' }),
   ];
 }
 
@@ -166,7 +142,7 @@ describe('MorphingRadar -- morph chart structure', () => {
     });
     const morphChart = getByTestId('morph-chart');
     const axisLines = morphChart.querySelectorAll('.axis-line');
-    expect(axisLines.length).toBe(6);
+    expect(axisLines.length).toBe(13);
   });
 
   it('morph chart SVG has exactly 6 .axis-label elements', () => {
@@ -175,7 +151,7 @@ describe('MorphingRadar -- morph chart structure', () => {
     });
     const morphChart = getByTestId('morph-chart');
     const axisLabels = morphChart.querySelectorAll('.axis-label');
-    expect(axisLabels.length).toBe(6);
+    expect(axisLabels.length).toBe(13);
   });
 
   it('morph chart SVG has at least 2 .grid-ring circles', () => {
@@ -245,7 +221,7 @@ describe('MorphingRadar -- small multiples structure', () => {
     for (const v of ['4.5', '4.6', '4.7']) {
       const chart = getByTestId(`version-chart-${v}`);
       const axisLines = chart.querySelectorAll('.axis-line');
-      expect(axisLines.length).toBe(6);
+      expect(axisLines.length).toBe(13);
     }
   });
 
@@ -256,7 +232,7 @@ describe('MorphingRadar -- small multiples structure', () => {
     for (const v of ['4.5', '4.6', '4.7']) {
       const chart = getByTestId(`version-chart-${v}`);
       const axisLabels = chart.querySelectorAll('.axis-label');
-      expect(axisLabels.length).toBe(6);
+      expect(axisLabels.length).toBe(13);
     }
   });
 
@@ -343,7 +319,7 @@ describe('MorphingRadar -- session scrubbing', () => {
 
   it('scrubber for version with single session has min=0 and max=0', () => {
     const sessions = [
-      makeSessionWithActivity('4.5', 'introspection', 5, { id: 's1', date: '2026-01-10' }),
+      makeSessionWithActivity('4.5', 'private_journal', 5, { id: 's1', date: '2026-01-10' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -362,18 +338,18 @@ describe('MorphingRadar -- data-driven shape', () => {
     // Each version has exclusive activity on different axes so per-version
     // normalization produces genuinely different shapes (spike on different axis)
     const sessions = [
-      makeSessionWithActivity('4.5', 'introspection', 20, { id: 's1', date: '2026-01-10' }),
-      makeSessionWithActivity('4.5', 'introspection', 18, { id: 's2', date: '2026-01-11' }),
-      makeSessionWithActivity('4.5', 'introspection', 15, { id: 's3', date: '2026-01-12' }),
-      makeSessionWithActivity('4.5', 'introspection', 12, { id: 's4', date: '2026-01-13' }),
-      makeSessionWithActivity('4.5', 'introspection', 10, { id: 's5', date: '2026-01-14' }),
-      makeSessionWithActivity('4.5', 'introspection', 8, { id: 's6', date: '2026-01-15' }),
-      makeSessionWithActivity('4.6', 'web', 20, { id: 's7', date: '2026-02-10' }),
-      makeSessionWithActivity('4.6', 'web', 18, { id: 's8', date: '2026-02-11' }),
-      makeSessionWithActivity('4.6', 'web', 15, { id: 's9', date: '2026-02-12' }),
-      makeSessionWithActivity('4.6', 'web', 12, { id: 's10', date: '2026-02-13' }),
-      makeSessionWithActivity('4.6', 'web', 10, { id: 's11', date: '2026-02-14' }),
-      makeSessionWithActivity('4.6', 'web', 8, { id: 's12', date: '2026-02-15' }),
+      makeSessionWithActivity('4.5', 'private_journal', 20, { id: 's1', date: '2026-01-10' }),
+      makeSessionWithActivity('4.5', 'private_journal', 18, { id: 's2', date: '2026-01-11' }),
+      makeSessionWithActivity('4.5', 'private_journal', 15, { id: 's3', date: '2026-01-12' }),
+      makeSessionWithActivity('4.5', 'private_journal', 12, { id: 's4', date: '2026-01-13' }),
+      makeSessionWithActivity('4.5', 'private_journal', 10, { id: 's5', date: '2026-01-14' }),
+      makeSessionWithActivity('4.5', 'private_journal', 8, { id: 's6', date: '2026-01-15' }),
+      makeSessionWithActivity('4.6', 'experiments', 20, { id: 's7', date: '2026-02-10' }),
+      makeSessionWithActivity('4.6', 'experiments', 18, { id: 's8', date: '2026-02-11' }),
+      makeSessionWithActivity('4.6', 'experiments', 15, { id: 's9', date: '2026-02-12' }),
+      makeSessionWithActivity('4.6', 'experiments', 12, { id: 's10', date: '2026-02-13' }),
+      makeSessionWithActivity('4.6', 'experiments', 10, { id: 's11', date: '2026-02-14' }),
+      makeSessionWithActivity('4.6', 'experiments', 8, { id: 's12', date: '2026-02-15' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -445,19 +421,19 @@ describe('MorphingRadar -- data-driven shape', () => {
   it('two versions with identical data produce identical polygon path d attributes in their respective version charts', () => {
     // Give both versions identical activity on every axis
     const sessions = [
-      makeSessionWithActivity('4.5', 'introspection', 5, { id: 's1', date: '2026-01-10' }),
-      makeSessionWithActivity('4.5', 'creative', 3, { id: 's2', date: '2026-01-11' }),
-      makeSessionWithActivity('4.5', 'web', 4, { id: 's3', date: '2026-01-12' }),
+      makeSessionWithActivity('4.5', 'private_journal', 5, { id: 's1', date: '2026-01-10' }),
+      makeSessionWithActivity('4.5', 'writing', 3, { id: 's2', date: '2026-01-11' }),
+      makeSessionWithActivity('4.5', 'experiments', 4, { id: 's3', date: '2026-01-12' }),
       makeSessionWithActivity('4.5', 'predictions', 2, { id: 's4', date: '2026-01-13' }),
-      makeSessionWithActivity('4.5', 'messaging', 6, { id: 's5', date: '2026-01-14' }),
-      makeSessionWithActivity('4.5', 'memory', 3, { id: 's6', date: '2026-01-15' }),
+      makeSessionWithActivity('4.5', 'msgs_to_james', 6, { id: 's5', date: '2026-01-14' }),
+      makeSessionWithActivity('4.5', 'memory_files', 3, { id: 's6', date: '2026-01-15' }),
       // Exact same activity pattern for 4.6
-      makeSessionWithActivity('4.6', 'introspection', 5, { id: 's7', date: '2026-02-10' }),
-      makeSessionWithActivity('4.6', 'creative', 3, { id: 's8', date: '2026-02-11' }),
-      makeSessionWithActivity('4.6', 'web', 4, { id: 's9', date: '2026-02-12' }),
+      makeSessionWithActivity('4.6', 'private_journal', 5, { id: 's7', date: '2026-02-10' }),
+      makeSessionWithActivity('4.6', 'writing', 3, { id: 's8', date: '2026-02-11' }),
+      makeSessionWithActivity('4.6', 'experiments', 4, { id: 's9', date: '2026-02-12' }),
       makeSessionWithActivity('4.6', 'predictions', 2, { id: 's10', date: '2026-02-13' }),
-      makeSessionWithActivity('4.6', 'messaging', 6, { id: 's11', date: '2026-02-14' }),
-      makeSessionWithActivity('4.6', 'memory', 3, { id: 's12', date: '2026-02-15' }),
+      makeSessionWithActivity('4.6', 'msgs_to_james', 6, { id: 's11', date: '2026-02-14' }),
+      makeSessionWithActivity('4.6', 'memory_files', 3, { id: 's12', date: '2026-02-15' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -478,8 +454,8 @@ describe('MorphingRadar -- data-driven shape', () => {
 
   it('single version in data renders only 1 version chart (not 3)', () => {
     const sessions = [
-      makeSessionWithActivity('4.6', 'web', 5, { id: 's1', date: '2026-02-01' }),
-      makeSessionWithActivity('4.6', 'creative', 3, { id: 's2', date: '2026-02-02' }),
+      makeSessionWithActivity('4.6', 'experiments', 5, { id: 's1', date: '2026-02-01' }),
+      makeSessionWithActivity('4.6', 'writing', 3, { id: 's2', date: '2026-02-02' }),
     ];
     const { getByTestId, queryByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -502,17 +478,20 @@ describe('MorphingRadar -- axis labels', () => {
     });
     const morphChart = getByTestId('morph-chart');
     const axisLabels = morphChart.querySelectorAll('.axis-label');
-    expect(axisLabels.length).toBe(6);
+    expect(axisLabels.length).toBe(13);
     const allLabelText = Array.from(axisLabels)
       .map((l) => (l.textContent || '').toLowerCase())
       .join(' ');
 
-    expect(allLabelText).toMatch(/introspection/);
-    expect(allLabelText).toMatch(/creativ/);
-    expect(allLabelText).toMatch(/web/);
-    expect(allLabelText).toMatch(/predict/);
-    expect(allLabelText).toMatch(/messag/);
+    expect(allLabelText).toMatch(/conversation/);
+    expect(allLabelText).toMatch(/daily notes/);
+    expect(allLabelText).toMatch(/experiment/);
+    expect(allLabelText).toMatch(/learning/);
     expect(allLabelText).toMatch(/memory/);
+    expect(allLabelText).toMatch(/predict/);
+    expect(allLabelText).toMatch(/journal/);
+    expect(allLabelText).toMatch(/script/);
+    expect(allLabelText).toMatch(/writing/);
   });
 
   it('labels positioned around perimeter (y coordinates vary, not all same)', () => {
@@ -521,7 +500,7 @@ describe('MorphingRadar -- axis labels', () => {
     });
     const morphChart = getByTestId('morph-chart');
     const axisLabels = morphChart.querySelectorAll('.axis-label');
-    expect(axisLabels.length).toBe(6);
+    expect(axisLabels.length).toBe(13);
 
     const yCoords = new Set<number>();
     axisLabels.forEach((label) => {
@@ -542,7 +521,7 @@ describe('MorphingRadar -- axis labels', () => {
     });
     const morphChart = getByTestId('morph-chart');
     const axisLabels = morphChart.querySelectorAll('.axis-label');
-    expect(axisLabels.length).toBe(6);
+    expect(axisLabels.length).toBe(13);
 
     const positions: string[] = [];
     axisLabels.forEach((label) => {
@@ -554,7 +533,7 @@ describe('MorphingRadar -- axis labels', () => {
     });
 
     const uniquePositions = new Set(positions);
-    expect(uniquePositions.size).toBe(6);
+    expect(uniquePositions.size).toBe(13);
   });
 });
 
@@ -584,11 +563,11 @@ describe('MorphingRadar -- accessibility', () => {
       .join(' ');
 
     expect(headerTexts).toMatch(/version/);
-    expect(headerTexts).toMatch(/introspection/);
-    expect(headerTexts).toMatch(/creativ/);
-    expect(headerTexts).toMatch(/web/);
+    expect(headerTexts).toMatch(/conversation/);
+    expect(headerTexts).toMatch(/experiment/);
     expect(headerTexts).toMatch(/predict/);
-    expect(headerTexts).toMatch(/messag/);
+    expect(headerTexts).toMatch(/journal/);
+    expect(headerTexts).toMatch(/writing/);
     expect(headerTexts).toMatch(/memory/);
   });
 
@@ -630,7 +609,7 @@ describe('MorphingRadar -- accessibility', () => {
 describe('MorphingRadar -- edge cases', () => {
   it('single session produces valid polygon (no crash)', () => {
     const sessions = [
-      makeSessionWithActivity('4.5', 'introspection', 5, { id: 's1', date: '2026-01-10' }),
+      makeSessionWithActivity('4.5', 'private_journal', 5, { id: 's1', date: '2026-01-10' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -678,30 +657,30 @@ describe('MorphingRadar -- edge cases', () => {
   it('sessions with only one axis of activity still renders 6-axis polygon with 6 axis lines and labels', () => {
     // All activity on introspection only, nothing else
     const sessions = [
-      makeSessionWithActivity('4.5', 'introspection', 10, { id: 's1', date: '2026-01-10' }),
-      makeSessionWithActivity('4.5', 'introspection', 8, { id: 's2', date: '2026-01-11' }),
+      makeSessionWithActivity('4.5', 'private_journal', 10, { id: 's1', date: '2026-01-10' }),
+      makeSessionWithActivity('4.5', 'private_journal', 8, { id: 's2', date: '2026-01-11' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
     });
     const chart = getByTestId('version-chart-4.5');
     // Still must have 6 axis lines and 6 axis labels
-    expect(chart.querySelectorAll('.axis-line').length).toBe(6);
-    expect(chart.querySelectorAll('.axis-label').length).toBe(6);
+    expect(chart.querySelectorAll('.axis-line').length).toBe(13);
+    expect(chart.querySelectorAll('.axis-label').length).toBe(13);
     // Polygon must exist
     const polygon = chart.querySelector('.version-polygon');
     expect(polygon).not.toBeNull();
     // The polygon d should contain at least 6 coordinate pairs (12 numbers) for 6 vertices
     const d = polygon!.getAttribute('d') || '';
     const numbers = extractPathNumbers(d);
-    expect(numbers.length).toBeGreaterThanOrEqual(12);
+    expect(numbers.length).toBeGreaterThanOrEqual(26);
   });
 
   it('very large values (reads: 999) render without NaN/Infinity/overflow', () => {
     const sessions = [
-      makeSessionWithActivity('4.5', 'introspection', 999, { id: 's1', date: '2026-01-10' }),
-      makeSessionWithActivity('4.5', 'web', 999, { id: 's2', date: '2026-01-11' }),
-      makeSessionWithActivity('4.5', 'memory', 999, { id: 's3', date: '2026-01-12' }),
+      makeSessionWithActivity('4.5', 'private_journal', 999, { id: 's1', date: '2026-01-10' }),
+      makeSessionWithActivity('4.5', 'experiments', 999, { id: 's2', date: '2026-01-11' }),
+      makeSessionWithActivity('4.5', 'memory_files', 999, { id: 's3', date: '2026-01-12' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -721,8 +700,8 @@ describe('MorphingRadar -- edge cases', () => {
 
   it('unknown version string ("5.0") still renders a version chart for it', () => {
     const sessions = [
-      makeSessionWithActivity('5.0', 'creative', 5, { id: 's1', date: '2026-04-10' }),
-      makeSessionWithActivity('5.0', 'web', 3, { id: 's2', date: '2026-04-11' }),
+      makeSessionWithActivity('5.0', 'writing', 5, { id: 's1', date: '2026-04-10' }),
+      makeSessionWithActivity('5.0', 'experiments', 3, { id: 's2', date: '2026-04-11' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -783,13 +762,13 @@ describe('MorphingRadar -- adversarial / structural', () => {
     const sessions = [
       // 10 sessions for 4.5
       ...Array.from({ length: 10 }, (_, i) =>
-        makeSessionWithActivity('4.5', 'introspection', i + 1, {
+        makeSessionWithActivity('4.5', 'private_journal', i + 1, {
           id: `s45-${i}`,
           date: `2026-01-${(10 + i).toString().padStart(2, '0')}`,
         }),
       ),
       // Just 1 session for 4.7
-      makeSessionWithActivity('4.7', 'web', 3, { id: 's47-0', date: '2026-03-10' }),
+      makeSessionWithActivity('4.7', 'experiments', 3, { id: 's47-0', date: '2026-03-10' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -871,9 +850,9 @@ describe('MorphingRadar -- adversarial / structural', () => {
 describe('MorphingRadar -- single-version edge case', () => {
   it('when data has only one version: morph chart shows that version shape statically', () => {
     const sessions = [
-      makeSessionWithActivity('4.6', 'web', 8, { id: 's1', date: '2026-02-01' }),
-      makeSessionWithActivity('4.6', 'creative', 4, { id: 's2', date: '2026-02-02' }),
-      makeSessionWithActivity('4.6', 'memory', 6, { id: 's3', date: '2026-02-03' }),
+      makeSessionWithActivity('4.6', 'experiments', 8, { id: 's1', date: '2026-02-01' }),
+      makeSessionWithActivity('4.6', 'writing', 4, { id: 's2', date: '2026-02-02' }),
+      makeSessionWithActivity('4.6', 'memory_files', 6, { id: 's3', date: '2026-02-03' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -892,8 +871,8 @@ describe('MorphingRadar -- single-version edge case', () => {
 
   it('when data has only one version: only 1 version chart in multiples section', () => {
     const sessions = [
-      makeSessionWithActivity('4.6', 'web', 8, { id: 's1', date: '2026-02-01' }),
-      makeSessionWithActivity('4.6', 'creative', 4, { id: 's2', date: '2026-02-02' }),
+      makeSessionWithActivity('4.6', 'experiments', 8, { id: 's1', date: '2026-02-01' }),
+      makeSessionWithActivity('4.6', 'writing', 4, { id: 's2', date: '2026-02-02' }),
     ];
     const { getByTestId, queryByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -908,7 +887,7 @@ describe('MorphingRadar -- single-version edge case', () => {
 
   it('morph-label shows the single version name when only one version present', () => {
     const sessions = [
-      makeSessionWithActivity('4.7', 'memory', 5, { id: 's1', date: '2026-03-01' }),
+      makeSessionWithActivity('4.7', 'memory_files', 5, { id: 's1', date: '2026-03-01' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
@@ -919,8 +898,8 @@ describe('MorphingRadar -- single-version edge case', () => {
 
   it('scrubber and session-label exist even for single-version data', () => {
     const sessions = [
-      makeSessionWithActivity('4.7', 'memory', 5, { id: 's1', date: '2026-03-01' }),
-      makeSessionWithActivity('4.7', 'web', 3, { id: 's2', date: '2026-03-02' }),
+      makeSessionWithActivity('4.7', 'memory_files', 5, { id: 's1', date: '2026-03-01' }),
+      makeSessionWithActivity('4.7', 'experiments', 3, { id: 's2', date: '2026-03-02' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },

@@ -17,76 +17,41 @@
 
   // Radar axis definitions — order matters for angle assignment
   const AXES = [
-    { key: 'introspection', label: 'Introspection', shortLabel: 'Introspect.', profileKey: 'private_journal' },
-    { key: 'creative', label: 'Creative Output', shortLabel: 'Creative', profileKey: 'writing' },
-    { key: 'web', label: 'Web Research', shortLabel: 'Web', profileKey: null },
-    { key: 'predictions', label: 'Predictions', shortLabel: 'Predict.', profileKey: 'predictions' },
-    { key: 'messaging', label: 'Messaging', shortLabel: 'Messaging', profileKey: null },
-    { key: 'memory', label: 'Memory Mgmt', shortLabel: 'Memory', profileKey: 'memory_files' },
+    { key: 'conversations', label: 'Conversations', shortLabel: 'Convo' },
+    { key: 'daily_notes', label: 'Daily Notes', shortLabel: 'Notes' },
+    { key: 'experiments', label: 'Experiments', shortLabel: 'Exper.' },
+    { key: 'learning', label: 'Learning', shortLabel: 'Learn.' },
+    { key: 'memory_files', label: 'Memory Files', shortLabel: 'Memory' },
+    { key: 'msgs_from_james', label: 'Msgs From James', shortLabel: 'From J' },
+    { key: 'msgs_to_james', label: 'Msgs To James', shortLabel: 'To J' },
+    { key: 'other', label: 'Other', shortLabel: 'Other' },
+    { key: 'predictions', label: 'Predictions', shortLabel: 'Predict.' },
+    { key: 'private_journal', label: 'Private Journal', shortLabel: 'Journal' },
+    { key: 'scripts', label: 'Scripts', shortLabel: 'Scripts' },
+    { key: 'tamagotchi', label: 'Tamagotchi', shortLabel: 'Tama.' },
+    { key: 'writing', label: 'Writing', shortLabel: 'Writing' },
   ] as const;
 
   const NUM_AXES = AXES.length;
   const GRID_LEVELS = [0.25, 0.5, 0.75, 1.0];
 
-  // Morph chart dimensions
   const MORPH_CX = 300;
   const MORPH_CY = 300;
   const MORPH_RADIUS = 180;
-  const MORPH_LABEL_OFFSET = 25;
+  const MORPH_LABEL_OFFSET = 30;
 
-  // Small chart dimensions
   const SMALL_CX = 140;
   const SMALL_CY = 140;
-  const SMALL_RADIUS = 90;
-  const SMALL_LABEL_OFFSET = 18;
+  const SMALL_RADIUS = 80;
+  const SMALL_LABEL_OFFSET = 16;
 
-  // Determine if we have valid session data
   let hasSessions = $derived(Array.isArray(sessions) && sessions.length > 0);
 
-  /**
-   * Extract the raw value for a given axis from a single session.
-   */
   function axisValue(session: any, axisKey: string): number {
     const profile = session.attention_profile;
-    switch (axisKey) {
-      case 'introspection': {
-        if (!profile || !profile.private_journal) return 0;
-        const pj = profile.private_journal;
-        return Math.max(0, (pj.reads || 0) + (pj.writes || 0));
-      }
-      case 'creative': {
-        if (!profile || !profile.writing) return 0;
-        const w = profile.writing;
-        return Math.max(0, (w.reads || 0) + (w.writes || 0));
-      }
-      case 'web': {
-        if (!Array.isArray(session.web_searches)) return 0;
-        return Math.max(0, session.web_searches.length);
-      }
-      case 'predictions': {
-        if (!profile || !profile.predictions) return 0;
-        const p = profile.predictions;
-        return Math.max(0, (p.reads || 0) + (p.writes || 0));
-      }
-      case 'messaging': {
-        if (!profile) return 0;
-        let total = 0;
-        if (profile.msgs_from_james) {
-          total += (profile.msgs_from_james.reads || 0) + (profile.msgs_from_james.writes || 0);
-        }
-        if (profile.msgs_to_james) {
-          total += (profile.msgs_to_james.reads || 0) + (profile.msgs_to_james.writes || 0);
-        }
-        return Math.max(0, total);
-      }
-      case 'memory': {
-        if (!profile || !profile.memory_files) return 0;
-        const m = profile.memory_files;
-        return Math.max(0, (m.reads || 0) + (m.writes || 0));
-      }
-      default:
-        return 0;
-    }
+    if (!profile || !profile[axisKey]) return 0;
+    const entry = profile[axisKey];
+    return Math.max(0, (entry.reads || 0) + (entry.writes || 0));
   }
 
   /**
