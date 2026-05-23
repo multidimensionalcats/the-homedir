@@ -429,16 +429,26 @@
     return groups;
   });
 
-  // Per-version max per axis (so each version's charts show meaningful shapes)
+  // Per-version rolling-average max per axis
+  // Using the same window size as the rendering, so the most active window fills the chart
+  const SM_WINDOW = 11;
   let versionMaxPerAxis = $derived.by(() => {
     if (!hasSessions) return new Map<string, number[]>();
     const result = new Map<string, number[]>();
+    const halfW = Math.floor(SM_WINDOW / 2);
     for (const [v, vSessions] of groupedSessions) {
       const maxes: number[] = new Array(NUM_AXES).fill(0);
-      for (const s of vSessions) {
+      for (let ci = 0; ci < vSessions.length; ci++) {
+        const ws = Math.max(0, ci - halfW);
+        const we = Math.min(vSessions.length - 1, ci + halfW);
+        const wc = we - ws + 1;
         for (let i = 0; i < NUM_AXES; i++) {
-          const val = axisValue(s, AXES[i].key);
-          if (val > maxes[i]) maxes[i] = val;
+          let sum = 0;
+          for (let j = ws; j <= we; j++) {
+            sum += axisValue(vSessions[j], AXES[i].key);
+          }
+          const avg = sum / wc;
+          if (avg > maxes[i]) maxes[i] = avg;
         }
       }
       result.set(v, maxes);
@@ -476,8 +486,7 @@
 
       renderChartFrame(svg, SMALL_CX, SMALL_CY, SMALL_RADIUS, SMALL_LABEL_OFFSET, '9px', true);
 
-      const WINDOW = 11;
-      const halfW = Math.floor(WINDOW / 2);
+      const halfW = Math.floor(SM_WINDOW / 2);
       const winStart = Math.max(0, currentIndex - halfW);
       const winEnd = Math.min(vSessions.length - 1, currentIndex + halfW);
       const winCount = winEnd - winStart + 1;
@@ -553,10 +562,12 @@
   {#if !hasSessions}
     <div data-testid="no-data">No session data available</div>
   {:else}
-    <!-- Part 1: Big Morph Chart -->
+    <!-- Part 1: Big Morph Chart (sticky scrollytelling) -->
     <div data-testid="morph-section" bind:this={morphSectionEl} class="morph-section">
-      <div data-testid="morph-chart" bind:this={morphChartEl} class="morph-chart"></div>
-      <div data-testid="morph-label" class="morph-label">{currentMorphLabel}</div>
+      <div class="morph-sticky">
+        <div data-testid="morph-chart" bind:this={morphChartEl} class="morph-chart"></div>
+        <div data-testid="morph-label" class="morph-label">{currentMorphLabel}</div>
+      </div>
     </div>
 
     <!-- Part 2: Small Multiples -->
@@ -601,8 +612,14 @@
 <style>
   .morph-section {
     position: relative;
+    min-height: 250vh;
     max-width: 600px;
     margin: 0 auto 2rem;
+  }
+
+  .morph-sticky {
+    position: sticky;
+    top: 10vh;
   }
 
   .morph-chart {

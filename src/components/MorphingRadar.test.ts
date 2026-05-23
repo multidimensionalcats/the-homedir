@@ -359,20 +359,21 @@ describe('MorphingRadar -- session scrubbing', () => {
 // ============================================================
 describe('MorphingRadar -- data-driven shape', () => {
   it('version with heavy introspection produces different polygon path than version with heavy web research', () => {
-    // Enough sessions that the rolling window (5) doesn't average everything together
+    // Each version has exclusive activity on different axes so per-version
+    // normalization produces genuinely different shapes (spike on different axis)
     const sessions = [
       makeSessionWithActivity('4.5', 'introspection', 20, { id: 's1', date: '2026-01-10' }),
       makeSessionWithActivity('4.5', 'introspection', 18, { id: 's2', date: '2026-01-11' }),
       makeSessionWithActivity('4.5', 'introspection', 15, { id: 's3', date: '2026-01-12' }),
       makeSessionWithActivity('4.5', 'introspection', 12, { id: 's4', date: '2026-01-13' }),
       makeSessionWithActivity('4.5', 'introspection', 10, { id: 's5', date: '2026-01-14' }),
-      makeSessionWithActivity('4.5', 'web', 1, { id: 's6', date: '2026-01-15' }),
+      makeSessionWithActivity('4.5', 'introspection', 8, { id: 's6', date: '2026-01-15' }),
       makeSessionWithActivity('4.6', 'web', 20, { id: 's7', date: '2026-02-10' }),
       makeSessionWithActivity('4.6', 'web', 18, { id: 's8', date: '2026-02-11' }),
       makeSessionWithActivity('4.6', 'web', 15, { id: 's9', date: '2026-02-12' }),
       makeSessionWithActivity('4.6', 'web', 12, { id: 's10', date: '2026-02-13' }),
       makeSessionWithActivity('4.6', 'web', 10, { id: 's11', date: '2026-02-14' }),
-      makeSessionWithActivity('4.6', 'introspection', 1, { id: 's12', date: '2026-02-15' }),
+      makeSessionWithActivity('4.6', 'web', 8, { id: 's12', date: '2026-02-15' }),
     ];
     const { getByTestId } = render(MorphingRadar, {
       props: { sessions },
