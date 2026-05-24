@@ -108,7 +108,7 @@
       normalized.set(v, norm);
     }
 
-    return { versions, normalized };
+    return { versions, normalized, maxPerAxis };
   }
 
   /**
@@ -397,32 +397,7 @@
     return groups;
   });
 
-  // Per-version rolling-average max per axis
-  // Using the same window size as the rendering, so the most active window fills the chart
   const SM_WINDOW = 11;
-  let versionMaxPerAxis = $derived.by(() => {
-    if (!hasSessions) return new Map<string, number[]>();
-    const result = new Map<string, number[]>();
-    const halfW = Math.floor(SM_WINDOW / 2);
-    for (const [v, vSessions] of groupedSessions) {
-      const maxes: number[] = new Array(NUM_AXES).fill(0);
-      for (let ci = 0; ci < vSessions.length; ci++) {
-        const ws = Math.max(0, ci - halfW);
-        const we = Math.min(vSessions.length - 1, ci + halfW);
-        const wc = we - ws + 1;
-        for (let i = 0; i < NUM_AXES; i++) {
-          let sum = 0;
-          for (let j = ws; j <= we; j++) {
-            sum += axisValue(vSessions[j], AXES[i].key);
-          }
-          const avg = sum / wc;
-          if (avg > maxes[i]) maxes[i] = avg;
-        }
-      }
-      result.set(v, maxes);
-    }
-    return result;
-  });
 
   // =============================================================
   // Effect: Small multiples charts
@@ -459,7 +434,7 @@
       const winEnd = Math.min(vSessions.length - 1, currentIndex + halfW);
       const winCount = winEnd - winStart + 1;
 
-      const vMax = versionMaxPerAxis.get(v) || new Array(NUM_AXES).fill(0);
+      const gMax = normalizedData.maxPerAxis;
       const normalizedValues: number[] = [];
       for (let i = 0; i < NUM_AXES; i++) {
         let sum = 0;
@@ -468,10 +443,10 @@
         }
         const avg = winCount > 0 ? sum / winCount : 0;
         const FLOOR = 0.08;
-        if (vMax[i] === 0) {
+        if (gMax[i] === 0) {
           normalizedValues.push(FLOOR);
         } else {
-          normalizedValues.push(Math.max(FLOOR, avg / vMax[i]));
+          normalizedValues.push(Math.max(FLOOR, avg / gMax[i]));
         }
       }
 
