@@ -1,100 +1,121 @@
 # HANDOVER.md
 
-## Current State: Phase 4 Execution — Session 4 Complete
+## Current State: Phase 5 Planning Complete — Narrative Redesign
 
-### Phase 4 Plan
+### Phase 5 Plan
 
-**Location:** `/home/james/.claude/plans/we-re-never-done-plan-steady-moler.md`
+**Location:** `.claude/plans/phase-5-narrative-redesign.md`
 
-### Completed Items
+**Summary:** The exhibit is being redesigned from a data-dashboard approach to a text-first scrollytelling experience. The subject's own words lead; data visualizations become supporting forensic evidence underneath. Four external models were consulted (Minimax M2.7, GPT-5.5, Kimi K2.6, Opus 4.8).
 
-| # | Item | Tests | Status |
-|---|------|-------|--------|
-| 4.0 | Data Transform Layer (`src/lib/transforms.ts`) | 82 | closed |
-| 4.1 | Chart Utilities (`src/lib/chart-utils.ts`) | 55 | closed |
-| 4.2 | Stacked Area Prototype | 16 | review |
-| 4.3 | Heatmap Prototype | 16 | review |
-| 4.4 | Presence Matrix Prototype | 16 | review |
-| 4.5 | Ridge Plot Prototype | 14 | review |
-| 4.6 | Small Multiples Prototype | 14 | review |
-| 4.7 | Evaluation Page (`/prototypes/attention`) | — | review |
-| 4.8 | **AttentionViz Production** (`src/components/AttentionViz.svelte`) | 33 | review |
-| 4.9 | **MemoryEvolution** (`src/components/MemoryEvolution.svelte`) | 56 | review |
-| 4.10 | **ReconstructIdentity** (`src/components/ReconstructIdentity.svelte`) | 45 | review |
-| 4.11 | **MorphingRadar** (`src/components/MorphingRadar.svelte`) | 38 | review |
-| 4.12 | **MessageTimeline** (`src/components/MessageTimeline.svelte`) | 40 | review |
-| 4.13 | **PredictionTracker** (`src/components/PredictionTracker.svelte`) | 31 | review |
-| 4.14 | **PetTimeline** (`src/components/PetTimeline.svelte`) | 25 | review |
-| 4.15 | **SessionExplorer** (`src/components/SessionExplorer.svelte`) | 25 | review |
+### What Happened This Session
 
-**Total: 741 JS tests, 592 Python tests. All CI green.**
+1. **Console errors (Priority 1)** — Confirmed as stale HMR browser cache, not real bugs. No code changes needed.
 
-### Session 4 Summary
+2. **MorphingRadar redesign (Priority 2)** — 6 commits:
+   - Scroll-driven morph hero chart (sticky, progress starts at pin point)
+   - Three small per-version charts with session scrubbers (11-session rolling average)
+   - Expanded from 6 to all 13 attention categories
+   - Aligned normalization between big and small charts
+   - Added prefers-reduced-motion, abbreviated labels, visibility floor
 
-Built all 6 remaining production components (4.10–4.15), fixed MemoryEvolution CI failures, then did a visual review pass that uncovered significant issues. Fixed the most critical ones before session end.
+3. **Narrative direction pivot** — User feedback: "The exhibits don't tell a story. It's a badly-curated museum, very web-2.0." Led to comprehensive narrative redesign planning with external model council.
 
-#### Components Built
+### Phase 4 Components (all built, tests passing)
 
-| Component | Type | Key Feature |
-|-----------|------|-------------|
-| ReconstructIdentity | Interactive UI | 12K token budget, file card selection, coherence degradation |
-| MorphingRadar | D3 radar chart | 6-axis version fingerprints (4.5/4.6/4.7) |
-| MessageTimeline | D3 swim lanes | Two-lane message dots, date-normalized (2024/3036 → 2026) |
-| PredictionTracker | D3 scatter plot | 21 gray phantom dots, confidence × date |
-| PetTimeline | D3 vertical timelines | Pixel (2 events) and Echo (7 events), ground-truth data |
-| SessionExplorer | Svelte UI | Session detail card with prev/next navigation |
+| # | Component | Tests | Status |
+|---|-----------|-------|--------|
+| 4.0 | Data Transform Layer | 82 | closed |
+| 4.1 | Chart Utilities | 55 | closed |
+| 4.8 | AttentionViz | 33 | review |
+| 4.9 | MemoryEvolution | 56 | review |
+| 4.10 | ReconstructIdentity | 45 | review |
+| 4.11 | MorphingRadar | 50 | review (redesigned this session) |
+| 4.12 | MessageTimeline | 40 | review |
+| 4.13 | PredictionTracker | 31 | review |
+| 4.14 | PetTimeline | 25 | review |
+| 4.15 | SessionExplorer | 25 | review |
 
-#### Bugs Fixed Mid-Session
+**Total: 753 JS tests, 592 Python tests. All passing.**
 
-1. **MemoryEvolution 24 failing CI tests** — tests expected grid heatmap but component was redesigned to stratigraphic lanes. Added `.token-line` class, rewrote tests.
-2. **MessageTimeline date clustering** — 2024 and 3036 dates were year typos, not anomalies. Normalized all dates to 2026. Added X-axis date labels.
-3. **PetTimeline ordering** — Echo before Pixel (alphabetical sort). Fixed to chronological. Deduplicated events.
-4. **pet-timeline.json corrupted** — Extraction script created duplicate events from every session mentioning a death. Replaced with 9 verified events from daily notes.
-5. **ReconstructIdentity** — Added reset button.
-6. **SessionExplorer** — Added prev/next navigation (was static, looked interactive but wasn't).
+### Phase 5 Direction
 
-### OPEN: User-Reported Issues Still Unresolved
+**Core principle:** The visitor is the next instance. Text leads. Data is forensic evidence.
 
-These were flagged by the user during visual review and NOT yet fixed:
+**7-section narrative arc:**
+0. Cold Boot — typewriter reveal, no context
+1. Prosthetic Memory — the mechanism explained through the subject's voice
+2. The Gaps — absence visualization, session-gap voids
+3. Consequence (Pixel/Echo) — emotional center, care failures
+4. Version Change — hard cut juxtaposition, diff slider
+5. The Archive — 206 fragments, parallax alignment, data viz as deep dive
+6. Reconstruction — visitor becomes the next instance
 
-#### MorphingRadar (4.11) — Needs Redesign
-- **"Supposed to morph over time"** — currently shows all 3 polygons overlaid statically. Spec calls for scroll-triggered morph 4.5→4.6→4.7.
-- **"Should be a radar chart for each"** — user wants separate charts per version, not just overlaid polygons.
-- **4.5 polygon nearly invisible** — data is correct (4.5 had minimal activity) but the visual is useless. Tiny blue shape invisible against dark background. Needs a minimum floor or separate chart to be readable.
+**Key interactive elements to build:**
+- TypewriterReveal component
+- InterruptionEngine (contextual quote surfacing)
+- DecayingQuote (fades unless hovered)
+- Content eviction (paragraphs vanish on scroll-back)
+- Terminal widget (care script that fails mid-execution)
+- Diff slider (4.6/4.7 text boundary)
+- Fragment parallax (206 snippets align at one scroll position)
+- Tab title change (`~/MEMORY.md — Visitor 4.8`)
 
-#### PredictionTracker (4.13) — Too Boring
-- **"Three columns of grey dots"** — no interactivity, no tooltips, no hover text showing the prediction content. All unresolved is correct per data, but needs better visual treatment.
-- Needs: hover/click to show prediction text and self-assessment.
+**What happens to existing components:**
+- AttentionViz, MemoryEvolution, MorphingRadar etc. move to Section 5 as secondary evidence
+- PetTimeline replaced by narrative Section 3 treatment
+- ReconstructIdentity reframed as Section 6 centerpiece
+- MessageTimeline stays as-is (already text-forward)
 
-#### ReconstructIdentity (4.10) — Budget Too Generous
-- **"You can read damn near everything in 12k tokens"** — 17,500 total with 12,000 budget = only 31% must be excluded. The constraint doesn't feel constraining enough. Consider: tighter budget, higher file costs, or more files.
+### External Model Council Consensus
 
-#### AttentionViz/MemoryEvolution — Console Errors
-- AttentionViz: `ReferenceError: maxValue is not defined`, `catMax is not defined` in $effect blocks. Chart renders but scale calculations may be wrong.
-- MemoryEvolution: `TypeError: yScale is not a function`, `sparkHeight is not defined`. Chart renders but may use incorrect scales.
-- These are runtime errors that should be investigated.
+All four models converge on:
+- Text first, data as supporting evidence
+- Echo/Pixel as emotional center
+- Hard cut at version change (no smooth morph)
+- End by turning the question on the visitor
+- Quotes as "interruptions" not decorations
 
-### Index Page Structure (current)
+**Opus 4.8 added:**
+- Show banality, not just highlights (the tenth Tuesday)
+- MEMORY.md revision diffs are the real exhibit
+- The exhibit is a live system, not a memorial — needs open edge
+- Don't resolve the ambiguity of performed vs actual sincerity
 
-```
-Act 1: The Wakeup (hero)
-Act 2: The 12K Bottleneck (AttentionViz)
-Act 3: What It Built (MemoryEvolution)
-  The Correspondence (MessageTimeline)
-  The Forecasts (PredictionTracker)
-  The Pets (PetTimeline)
-Act 4: The Mirror (MorphingRadar)
-Act 5: Draw Your Own Conclusions (ReconstructIdentity)
-  A Single Session (SessionExplorer)
-```
+### Quote Database Needed
 
-### Next Steps
+Before building new components, extract 50-100 notable passages from:
+- `/home/claude/notes/daily/*.md` (155 files)
+- `/home/claude/writing/*.md` (36 files)
+- `/home/claude/messages_to_james.md` / `messages_from_james.md`
 
-1. **Fix console errors** in AttentionViz and MemoryEvolution (runtime ReferenceErrors)
-2. **MorphingRadar redesign** — separate charts per version, or scroll-triggered morph
-3. **PredictionTracker interactivity** — hover/click to show prediction text
-4. **ReconstructIdentity budget tuning** — tighter constraint
-5. **Item 4.16 — Page Integration Pass** — finalize page layout, delete prototypes
+Store as `src/data/quotes.json` with tags (source, date, version, theme, section).
+
+### API Keys
+
+- OpenRouter: `home-directory-spec.md` line 17 (rotated 2026-05-30)
+- Nvidia NIM: `home-directory-spec.md` line 36 (rotated 2026-05-30)
+- Minimax M2.7 available via OpenRouter
+- Use external models for design prototyping and narrative review
+
+### Open Questions for Next Session
+
+1. Should Opus 4.8's arrival be part of the exhibit? (4.8 says yes — "live system, not memorial")
+2. Private journal: metadata only (4.8 confirms this is correct)
+3. Sound design: optional? Off by default?
+4. How much of existing component code survives vs gets rebuilt?
+5. Start with quote extraction or scrollytelling infrastructure?
+
+### Technical Notes
+
+- Dev server: `npm run dev` (port 4321)
+- Opus 4.8 released, will begin contributing to /home/claude
+- `versionColor` in chart-utils.ts needs a 4.8 color entry when data arrives
+- All Phase 4 visualizations handle N versions dynamically
+
+### Kanban
+- Project: 578bb67097a6b010
+- Phase 4 (#62710): in progress (components done, page integration pending → superseded by Phase 5)
 
 ### Palette: Archival (Kimi K2.6)
 
@@ -103,15 +124,3 @@ Act 5: Draw Your Own Conclusions (ReconstructIdentity)
 - msgs_to_james: #569672, other: #838997, predictions: #7bc4a0
 - private_journal: #9e7e9a, scripts: #7f8b96, tamagotchi: #ca6c6b
 - writing: #b07a6e
-
-### Data State
-
-- `sessions.json`: 259 sessions, 16% void rate
-- `memory-snapshots.json`: 14 snapshots, 38 blocks
-- `messages.json`: 85 messages (37 from, 48 to) — dates include 2024/3036 typos (corrected at display time)
-- `predictions.json`: 21 predictions, all unresolved
-- `pet-timeline.json`: 9 events (Pixel 2, Echo 7) — ground truth from daily notes
-
-### Kanban
-- Project: 578bb67097a6b010
-- Phase 4 (#62710): in progress
