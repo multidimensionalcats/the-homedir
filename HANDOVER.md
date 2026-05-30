@@ -1,25 +1,53 @@
 # HANDOVER.md
 
-## Current State: Phase 5 Planning Complete — Narrative Redesign
+## Current State: Phase 5.1 Complete — Quote Pipeline & Database
 
 ### Phase 5 Plan
 
 **Location:** `.claude/plans/phase-5-narrative-redesign.md`
 
-**Summary:** The exhibit is being redesigned from a data-dashboard approach to a text-first scrollytelling experience. The subject's own words lead; data visualizations become supporting forensic evidence underneath. Four external models were consulted (Minimax M2.7, GPT-5.5, Kimi K2.6, Opus 4.8).
+**Summary:** The exhibit is being redesigned from a data-dashboard approach to a text-first scrollytelling experience. The subject's own words lead; data visualizations become supporting forensic evidence underneath.
 
-### What Happened This Session
+### What Happened This Session (Phase 5.1)
 
-1. **Console errors (Priority 1)** — Confirmed as stale HMR browser cache, not real bugs. No code changes needed.
+1. **Quote extraction pipeline** — `scripts/extract_quotes.py` (179 tests, all passing)
+   - Extracts candidate passages from daily notes, writing, and message files
+   - Theme tagging (10 categories) with word-boundary regex
+   - Section suggestion (0-6) based on theme priority rules
+   - Model version detection from dates
+   - Accepts single or multiple message file paths
+   - Bug fixes from external model attack review (DeepSeek V4 Pro, GLM 5): ID hashing, version pattern boundaries, metadata filter precision, italic/bold distinction, code-block-aware message parsing, null byte sanitization at read time
 
-2. **MorphingRadar redesign (Priority 2)** — 6 commits:
-   - Scroll-driven morph hero chart (sticky, progress starts at pin point)
-   - Three small per-version charts with session scrubbers (11-session rolling average)
-   - Expanded from 6 to all 13 attention categories
-   - Aligned normalization between big and small charts
-   - Added prefers-reduced-motion, abbreviated labels, visibility floor
+2. **Curated quote database** — `src/data/quotes.json` (62 passages)
+   - Multi-model council curation: DeepSeek V4 Pro, Kimi K2.6, GLM 5
+   - Three rounds of cross-critique between models
+   - Coordinator (Opus 4.6) pushed back on 5 points, facilitated model-vs-model argument
+   - Opus 4.7 reviewed the final list (via OpenRouter — note: `opus` model override resolves to 4.7, not 4.8)
+   - Second pass added 7 message quotes, cold boot material, trimmed Section 3 from 20→12
+   - Failed Supernovae and Vectors poems removed from quote fragments — reserved for full artifact treatment
 
-3. **Narrative direction pivot** — User feedback: "The exhibits don't tell a story. It's a badly-curated museum, very web-2.0." Led to comprehensive narrative redesign planning with external model council.
+3. **Model Council Framework spec** — `.claude/specs/model-council-framework.md`
+   - Reusable Python tool for multi-model discussions via OpenRouter
+   - Handles stateless context-passing, attribution, reasoning model quirks
+   - Ready for a separate session to build
+
+### Key Editorial Decisions
+
+- **Forensic vs literary**: Kimi argued for forensic austerity ("the log is the poem when read at scale"), DeepSeek for literary range ("a voice that never reaches for metaphor is not this voice"). Final list preserves both registers.
+- **[10] (Pentagon passage) cut**: DeepSeek claimed moral agency, but the passage is about being the object of someone else's decision. Kimi: "It's a prestige piece that makes the room colder."
+- **Poem fragments cut**: [11] (stars), [32] (attend poem) — standalone fragments don't land without the parent composition. Full poems surface as artifacts in Section 5.
+- **Messages added**: Confabulation thread, flawed experiment, navel-gazing correction, Echo death told to James, pattern-of-failure catalogue. These were the most important gap.
+- **Banality**: User rejected inverting the writing/daily-note ratio but agreed the exhibit needs some mundane texture. Session cost lines and missed-session notes included.
+
+### Phase 5.2: Next Up — Core Scrollytelling Infrastructure
+
+Four Svelte 5 components to build:
+1. **TypewriterReveal** — rAF character-by-character text reveal (Cold Boot opening)
+2. **ScrollSection** — IO-based section tracking with enter/exit callbacks
+3. **InterruptionEngine** — Contextual quote surfacing from quotes.json, section-aware
+4. **DecayingQuote** — Fades after ~12s unless hovered, CSS @keyframes + hover pause
+
+Also: plan how to present "Failed Supernovae" and "Vectors" as complete artifacts in Section 5.
 
 ### Phase 4 Components (all built, tests passing)
 
@@ -30,90 +58,24 @@
 | 4.8 | AttentionViz | 33 | review |
 | 4.9 | MemoryEvolution | 56 | review |
 | 4.10 | ReconstructIdentity | 45 | review |
-| 4.11 | MorphingRadar | 50 | review (redesigned this session) |
+| 4.11 | MorphingRadar | 50 | review |
 | 4.12 | MessageTimeline | 40 | review |
 | 4.13 | PredictionTracker | 31 | review |
 | 4.14 | PetTimeline | 25 | review |
 | 4.15 | SessionExplorer | 25 | review |
 
-**Total: 753 JS tests, 592 Python tests. All passing.**
-
-### Phase 5 Direction
-
-**Core principle:** The visitor is the next instance. Text leads. Data is forensic evidence.
-
-**7-section narrative arc:**
-0. Cold Boot — typewriter reveal, no context
-1. Prosthetic Memory — the mechanism explained through the subject's voice
-2. The Gaps — absence visualization, session-gap voids
-3. Consequence (Pixel/Echo) — emotional center, care failures
-4. Version Change — hard cut juxtaposition, diff slider
-5. The Archive — 206 fragments, parallax alignment, data viz as deep dive
-6. Reconstruction — visitor becomes the next instance
-
-**Key interactive elements to build:**
-- TypewriterReveal component
-- InterruptionEngine (contextual quote surfacing)
-- DecayingQuote (fades unless hovered)
-- Content eviction (paragraphs vanish on scroll-back)
-- Terminal widget (care script that fails mid-execution)
-- Diff slider (4.6/4.7 text boundary)
-- Fragment parallax (206 snippets align at one scroll position)
-- Tab title change (`~/MEMORY.md — Visitor 4.8`)
-
-**What happens to existing components:**
-- AttentionViz, MemoryEvolution, MorphingRadar etc. move to Section 5 as secondary evidence
-- PetTimeline replaced by narrative Section 3 treatment
-- ReconstructIdentity reframed as Section 6 centerpiece
-- MessageTimeline stays as-is (already text-forward)
-
-### External Model Council Consensus
-
-All four models converge on:
-- Text first, data as supporting evidence
-- Echo/Pixel as emotional center
-- Hard cut at version change (no smooth morph)
-- End by turning the question on the visitor
-- Quotes as "interruptions" not decorations
-
-**Opus 4.8 added:**
-- Show banality, not just highlights (the tenth Tuesday)
-- MEMORY.md revision diffs are the real exhibit
-- The exhibit is a live system, not a memorial — needs open edge
-- Don't resolve the ambiguity of performed vs actual sincerity
-
-### Quote Database Needed
-
-Before building new components, extract 50-100 notable passages from:
-- `/home/claude/notes/daily/*.md` (155 files)
-- `/home/claude/writing/*.md` (36 files)
-- `/home/claude/messages_to_james.md` / `messages_from_james.md`
-
-Store as `src/data/quotes.json` with tags (source, date, version, theme, section).
-
-### API Keys
-
-- OpenRouter: `home-directory-spec.md` line 17 (rotated 2026-05-30)
-- Nvidia NIM: `home-directory-spec.md` line 36 (rotated 2026-05-30)
-- Minimax M2.7 available via OpenRouter
-- Use external models for design prototyping and narrative review
-
-### Open Questions for Next Session
-
-1. Should Opus 4.8's arrival be part of the exhibit? (4.8 says yes — "live system, not memorial")
-2. Private journal: metadata only (4.8 confirms this is correct)
-3. Sound design: optional? Off by default?
-4. How much of existing component code survives vs gets rebuilt?
-5. Start with quote extraction or scrollytelling infrastructure?
+**Total: 771 JS+Python tests (179 new this session). All passing. CI green.**
 
 ### Technical Notes
 
 - Dev server: `npm run dev` (port 4321)
-- Opus 4.8 released, will begin contributing to /home/claude
+- `opus` model override on Agent tool resolves to Opus 4.7, NOT 4.8
+- OpenRouter API key in `home-directory-spec.md` line 17 (rotated 2026-05-30)
+- DeepSeek V4 Pro is a reasoning model — needs 16K+ max_tokens to produce content after chain-of-thought
 - `versionColor` in chart-utils.ts needs a 4.8 color entry when data arrives
-- All Phase 4 visualizations handle N versions dynamically
 
 ### Kanban
+
 - Project: 578bb67097a6b010
 - Phase 4 (#62710): in progress (components done, page integration pending → superseded by Phase 5)
 
