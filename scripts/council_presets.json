@@ -12,7 +12,7 @@
     },
     {
       "name": "Qwen",
-      "model": "qwen/qwen3-235b",
+      "model": "qwen/qwen3-235b-a22b",
       "persona": "Careful empiricist. Demands evidence and precedent."
     }
   ],
