@@ -1133,10 +1133,10 @@ class TestAPIKeyResolution:
         assert c is not None
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_no_key_no_env_raises(self):
-        """No explicit key, no env var -> raises ValueError."""
+    @patch("scripts.model_council._read_spec_api_key", return_value=None)
+    def test_no_key_no_env_no_spec_raises(self, _mock_read):
+        """No explicit key, no env var, no spec file -> raises ValueError."""
         parts = _make_participants("Alpha")
-        # Clear OPENROUTER_API_KEY if it exists
         os.environ.pop("OPENROUTER_API_KEY", None)
         with pytest.raises((ValueError, KeyError)):
             Council(
@@ -1145,6 +1145,91 @@ class TestAPIKeyResolution:
                 participants=parts,
                 api_key=None,
             )
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("scripts.model_council._read_spec_api_key", return_value="sk-from-spec")
+    def test_spec_file_fallback(self, _mock_read):
+        """No explicit key, no env var, spec file has key."""
+        parts = _make_participants("Alpha")
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+        )
+        assert c is not None
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("scripts.model_council._read_spec_api_key", return_value=None)
+    def test_spec_file_missing_still_raises(self, _mock_read):
+        """Spec file returns None -> still raises ValueError."""
+        parts = _make_participants("Alpha")
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        with pytest.raises(ValueError):
+            Council(
+                name="test",
+                system_context="ctx",
+                participants=parts,
+                api_key=None,
+            )
+
+    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
+    def test_explicit_key_beats_spec_file(self, _mock_read):
+        """Explicit key takes priority over spec file."""
+        c = _make_council(api_key="sk-explicit")
+        assert c is not None
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env"})
+    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
+    def test_env_var_beats_spec_file(self, _mock_read):
+        """Env var takes priority over spec file."""
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+        )
+        assert c is not None
+
+
+class TestReadSpecApiKey:
+    def test_reads_api_key_line(self, tmp_path):
+        """Reads 'API Key: sk-...' from line 17."""
+        from scripts.model_council import _read_spec_api_key
+
+        lines = ["filler\n"] * 16 + ["API Key: sk-or-v1-testkey123\n"]
+        spec_file = tmp_path / "home-directory-spec.md"
+        spec_file.write_text("".join(lines))
+        result = _read_spec_api_key(spec_file)
+        assert result == "sk-or-v1-testkey123"
+
+    def test_returns_none_for_missing_file(self):
+        from pathlib import Path
+
+        from scripts.model_council import _read_spec_api_key
+
+        result = _read_spec_api_key(Path("/nonexistent/spec.md"))
+        assert result is None
+
+    def test_returns_none_for_wrong_format(self, tmp_path):
+        from scripts.model_council import _read_spec_api_key
+
+        lines = ["filler\n"] * 16 + ["Not an API key line\n"]
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text("".join(lines))
+        result = _read_spec_api_key(spec_file)
+        assert result is None
+
+    def test_returns_none_for_short_file(self, tmp_path):
+        """File with fewer than 17 lines."""
+        from scripts.model_council import _read_spec_api_key
+
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text("short\n")
+        result = _read_spec_api_key(spec_file)
+        assert result is None
 
 
 # ===========================================================================
@@ -1372,3 +1457,653 @@ class TestHardeningAttributionEdgeCases:
         c = _make_council(participants=parts)
         result = c._format_attribution(long_name, 1, "t")
         assert long_name in result
+
+
+# ===========================================================================
+# PER-PARTICIPANT OVERRIDES
+# ===========================================================================
+
+
+class TestPerParticipantOverrides:
+    def test_participant_max_tokens_defaults_none(self):
+        p = Participant(name="A", model="m", persona="p")
+        assert p.max_tokens is None
+
+    def test_participant_timeout_defaults_none(self):
+        p = Participant(name="A", model="m", persona="p")
+        assert p.timeout is None
+
+    def test_participant_with_max_tokens(self):
+        p = Participant(name="A", model="m", persona="p", max_tokens=16000)
+        assert p.max_tokens == 16000
+
+    def test_participant_with_timeout(self):
+        p = Participant(name="A", model="m", persona="p", timeout=300)
+        assert p.timeout == 300
+
+    def test_participant_frozen_max_tokens(self):
+        p = Participant(name="A", model="m", persona="p", max_tokens=100)
+        with pytest.raises(AttributeError):
+            p.max_tokens = 200
+
+    def test_participant_frozen_timeout(self):
+        p = Participant(name="A", model="m", persona="p", timeout=60)
+        with pytest.raises(AttributeError):
+            p.timeout = 120
+
+    @patch("scripts.model_council.urlopen")
+    def test_call_uses_participant_max_tokens(self, mock_urlopen):
+        """Participant override should be used instead of council default."""
+        parts = [
+            Participant(
+                name="Big",
+                model="vendor/big",
+                persona="p",
+                max_tokens=16000,
+            ),
+        ]
+        c = _make_council(participants=parts, max_tokens=8000)
+
+        responses = {
+            "vendor/big": _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        body = json.loads(req.data.decode("utf-8"))
+        assert body["max_tokens"] == 16000
+
+    @patch("scripts.model_council.urlopen")
+    def test_call_uses_council_max_tokens_when_none(self, mock_urlopen):
+        """No participant override -> council default used."""
+        parts = [
+            Participant(name="A", model="vendor/a", persona="p"),
+        ]
+        c = _make_council(participants=parts, max_tokens=4096)
+
+        responses = {
+            "vendor/a": _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        body = json.loads(req.data.decode("utf-8"))
+        assert body["max_tokens"] == 4096
+
+    @patch("scripts.model_council.urlopen")
+    def test_call_uses_participant_timeout(self, mock_urlopen):
+        """Participant timeout override should be passed to urlopen."""
+        parts = [
+            Participant(
+                name="Slow",
+                model="vendor/slow",
+                persona="p",
+                timeout=300,
+            ),
+        ]
+        c = _make_council(participants=parts, timeout=120)
+
+        responses = {
+            "vendor/slow": _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        call_kwargs = mock_urlopen.call_args_list[0]
+        # timeout is passed as keyword arg or second positional
+        if call_kwargs[1].get("timeout"):
+            assert call_kwargs[1]["timeout"] == 300
+        else:
+            assert call_kwargs[0][1] == 300
+
+    @patch("scripts.model_council.urlopen")
+    def test_mixed_participants_different_overrides(self, mock_urlopen):
+        """Two participants: one with overrides, one without."""
+        parts = [
+            Participant(
+                name="A",
+                model="vendor/a",
+                persona="p",
+                max_tokens=16000,
+            ),
+            Participant(name="B", model="vendor/b", persona="p"),
+        ]
+        c = _make_council(participants=parts, max_tokens=8000)
+
+        responses = {
+            "vendor/a": _mock_openrouter_response("a-resp"),
+            "vendor/b": _mock_openrouter_response("b-resp"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        bodies = {}
+        for call in mock_urlopen.call_args_list:
+            req = call[0][0]
+            body = json.loads(req.data.decode("utf-8"))
+            bodies[body["model"]] = body
+
+        assert bodies["vendor/a"]["max_tokens"] == 16000
+        assert bodies["vendor/b"]["max_tokens"] == 8000
+
+    @patch("scripts.model_council.urlopen")
+    def test_round_trip_preserves_overrides(self, mock_urlopen, tmp_path):
+        """Save/load preserves max_tokens and timeout on participants."""
+        parts = [
+            Participant(
+                name="A",
+                model="vendor/a",
+                persona="p",
+                max_tokens=16000,
+                timeout=300,
+            ),
+        ]
+        c = _make_council(participants=parts)
+
+        responses = {"vendor/a": _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        path = str(tmp_path / "rt.json")
+        c.save_transcript(path)
+        loaded = Council.load_transcript(path, api_key="sk-x")
+
+        loaded_p = loaded.participants[0]
+        assert loaded_p.max_tokens == 16000
+        assert loaded_p.timeout == 300
+
+    def test_load_old_transcript_without_new_fields(self, tmp_path):
+        """Transcripts from before these fields still load correctly."""
+        data = {
+            "name": "old",
+            "created": "2026-01-01T00:00:00",
+            "system_context": "ctx",
+            "participants": [{"name": "A", "model": "m", "persona": "p"}],
+            "rounds": [],
+        }
+        path = str(tmp_path / "old.json")
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+        loaded = Council.load_transcript(path, api_key="sk-x")
+        assert loaded.participants[0].max_tokens is None
+        assert loaded.participants[0].timeout is None
+
+
+# ===========================================================================
+# RATE LIMIT BACKOFF
+# ===========================================================================
+
+
+class TestRateLimitBackoff:
+    @patch("scripts.model_council.time")
+    @patch("scripts.model_council.urlopen")
+    def test_429_retried_then_succeeds(self, mock_urlopen, mock_time):
+        """First call returns 429, second succeeds."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        mock_urlopen.side_effect = [
+            HTTPError(
+                url="https://openrouter.ai/api/v1/chat/completions",
+                code=429,
+                msg="Rate limited",
+                hdrs={},
+                fp=io.BytesIO(b""),
+            ),
+            MagicMock(
+                read=MagicMock(return_value=_mock_openrouter_response("ok")),
+                __enter__=lambda s: s,
+                __exit__=MagicMock(return_value=False),
+            ),
+        ]
+
+        result = c.run_round("prompt")
+        assert result["Alpha"] == "ok"
+        assert mock_urlopen.call_count == 2
+
+    @patch("scripts.model_council.time")
+    @patch("scripts.model_council.urlopen")
+    def test_429_all_retries_exhausted(self, mock_urlopen, mock_time):
+        """4 consecutive 429s -> raises HTTPError."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        mock_urlopen.side_effect = HTTPError(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            code=429,
+            msg="Rate limited",
+            hdrs={},
+            fp=io.BytesIO(b""),
+        )
+
+        with pytest.raises(HTTPError):
+            c.run_round("prompt")
+        assert mock_urlopen.call_count == 4  # initial + 3 retries
+
+    @patch("scripts.model_council.time")
+    @patch("scripts.model_council.urlopen")
+    def test_500_not_retried(self, mock_urlopen, mock_time):
+        """500 error should propagate immediately, no retry."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        mock_urlopen.side_effect = HTTPError(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            code=500,
+            msg="Server Error",
+            hdrs={},
+            fp=io.BytesIO(b""),
+        )
+
+        with pytest.raises(HTTPError):
+            c.run_round("prompt")
+        assert mock_urlopen.call_count == 1
+
+    @patch("scripts.model_council.time")
+    @patch("scripts.model_council.urlopen")
+    def test_backoff_delays(self, mock_urlopen, mock_time):
+        """Verify exponential backoff delay pattern: 1, 2, 4."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        mock_urlopen.side_effect = HTTPError(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            code=429,
+            msg="Rate limited",
+            hdrs={},
+            fp=io.BytesIO(b""),
+        )
+
+        with pytest.raises(HTTPError):
+            c.run_round("prompt")
+
+        sleep_calls = [call[0][0] for call in mock_time.sleep.call_args_list]
+        assert sleep_calls == [1, 2, 4]
+
+    @patch("scripts.model_council.time")
+    @patch("scripts.model_council.urlopen")
+    def test_url_error_not_retried(self, mock_urlopen, mock_time):
+        """URLError should not trigger retry."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        mock_urlopen.side_effect = URLError("DNS failure")
+
+        with pytest.raises(URLError):
+            c.run_round("prompt")
+        assert mock_urlopen.call_count == 1
+
+    @patch("scripts.model_council.time")
+    @patch("scripts.model_council.urlopen")
+    def test_429_third_retry_succeeds(self, mock_urlopen, mock_time):
+        """Three 429s then success on fourth attempt."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        err = HTTPError(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            code=429,
+            msg="Rate limited",
+            hdrs={},
+            fp=io.BytesIO(b""),
+        )
+        ok_resp = MagicMock(
+            read=MagicMock(return_value=_mock_openrouter_response("finally")),
+            __enter__=lambda s: s,
+            __exit__=MagicMock(return_value=False),
+        )
+        mock_urlopen.side_effect = [err, err, err, ok_resp]
+
+        result = c.run_round("prompt")
+        assert result["Alpha"] == "finally"
+        assert mock_urlopen.call_count == 4
+
+
+# ===========================================================================
+# COST TRACKING AGGREGATION
+# ===========================================================================
+
+
+class TestCostTracking:
+    def test_cost_summary_empty_council(self):
+        c = _make_council()
+        summary = c.cost_summary
+        assert summary["rounds"] == []
+        assert summary["total"]["total_tokens"] == 0
+        assert summary["total"]["prompt_tokens"] == 0
+        assert summary["total"]["completion_tokens"] == 0
+
+    @patch("scripts.model_council.urlopen")
+    def test_cost_summary_one_round(self, mock_urlopen):
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        usage = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+        }
+        responses = {
+            parts[0].model: _mock_openrouter_response("ok", usage=usage),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        summary = c.cost_summary
+        assert len(summary["rounds"]) == 1
+        assert summary["rounds"][0]["total_tokens"] == 150
+        assert summary["total"]["total_tokens"] == 150
+        assert summary["total"]["prompt_tokens"] == 100
+        assert summary["total"]["completion_tokens"] == 50
+
+    @patch("scripts.model_council.urlopen")
+    def test_cost_summary_two_rounds_two_participants(self, mock_urlopen):
+        parts = [
+            Participant(name="A", model="vendor/a", persona="p"),
+            Participant(name="B", model="vendor/b", persona="p"),
+        ]
+        c = _make_council(participants=parts)
+
+        for _ in range(2):
+            responses = {
+                "vendor/a": _mock_openrouter_response(
+                    "ok",
+                    usage={
+                        "prompt_tokens": 100,
+                        "completion_tokens": 50,
+                        "total_tokens": 150,
+                    },
+                ),
+                "vendor/b": _mock_openrouter_response(
+                    "ok",
+                    usage={
+                        "prompt_tokens": 200,
+                        "completion_tokens": 100,
+                        "total_tokens": 300,
+                    },
+                ),
+            }
+            mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+            c.run_round("prompt")
+
+        summary = c.cost_summary
+        assert len(summary["rounds"]) == 2
+        # Each round: 150 + 300 = 450
+        assert summary["rounds"][0]["total_tokens"] == 450
+        assert summary["rounds"][1]["total_tokens"] == 450
+        # Grand total: 450 * 2 = 900
+        assert summary["total"]["total_tokens"] == 900
+
+    @patch("scripts.model_council.urlopen")
+    def test_cost_summary_missing_usage(self, mock_urlopen):
+        """No usage data -> treated as zero."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        responses = {
+            parts[0].model: _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        summary = c.cost_summary
+        assert summary["total"]["total_tokens"] == 0
+
+    @patch("scripts.model_council.urlopen")
+    def test_cost_summary_partial_usage(self, mock_urlopen):
+        """Usage with only total_tokens, no prompt/completion."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        responses = {
+            parts[0].model: _mock_openrouter_response(
+                "ok",
+                usage={"total_tokens": 500},
+            ),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        summary = c.cost_summary
+        assert summary["total"]["total_tokens"] == 500
+        assert summary["total"]["prompt_tokens"] == 0
+
+    @patch("scripts.model_council.urlopen")
+    def test_print_transcript_includes_token_usage(self, mock_urlopen):
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        responses = {
+            parts[0].model: _mock_openrouter_response(
+                "ok",
+                usage={
+                    "prompt_tokens": 100,
+                    "completion_tokens": 50,
+                    "total_tokens": 150,
+                },
+            ),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        md = c.print_transcript()
+        assert "Token Usage" in md
+        assert "150" in md
+
+    @patch("scripts.model_council.urlopen")
+    def test_usage_field_in_parse_response(self, mock_urlopen):
+        """_parse_response should include usage dict."""
+        c = _make_council()
+        usage = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+        }
+        data = json.loads(_mock_openrouter_response("ok", usage=usage))
+        result = c._parse_response(data)
+        assert result.get("usage") is not None
+        assert result["usage"]["prompt_tokens"] == 100
+
+
+# ===========================================================================
+# CONTEXT LIMIT WARNINGS
+# ===========================================================================
+
+
+class TestContextLimitWarnings:
+    def test_estimate_tokens(self):
+        c = _make_council()
+        msgs = [{"role": "user", "content": "x" * 400}]
+        assert c._estimate_tokens(msgs) == 100  # 400 / 4
+
+    @patch("scripts.model_council.urlopen")
+    def test_no_warning_below_threshold(self, mock_urlopen, capsys):
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        responses = {
+            parts[0].model: _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("short prompt")
+
+        captured = capsys.readouterr()
+        assert "WARNING" not in captured.err
+
+    @patch("scripts.model_council.urlopen")
+    def test_warning_above_threshold(self, mock_urlopen, capsys):
+        """Low threshold triggers warning."""
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key="sk-test",
+            context_token_limit=10,
+        )
+
+        responses = {
+            parts[0].model: _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("x" * 200)
+
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.err
+
+    @patch("scripts.model_council.urlopen")
+    def test_warning_names_participant(self, mock_urlopen, capsys):
+        parts = [Participant(name="BigModel", model="vendor/a", persona="p")]
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key="sk-test",
+            context_token_limit=10,
+        )
+
+        responses = {
+            "vendor/a": _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("x" * 200)
+
+        captured = capsys.readouterr()
+        assert "BigModel" in captured.err
+
+    @patch("scripts.model_council.urlopen")
+    def test_warning_does_not_block_execution(self, mock_urlopen, capsys):
+        """Warning fires but run_round still completes."""
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key="sk-test",
+            context_token_limit=1,
+        )
+
+        responses = {
+            parts[0].model: _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        result = c.run_round("prompt")
+
+        assert result["Alpha"] == "ok"
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.err
+
+    def test_custom_threshold_stored(self):
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key="sk-test",
+            context_token_limit=50000,
+        )
+        assert c is not None
+
+
+# ===========================================================================
+# PARTICIPANT PRESETS
+# ===========================================================================
+
+
+class TestParticipantPresets:
+    def test_load_presets_valid(self, tmp_path):
+        from scripts.model_council import _load_presets
+
+        presets = {
+            "test-council": [
+                {"name": "A", "model": "vendor/a", "persona": "p1"},
+                {"name": "B", "model": "vendor/b", "persona": "p2"},
+            ]
+        }
+        path = tmp_path / "council_presets.json"
+        path.write_text(json.dumps(presets))
+
+        result = _load_presets("test-council", path)
+        assert len(result) == 2
+        assert result[0].name == "A"
+        assert result[1].model == "vendor/b"
+
+    def test_load_presets_unknown_name(self, tmp_path):
+        from scripts.model_council import _load_presets
+
+        presets = {"real": [{"name": "A", "model": "m", "persona": "p"}]}
+        path = tmp_path / "council_presets.json"
+        path.write_text(json.dumps(presets))
+
+        with pytest.raises(ValueError, match="Unknown preset"):
+            _load_presets("nonexistent", path)
+
+    def test_load_presets_file_missing(self):
+        from pathlib import Path
+
+        from scripts.model_council import _load_presets
+
+        with pytest.raises(FileNotFoundError):
+            _load_presets("x", Path("/nonexistent/presets.json"))
+
+    def test_load_presets_with_max_tokens(self, tmp_path):
+        from scripts.model_council import _load_presets
+
+        presets = {
+            "big": [
+                {
+                    "name": "A",
+                    "model": "m",
+                    "persona": "p",
+                    "max_tokens": 16000,
+                },
+            ]
+        }
+        path = tmp_path / "council_presets.json"
+        path.write_text(json.dumps(presets))
+
+        result = _load_presets("big", path)
+        assert result[0].max_tokens == 16000
+
+    def test_cli_participants_flag(self):
+        from scripts.model_council import _parse_args
+
+        args = _parse_args(
+            [
+                "new",
+                "--name",
+                "Test",
+                "--prompt",
+                "Hello",
+                "--participants",
+                "design-review",
+            ]
+        )
+        assert args.participants == "design-review"
+
+    def test_cli_models_and_participants_mutually_exclusive(self):
+        from scripts.model_council import _parse_args
+
+        with pytest.raises(SystemExit):
+            _parse_args(
+                [
+                    "new",
+                    "--name",
+                    "T",
+                    "--prompt",
+                    "P",
+                    "--models",
+                    "a/b",
+                    "--participants",
+                    "design",
+                ]
+            )
+
+    def test_cli_neither_models_nor_participants_exits(self):
+        from scripts.model_council import _parse_args
+
+        with pytest.raises(SystemExit):
+            _parse_args(["new", "--name", "T", "--prompt", "P"])

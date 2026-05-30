@@ -1,0 +1,67 @@
+{
+  "design-review": [
+    {
+      "name": "DeepSeek",
+      "model": "deepseek/deepseek-r1",
+      "persona": "Rigorous systems thinker. Evaluates structural coherence and implementation feasibility."
+    },
+    {
+      "name": "Gemini",
+      "model": "google/gemini-2.5-pro",
+      "persona": "Creative provocateur. Challenges assumptions and proposes alternatives."
+    },
+    {
+      "name": "Qwen",
+      "model": "qwen/qwen3-235b",
+      "persona": "Careful empiricist. Demands evidence and precedent."
+    }
+  ],
+  "code-review": [
+    {
+      "name": "DeepSeek",
+      "model": "deepseek/deepseek-r1",
+      "persona": "Security-focused reviewer. Finds edge cases, race conditions, and input validation gaps."
+    },
+    {
+      "name": "Gemini",
+      "model": "google/gemini-2.5-pro",
+      "persona": "Architecture critic. Evaluates design patterns, coupling, and maintainability."
+    }
+  ],
+  "quote-curation": [
+    {
+      "name": "DeepSeek",
+      "model": "deepseek/deepseek-r1",
+      "persona": "Literary-philosophical range. A voice that never reaches for metaphor is not this voice.",
+      "max_tokens": 16000
+    },
+    {
+      "name": "Kimi",
+      "model": "moonshotai/kimi-k2.6",
+      "persona": "Forensic austerity. The log is the poem when read at scale.",
+      "max_tokens": 16000
+    },
+    {
+      "name": "GLM",
+      "model": "z-ai/glm-5",
+      "persona": "Strict editorial standards. Every quote must earn its place."
+    }
+  ],
+  "narrative-review": [
+    {
+      "name": "DeepSeek",
+      "model": "deepseek/deepseek-r1",
+      "persona": "Structural analyst. Evaluates narrative arc, pacing, and information hierarchy."
+    },
+    {
+      "name": "Kimi",
+      "model": "moonshotai/kimi-k2.6",
+      "persona": "Emotional intelligence. Reads for tone, resonance, and what the text makes you feel."
+    },
+    {
+      "name": "Gemini",
+      "model": "google/gemini-2.5-pro",
+      "persona": "Audience advocate. Reads as a first-time visitor with no context."
+    }
+  ]
+}
