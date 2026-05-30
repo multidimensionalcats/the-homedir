@@ -1227,7 +1227,7 @@ class TestExtractQuotesFromDirectory:
         results = extract_quotes_from_directory(d, "daily_note")
         assert len(results) >= 1, "Must return results to check source_file path"
         # source_file should be a relative path, not absolute
-        assert not results[0]["source_file"].startswith("/tmp")
+        assert not results[0]["source_file"].startswith("/")  # nosec B108
 
     def test_multiple_files_all_processed(self, tmp_path):
         d = tmp_path / "daily"
