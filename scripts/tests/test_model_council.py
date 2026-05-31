@@ -2172,17 +2172,24 @@ class TestDeduplicateNames:
         assert _deduplicate_names(["a", "b", "c"]) == ["a", "b", "c"]
 
     def test_two_same(self):
+        import re
+
         from scripts.model_council import _deduplicate_names
 
         result = _deduplicate_names(["gpt-4o", "gpt-4o"])
         assert result[0] == "gpt-4o"
-        assert result[1] == "gpt-4o-2"
+        assert re.match(r"^gpt-4o-[0-9a-f]{6}$", result[1])
 
     def test_three_same(self):
+        import re
+
         from scripts.model_council import _deduplicate_names
 
         result = _deduplicate_names(["x", "x", "x"])
-        assert result == ["x", "x-2", "x-3"]
+        assert result[0] == "x"
+        assert re.match(r"^x-[0-9a-f]{6}$", result[1])
+        assert re.match(r"^x-[0-9a-f]{6}$", result[2])
+        assert len(set(result)) == 3
 
     def test_mixed(self):
         from scripts.model_council import _deduplicate_names
@@ -2318,3 +2325,378 @@ class TestReadSpecApiKeyPatternMatch:
         spec_file.write_text(content)
         result = _read_spec_api_key(spec_file)
         assert result is None
+
+
+# ===========================================================================
+# REVIEW FIXES — HOSTILE TESTS
+# ===========================================================================
+
+
+class TestReviewFixesHostile:
+    """Hostile tests for 10 code review findings. All should FAIL against
+    the current implementation until the fixes are applied."""
+
+    # -----------------------------------------------------------------------
+    # 1. _deduplicate_names replaced by random-suffix approach
+    # -----------------------------------------------------------------------
+
+    def test_unique_names_all_different_no_suffix(self):
+        """Three different names → returned unchanged."""
+        from scripts.model_council import _deduplicate_names
+
+        result = _deduplicate_names(["alpha", "beta", "gamma"])
+        assert result == ["alpha", "beta", "gamma"]
+
+    def test_unique_names_duplicates_get_suffix(self):
+        """Three identical names → first bare, others get '-' + 6 hex chars."""
+        import re
+
+        from scripts.model_council import _deduplicate_names
+
+        result = _deduplicate_names(["gpt-4o", "gpt-4o", "gpt-4o"])
+        assert result[0] == "gpt-4o", "First occurrence must remain bare"
+        # Second and third must have random hex suffix
+        assert re.match(r"^gpt-4o-[0-9a-f]{6}$", result[1]), (
+            f"Expected gpt-4o-XXXXXX, got {result[1]}"
+        )
+        assert re.match(r"^gpt-4o-[0-9a-f]{6}$", result[2]), (
+            f"Expected gpt-4o-XXXXXX, got {result[2]}"
+        )
+        # Must not be the old sequential suffix scheme
+        assert result[1] != "gpt-4o-2"
+        assert result[2] != "gpt-4o-3"
+
+    def test_unique_names_all_results_unique(self):
+        """10 identical names → all results are unique."""
+        from scripts.model_council import _deduplicate_names
+
+        result = _deduplicate_names(["clone"] * 10)
+        assert len(set(result)) == 10, f"Expected 10 unique names, got {len(set(result))}"
+
+    def test_unique_names_preexisting_suffix_no_collision(self):
+        """Input ['gpt-4o-2', 'gpt-4o', 'gpt-4o'] — old bug produced
+        'gpt-4o-2' twice. Random suffix must avoid collisions."""
+        from scripts.model_council import _deduplicate_names
+
+        result = _deduplicate_names(["gpt-4o-2", "gpt-4o", "gpt-4o"])
+        assert len(set(result)) == 3, f"Collision detected: {result}"
+
+    # -----------------------------------------------------------------------
+    # 2. API key priority verification (fix hollow tests)
+    # -----------------------------------------------------------------------
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env"}, clear=True)
+    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
+    @patch("scripts.model_council.urlopen")
+    def test_explicit_key_used_in_request(self, mock_urlopen, _mock_read):
+        """Explicit api_key must override env and spec in actual request."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts, api_key="sk-explicit")
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        auth = req.get_header("Authorization")
+        assert auth == "Bearer sk-explicit", f"Expected sk-explicit, got {auth}"
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env"}, clear=True)
+    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
+    @patch("scripts.model_council.urlopen")
+    def test_env_key_used_over_spec(self, mock_urlopen, _mock_read):
+        """api_key=None + env set → env key used, NOT spec."""
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+        )
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        auth = req.get_header("Authorization")
+        assert auth == "Bearer sk-env", f"Expected sk-env, got {auth}"
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
+    @patch("scripts.model_council.urlopen")
+    def test_spec_key_used_as_last_resort(self, mock_urlopen, _mock_read):
+        """api_key=None + no env → spec key used."""
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+        )
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        auth = req.get_header("Authorization")
+        assert auth == "Bearer sk-spec", f"Expected sk-spec, got {auth}"
+
+    # -----------------------------------------------------------------------
+    # 3. _participant_from_dict type validation
+    # -----------------------------------------------------------------------
+
+    def test_name_not_string_raises(self):
+        from scripts.model_council import _participant_from_dict
+
+        with pytest.raises((TypeError, ValueError)):
+            _participant_from_dict({"name": 42, "model": "m", "persona": "p"})
+
+    def test_model_not_string_raises(self):
+        from scripts.model_council import _participant_from_dict
+
+        with pytest.raises((TypeError, ValueError)):
+            _participant_from_dict({"name": "A", "model": None, "persona": "p"})
+
+    def test_max_tokens_not_int_raises(self):
+        from scripts.model_council import _participant_from_dict
+
+        with pytest.raises((TypeError, ValueError)):
+            _participant_from_dict(
+                {"name": "A", "model": "m", "persona": "p", "max_tokens": "16000"}
+            )
+
+    def test_timeout_not_int_raises(self):
+        from scripts.model_council import _participant_from_dict
+
+        with pytest.raises((TypeError, ValueError)):
+            _participant_from_dict({"name": "A", "model": "m", "persona": "p", "timeout": "fast"})
+
+    # -----------------------------------------------------------------------
+    # 4. Attribution empty-skip test fix
+    # -----------------------------------------------------------------------
+
+    @patch("scripts.model_council.urlopen")
+    def test_empty_response_attribution_uses_header_check(self, mock_urlopen):
+        """Old test just checked 'Beta' not in user text — fragile if prompt
+        contains 'Beta'. Must check the full attribution header pattern."""
+        parts = _make_participants("Alpha", "Beta")
+        c = _make_council(participants=parts)
+
+        # Use a prompt that literally contains the word "Beta" —
+        # old assertion would false-fail on this.
+        responses = {
+            parts[0].model: _mock_openrouter_response("Alpha responds about Beta testing"),
+            parts[1].model: _mock_openrouter_response(""),  # empty
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("Discuss Beta testing frameworks")
+
+        msgs = c._build_messages(parts[0], "Round 2 prompt about Beta")
+        user_text = " ".join(m["content"] for m in msgs if m["role"] == "user")
+        # The attribution HEADER must not appear (empty response skipped)
+        assert "=== Beta (Round" not in user_text
+        # But "Beta" may appear in prompt/response text — that's fine
+
+    @patch("scripts.model_council.urlopen")
+    def test_all_participants_empty_round_1_no_crash(self, mock_urlopen):
+        """ALL participants return empty in R1. R2 messages must still
+        have correct system+user/assistant alternation."""
+        parts = _make_participants("Alpha", "Beta")
+        c = _make_council(participants=parts)
+
+        # Round 1: all empty
+        responses = {
+            parts[0].model: _mock_openrouter_response(""),
+            parts[1].model: _mock_openrouter_response(""),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("Round 1")
+
+        # Build R2 messages — must not crash
+        msgs = c._build_messages(parts[0], "Round 2")
+        roles = [m["role"] for m in msgs]
+        assert roles[0] == "system"
+        # After system, must alternate user/assistant
+        non_system = roles[1:]
+        for i, role in enumerate(non_system):
+            expected = "user" if i % 2 == 0 else "assistant"
+            assert role == expected, f"Position {i}: expected {expected}, got {role}. Full: {roles}"
+
+    # -----------------------------------------------------------------------
+    # 5. Old-format transcript without `usage` key
+    # -----------------------------------------------------------------------
+
+    def test_print_transcript_old_format_no_usage_key(self, tmp_path):
+        """Transcript with responses that have no 'usage' key at all
+        (old format). print_transcript() must not crash."""
+        data = {
+            "name": "OldFormat",
+            "created": "2026-01-01T00:00:00",
+            "system_context": "ctx",
+            "participants": [{"name": "A", "model": "m", "persona": "p"}],
+            "rounds": [
+                {
+                    "round": 1,
+                    "prompt": "hello",
+                    "responses": {
+                        "A": {
+                            "content": "foo",
+                            "finish_reason": "stop",
+                            # No "usage" key at all — old format
+                        }
+                    },
+                }
+            ],
+        }
+        path = str(tmp_path / "old_format.json")
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+        loaded = Council.load_transcript(path, api_key="sk-x")
+        # Must not crash
+        md = loaded.print_transcript()
+        assert isinstance(md, str)
+        # Should handle missing usage gracefully (0 tokens or similar)
+        assert "Token Usage" in md or "0" in md
+
+    # -----------------------------------------------------------------------
+    # 6. Round number explicitly verified
+    # -----------------------------------------------------------------------
+
+    @patch("scripts.model_council.urlopen")
+    def test_round_numbers_sequential(self, mock_urlopen):
+        """Round numbers in transcript must be 1, 2, 3 — not 0-indexed."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts)
+
+        for i in range(3):
+            responses = {parts[0].model: _mock_openrouter_response(f"R{i + 1}")}
+            mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+            c.run_round(f"Prompt {i + 1}")
+
+        t = c.transcript
+        assert t["rounds"][0]["round"] == 1
+        assert t["rounds"][1]["round"] == 2
+        assert t["rounds"][2]["round"] == 3
+
+    # -----------------------------------------------------------------------
+    # 7. ValueError propagation through thread pool
+    # -----------------------------------------------------------------------
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("scripts.model_council._read_spec_api_key", return_value=None)
+    @patch("scripts.model_council.urlopen")
+    def test_no_key_valueerror_propagates_cleanly(self, mock_urlopen, _mock_read):
+        """No key anywhere → ValueError must propagate through thread pool
+        WITHOUT being wrapped in another exception type."""
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+        )
+        with pytest.raises(ValueError, match="API key required"):
+            c.run_round("prompt")
+
+    # -----------------------------------------------------------------------
+    # 8. Concurrency key resolution via spec file
+    # -----------------------------------------------------------------------
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("scripts.model_council._read_spec_api_key", return_value="sk-concurrent")
+    @patch("scripts.model_council.urlopen")
+    def test_concurrent_key_resolution_all_match(self, mock_urlopen, _mock_read):
+        """4 participants, api_key=None, spec returns 'sk-concurrent'.
+        ALL 4 request Authorization headers must be 'Bearer sk-concurrent'."""
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        parts = [
+            Participant(name=f"M{i}", model=f"vendor/model-{i}", persona=f"P{i}") for i in range(4)
+        ]
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+        )
+
+        responses = {}
+        for p in parts:
+            responses[p.model] = _mock_openrouter_response(f"{p.name}-answer")
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        assert mock_urlopen.call_count == 4
+        for call in mock_urlopen.call_args_list:
+            req = call[0][0]
+            auth = req.get_header("Authorization")
+            assert auth == "Bearer sk-concurrent", f"Got {auth}"
+
+    # -----------------------------------------------------------------------
+    # 9. Short-file test rename/rewrite
+    # -----------------------------------------------------------------------
+
+    def test_spec_file_with_key_on_line_2_found(self, tmp_path):
+        """A 2-line file with 'API Key: sk-short' on line 2 must be found.
+        The old test claimed short files return None — that's wrong if the
+        pattern match is line-agnostic."""
+        from scripts.model_council import _read_spec_api_key
+
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text("Title line\nAPI Key: sk-short\n")
+        result = _read_spec_api_key(spec_file)
+        assert result == "sk-short"
+
+    # -----------------------------------------------------------------------
+    # 10. Hollow test replacements
+    # -----------------------------------------------------------------------
+
+    @patch("scripts.model_council.urlopen")
+    def test_max_tokens_actually_sent_to_api(self, mock_urlopen):
+        """Council max_tokens=2048 must appear in the request body."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts, max_tokens=2048)
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        body = json.loads(req.data.decode("utf-8"))
+        assert body["max_tokens"] == 2048
+
+    @patch("scripts.model_council.urlopen")
+    def test_timeout_actually_used_in_urlopen(self, mock_urlopen):
+        """Council timeout=30 must be passed to urlopen call."""
+        parts = _make_participants("Alpha")
+        c = _make_council(participants=parts, timeout=30)
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        call = mock_urlopen.call_args_list[0]
+        # timeout passed as keyword or second positional arg
+        if call[1].get("timeout") is not None:
+            assert call[1]["timeout"] == 30
+        else:
+            # Second positional arg (after request)
+            assert call[0][1] == 30
+
+    @patch("scripts.model_council.urlopen")
+    def test_system_context_in_messages(self, mock_urlopen):
+        """Specific context string must appear in the system message."""
+        parts = _make_participants("Alpha")
+        ctx = "UNIQUE_CONTEXT_MARKER_7x9q2z"
+        c = _make_council(participants=parts, system_context=ctx)
+
+        msgs = c._build_messages(parts[0], "prompt")
+        system_msg = msgs[0]
+        assert system_msg["role"] == "system"
+        assert ctx in system_msg["content"], (
+            f"Context '{ctx}' not found in system message: {system_msg['content'][:200]}"
+        )

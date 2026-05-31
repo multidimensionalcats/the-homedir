@@ -40,6 +40,23 @@ def _participant_from_dict(d: dict) -> Participant:
     for field in ("name", "model", "persona"):
         if field not in d:
             raise ValueError(f"Participant dict missing required field: {field}")
+    for field in ("name", "model", "persona"):
+        if not isinstance(d[field], str):
+            raise TypeError(
+                f"Participant field '{field}' must be a string, got {type(d[field]).__name__}"
+            )
+    if d.get("max_tokens") is not None and (
+        isinstance(d["max_tokens"], bool) or not isinstance(d["max_tokens"], int)
+    ):
+        raise TypeError(
+            f"Participant field 'max_tokens' must be an int, got {type(d['max_tokens']).__name__}"
+        )
+    if d.get("timeout") is not None and (
+        isinstance(d["timeout"], bool) or not isinstance(d["timeout"], int)
+    ):
+        raise TypeError(
+            f"Participant field 'timeout' must be an int, got {type(d['timeout']).__name__}"
+        )
     return Participant(
         name=d["name"],
         model=d["model"],
@@ -399,16 +416,23 @@ class Council:
 
 
 def _deduplicate_names(names: list[str]) -> list[str]:
-    """Append numeric suffixes to make duplicate names unique."""
-    seen: dict[str, int] = {}
+    """Append random hex suffixes to make duplicate names unique."""
+    seen_counts: dict[str, int] = {}
+    all_names: set[str] = set()
     result: list[str] = []
     for name in names:
-        if name not in seen:
-            seen[name] = 1
+        seen_counts[name] = seen_counts.get(name, 0) + 1
+        if seen_counts[name] == 1:
+            all_names.add(name)
             result.append(name)
         else:
-            seen[name] += 1
-            unique = f"{name}-{seen[name]}"
+            for _ in range(100):
+                unique = f"{name}-{os.urandom(3).hex()}"
+                if unique not in all_names:
+                    break
+            else:
+                raise RuntimeError(f"Failed to generate unique name for '{name}'")
+            all_names.add(unique)
             result.append(unique)
     return result
 
