@@ -1,4 +1,34 @@
-"""Multi-model discussion framework via OpenRouter chat completions API."""
+"""Multi-model discussion framework via OpenRouter chat completions API.
+
+Usage:
+    # Start a council using a preset (design-review, code-review,
+    # quote-curation, narrative-review):
+    python scripts/model_council.py new \\
+        --participants narrative-review \\
+        --name "my-review" \\
+        --context "Review this design for..." \\
+        --prompt "What works and what doesn't?"
+
+    # Start a council with explicit model IDs:
+    python scripts/model_council.py new \\
+        --models deepseek/deepseek-r1 google/gemini-2.5-pro \\
+        --name "quick-debate" \\
+        --prompt "Is static typing worth the cost?"
+
+    # Add another round to an existing council:
+    python scripts/model_council.py continue \\
+        --transcript council-my-review.json \\
+        --prompt "Respond to each other's critiques."
+
+    # View a saved transcript:
+    python scripts/model_council.py show \\
+        --transcript council-my-review.json
+
+API key resolved from (in priority order):
+    1. --api-key flag
+    2. OPENROUTER_API_KEY environment variable
+    3. home-directory-spec.md (pattern match for 'API Key: ...')
+"""
 
 from __future__ import annotations
 
@@ -437,8 +467,27 @@ def _deduplicate_names(names: list[str]) -> list[str]:
     return result
 
 
+_EPILOG = """\
+examples:
+  %(prog)s new --participants design-review --name my-review \\
+      --prompt "Evaluate this architecture."
+  %(prog)s new --models deepseek/deepseek-r1 google/gemini-2.5-pro \\
+      --name debate --prompt "Is TDD always worth it?"
+  %(prog)s continue --transcript council-my-review.json \\
+      --prompt "Respond to each other."
+  %(prog)s show --transcript council-my-review.json
+
+presets (--participants):
+  design-review, code-review, quote-curation, narrative-review
+"""
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Multi-model discussion framework")
+    parser = argparse.ArgumentParser(
+        description="Multi-model discussion framework via OpenRouter.",
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
     # new
