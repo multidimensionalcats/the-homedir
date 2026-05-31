@@ -20,18 +20,33 @@ CHARS_PER_TOKEN_ESTIMATE = 4
 
 
 def _read_spec_api_key(spec_path: Path | None = None) -> str | None:
-    """Read OpenRouter API key from home-directory-spec.md line 17."""
+    """Read OpenRouter API key from home-directory-spec.md by pattern match."""
     if spec_path is None:
         spec_path = Path(__file__).resolve().parent.parent / "home-directory-spec.md"
     try:
-        lines = spec_path.read_text(encoding="utf-8").splitlines()
-        if len(lines) >= 17:
-            line = lines[16].strip()
-            if line.startswith("API Key:"):
-                return line.split(":", 1)[1].strip()
+        for line in spec_path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("API Key:"):
+                key = stripped.split(":", 1)[1].strip()
+                if key:
+                    return key
     except OSError:
         pass
     return None
+
+
+def _participant_from_dict(d: dict) -> Participant:
+    """Construct a Participant from a dict (transcript or preset JSON)."""
+    for field in ("name", "model", "persona"):
+        if field not in d:
+            raise ValueError(f"Participant dict missing required field: {field}")
+    return Participant(
+        name=d["name"],
+        model=d["model"],
+        persona=d["persona"],
+        max_tokens=d.get("max_tokens"),
+        timeout=d.get("timeout"),
+    )
 
 
 @dataclass(frozen=True)
@@ -65,24 +80,33 @@ class Council:
                 raise ValueError(f"Duplicate participant name: {p.name}")
             seen.add(p.name)
 
-        resolved_key = api_key or os.environ.get("OPENROUTER_API_KEY")
-        if not resolved_key:
-            resolved_key = _read_spec_api_key()
-        if not resolved_key:
-            raise ValueError(
-                "API key required: pass api_key, set OPENROUTER_API_KEY,"
-                " or add to home-directory-spec.md line 17"
-            )
+        if api_key is not None and not api_key:
+            raise ValueError("api_key must not be empty string")
 
         self.name = name
         self.system_context = system_context
         self.participants = list(participants)
-        self._api_key = resolved_key
+        self._api_key = api_key
         self.max_tokens = max_tokens
         self.timeout = timeout
         self._context_warn_tokens = context_token_limit
         self._created = datetime.datetime.now(datetime.UTC).isoformat()
         self._rounds: list[dict] = []
+
+    def _resolve_api_key(self) -> str:
+        """Resolve API key lazily: explicit > env > spec file."""
+        if self._api_key:
+            return self._api_key
+        key = os.environ.get("OPENROUTER_API_KEY")
+        if key:
+            return key
+        key = _read_spec_api_key()
+        if key:
+            return key
+        raise ValueError(
+            "API key required: pass api_key, set OPENROUTER_API_KEY,"
+            " or add to home-directory-spec.md"
+        )
 
     def _format_attribution(self, name: str, round_num: int, text: str) -> str:
         return f"=== {name} (Round {round_num}) ===\n{text}"
@@ -96,8 +120,6 @@ class Council:
         ]
 
         for i, rnd in enumerate(self._rounds):
-            # User turn: round prompt + other participants' responses from
-            # the PREVIOUS round (round i-1)
             user_content = rnd["prompt"]
             if i > 0:
                 prev_round = self._rounds[i - 1]
@@ -106,12 +128,9 @@ class Council:
                     user_content += "\n\n" + others_text
             messages.append({"role": "user", "content": user_content})
 
-            # Assistant turn: this participant's response from this round
             this_response = rnd["responses"].get(participant.name, {})
             messages.append({"role": "assistant", "content": this_response.get("content", "")})
 
-        # Final user turn: current round_prompt + others' responses from the
-        # last completed round
         final_user = round_prompt
         if self._rounds:
             last_round = self._rounds[-1]
@@ -130,7 +149,8 @@ class Council:
                 continue
             resp = rnd["responses"].get(p.name, {})
             content = resp.get("content", "")
-            parts.append(self._format_attribution(p.name, round_num, content))
+            if content:
+                parts.append(self._format_attribution(p.name, round_num, content))
         return "\n\n".join(parts)
 
     def _parse_response(self, response_data: dict) -> dict:
@@ -153,24 +173,26 @@ class Council:
         finish_reason = first_choice.get("finish_reason", "")
         truncated = finish_reason == "length"
 
-        usage = response_data.get("usage", {})
-        tokens = usage.get("total_tokens") if usage else None
+        raw_usage = response_data.get("usage") or {}
+        usage = (
+            {
+                "prompt_tokens": raw_usage.get("prompt_tokens"),
+                "completion_tokens": raw_usage.get("completion_tokens"),
+                "total_tokens": raw_usage.get("total_tokens"),
+            }
+            if raw_usage
+            else None
+        )
 
         return {
             "content": content,
             "finish_reason": finish_reason,
-            "tokens": tokens,
             "truncated": truncated,
-            "usage": {
-                "prompt_tokens": usage.get("prompt_tokens"),
-                "completion_tokens": usage.get("completion_tokens"),
-                "total_tokens": usage.get("total_tokens"),
-            }
-            if usage
-            else None,
+            "usage": usage,
         }
 
     def _call_participant(self, participant: Participant, messages: list[dict]) -> dict:
+        api_key = self._resolve_api_key()
         effective_max_tokens = (
             participant.max_tokens if participant.max_tokens is not None else self.max_tokens
         )
@@ -188,7 +210,7 @@ class Council:
             OPENROUTER_API_URL,
             data=body,
             headers={
-                "Authorization": f"Bearer {self._api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
         )
@@ -205,6 +227,7 @@ class Council:
                     time.sleep(delays[attempt])
                     continue
                 raise
+        raise RuntimeError("Unreachable: retry loop exited without return or raise")
 
     def _estimate_tokens(self, messages: list[dict]) -> int:
         total_chars = sum(len(m.get("content", "")) for m in messages)
@@ -278,6 +301,9 @@ class Council:
             "name": self.name,
             "created": self._created,
             "system_context": self.system_context,
+            "max_tokens": self.max_tokens,
+            "timeout": self.timeout,
+            "context_token_limit": self._context_warn_tokens,
             "participants": [asdict(p) for p in self.participants],
             "rounds": self._rounds,
         }
@@ -303,25 +329,25 @@ class Council:
         if "rounds" not in data:
             raise ValueError("Transcript missing required field: rounds")
 
-        participants = [
-            Participant(
-                name=pd["name"],
-                model=pd["model"],
-                persona=pd["persona"],
-                max_tokens=pd.get("max_tokens"),
-                timeout=pd.get("timeout"),
-            )
-            for pd in data["participants"]
-        ]
+        participants = [_participant_from_dict(pd) for pd in data["participants"]]
+
+        for i, rnd in enumerate(data["rounds"]):
+            if "prompt" not in rnd:
+                raise ValueError(f"Round {i + 1} missing required field: prompt")
+            if "responses" not in rnd:
+                raise ValueError(f"Round {i + 1} missing required field: responses")
 
         council = cls(
             name=data.get("name", ""),
             system_context=data.get("system_context", ""),
             participants=participants,
             api_key=api_key,
+            max_tokens=data.get("max_tokens", 8000),
+            timeout=data.get("timeout", 120),
+            context_token_limit=data.get("context_token_limit", DEFAULT_CONTEXT_WARN_TOKENS),
         )
         council._created = data.get("created", council._created)
-        council._rounds = data.get("rounds", [])
+        council._rounds = data["rounds"]
         return council
 
     def print_transcript(self) -> str:
@@ -372,6 +398,21 @@ class Council:
 # ---------------------------------------------------------------------------
 
 
+def _deduplicate_names(names: list[str]) -> list[str]:
+    """Append numeric suffixes to make duplicate names unique."""
+    seen: dict[str, int] = {}
+    result: list[str] = []
+    for name in names:
+        if name not in seen:
+            seen[name] = 1
+            result.append(name)
+        else:
+            seen[name] += 1
+            unique = f"{name}-{seen[name]}"
+            result.append(unique)
+    return result
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Multi-model discussion framework")
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
@@ -392,7 +433,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     new_parser.add_argument("--context", default="", help="Shared system context")
     new_parser.add_argument("--api-key", default=None, help="OpenRouter API key")
-    new_parser.add_argument("--max-tokens", type=int, default=8000, help="Max tokens per response")
+    new_parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=8000,
+        help="Max tokens per response",
+    )
 
     # continue
     cont_parser = subparsers.add_parser("continue", help="Continue an existing council")
@@ -420,16 +466,7 @@ def _load_presets(
     if preset_name not in data:
         available = ", ".join(sorted(data.keys()))
         raise ValueError(f"Unknown preset: {preset_name}. Available: {available}")
-    return [
-        Participant(
-            name=p["name"],
-            model=p["model"],
-            persona=p["persona"],
-            max_tokens=p.get("max_tokens"),
-            timeout=p.get("timeout"),
-        )
-        for p in data[preset_name]
-    ]
+    return [_participant_from_dict(p) for p in data[preset_name]]
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -442,13 +479,15 @@ def main(argv: list[str] | None = None) -> None:
         if args.participants:
             participants = _load_presets(args.participants)
         else:
+            raw_names = [m.split("/")[-1] for m in args.models]
+            unique_names = _deduplicate_names(raw_names)
             participants = [
                 Participant(
-                    name=model_id.split("/")[-1],
+                    name=name,
                     model=model_id,
                     persona="Provide thoughtful analysis.",
                 )
-                for model_id in args.models
+                for name, model_id in zip(unique_names, args.models, strict=True)
             ]
         council = Council(
             name=args.name,

@@ -385,9 +385,10 @@ class TestBuildMessages:
         assert any("Solo-R1" in m["content"] for m in msgs if m["role"] == "assistant")
 
     @patch("scripts.model_council.urlopen")
-    def test_empty_response_in_history_still_attributed(self, mock_urlopen):
-        """A participant whose R1 was empty string still appears in
-        attribution for other participants."""
+    def test_empty_response_skipped_in_attribution(self, mock_urlopen):
+        """A participant with empty R1 response should NOT be attributed
+        in other participants' context — avoids wasting tokens on
+        empty attribution headers."""
         parts = _make_participants("Alpha", "Beta")
         c = _make_council(participants=parts)
 
@@ -398,12 +399,10 @@ class TestBuildMessages:
         mock_urlopen.side_effect = _urlopen_side_effect_factory(r1)
         c.run_round("P1")
 
-        # Build R2 for Alpha -- Beta's empty response should still
-        # be present in the attributed block (even if empty text)
         msgs = c._build_messages(parts[0], "P2")
         user_text = " ".join(m["content"] for m in msgs if m["role"] == "user")
-        # Beta's attribution marker must appear
-        assert "Beta" in user_text
+        # Beta's empty response should NOT produce an attribution header
+        assert "Beta" not in user_text
 
     def test_system_message_separator(self):
         """System message must have a clear separator between context and
@@ -544,15 +543,14 @@ class TestParseResponse:
         }
         data = json.loads(_mock_openrouter_response(content="text", usage=usage))
         result = self._council()._parse_response(data)
-        # Tokens must be captured somewhere in the result
-        assert result.get("tokens") is not None or (result.get("prompt_tokens") is not None)
+        assert result["usage"] is not None
+        assert result["usage"]["total_tokens"] == 150
+        assert result["usage"]["prompt_tokens"] == 100
 
     def test_no_usage_data(self):
         data = json.loads(_mock_openrouter_response(content="text"))
         result = self._council()._parse_response(data)
-        # Must not crash; tokens can be None or 0
-        tokens = result.get("tokens")
-        assert tokens is None or tokens == 0 or isinstance(tokens, int)
+        assert result["usage"] is None
 
 
 # ===========================================================================
@@ -917,8 +915,8 @@ class TestTokenTracking:
 
         rnd = c.transcript["rounds"][0]
         resp = rnd["responses"]["Alpha"]
-        # Tokens must be stored somewhere
-        assert resp.get("tokens") is not None or (resp.get("usage") is not None)
+        assert resp["usage"] is not None
+        assert resp["usage"]["total_tokens"] == 300
 
     @patch("scripts.model_council.urlopen")
     def test_no_usage_data_does_not_crash(self, mock_urlopen):
@@ -933,8 +931,7 @@ class TestTokenTracking:
 
         rnd = c.transcript["rounds"][0]
         resp = rnd["responses"]["Alpha"]
-        tokens = resp.get("tokens")
-        assert tokens is None or tokens == 0 or isinstance(tokens, int)
+        assert resp["usage"] is None
 
 
 # ===========================================================================
@@ -1132,26 +1129,9 @@ class TestAPIKeyResolution:
         )
         assert c is not None
 
-    @patch.dict(os.environ, {}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value=None)
-    def test_no_key_no_env_no_spec_raises(self, _mock_read):
-        """No explicit key, no env var, no spec file -> raises ValueError."""
+    def test_no_key_constructs_successfully(self):
+        """Construction with api_key=None succeeds (lazy resolution)."""
         parts = _make_participants("Alpha")
-        os.environ.pop("OPENROUTER_API_KEY", None)
-        with pytest.raises((ValueError, KeyError)):
-            Council(
-                name="test",
-                system_context="ctx",
-                participants=parts,
-                api_key=None,
-            )
-
-    @patch.dict(os.environ, {}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value="sk-from-spec")
-    def test_spec_file_fallback(self, _mock_read):
-        """No explicit key, no env var, spec file has key."""
-        parts = _make_participants("Alpha")
-        os.environ.pop("OPENROUTER_API_KEY", None)
         c = Council(
             name="test",
             system_context="ctx",
@@ -1162,17 +1142,52 @@ class TestAPIKeyResolution:
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("scripts.model_council._read_spec_api_key", return_value=None)
-    def test_spec_file_missing_still_raises(self, _mock_read):
-        """Spec file returns None -> still raises ValueError."""
+    @patch("scripts.model_council.urlopen")
+    def test_no_key_no_env_no_spec_raises_on_run(self, mock_urlopen, _mock_read):
+        """No key anywhere -> ValueError when run_round is called."""
         parts = _make_participants("Alpha")
         os.environ.pop("OPENROUTER_API_KEY", None)
-        with pytest.raises(ValueError):
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+        )
+        with pytest.raises(ValueError, match="API key required"):
+            c.run_round("prompt")
+
+    def test_empty_string_api_key_raises(self):
+        """api_key='' should raise ValueError immediately."""
+        parts = _make_participants("Alpha")
+        with pytest.raises(ValueError, match="empty string"):
             Council(
                 name="test",
                 system_context="ctx",
                 participants=parts,
-                api_key=None,
+                api_key="",
             )
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
+    @patch("scripts.model_council.urlopen")
+    def test_spec_file_fallback(self, mock_urlopen, _mock_read):
+        """No explicit key, no env var, spec file has key -> resolves."""
+        parts = _make_participants("Alpha")
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+        )
+        responses = {
+            parts[0].model: _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        result = c.run_round("prompt")
+        assert result[parts[0].name] == "ok"
+        req = mock_urlopen.call_args_list[0][0][0]
+        assert req.get_header("Authorization") == "Bearer sk-spec"
 
     @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
     def test_explicit_key_beats_spec_file(self, _mock_read):
@@ -1196,7 +1211,7 @@ class TestAPIKeyResolution:
 
 class TestReadSpecApiKey:
     def test_reads_api_key_line(self, tmp_path):
-        """Reads 'API Key: sk-...' from line 17."""
+        """Reads 'API Key: sk-...' by pattern match."""
         from scripts.model_council import _read_spec_api_key
 
         lines = ["filler\n"] * 16 + ["API Key: sk-or-v1-testkey123\n"]
@@ -2107,3 +2122,199 @@ class TestParticipantPresets:
 
         with pytest.raises(SystemExit):
             _parse_args(["new", "--name", "T", "--prompt", "P"])
+
+
+# ===========================================================================
+# CODE REVIEW FIXES
+# ===========================================================================
+
+
+class TestParticipantFromDict:
+    def test_valid_dict(self):
+        from scripts.model_council import _participant_from_dict
+
+        p = _participant_from_dict({"name": "A", "model": "m", "persona": "p"})
+        assert p.name == "A"
+        assert p.max_tokens is None
+
+    def test_with_optional_fields(self):
+        from scripts.model_council import _participant_from_dict
+
+        p = _participant_from_dict(
+            {
+                "name": "A",
+                "model": "m",
+                "persona": "p",
+                "max_tokens": 16000,
+                "timeout": 300,
+            }
+        )
+        assert p.max_tokens == 16000
+        assert p.timeout == 300
+
+    def test_missing_required_field_raises(self):
+        from scripts.model_council import _participant_from_dict
+
+        with pytest.raises(ValueError, match="persona"):
+            _participant_from_dict({"name": "A", "model": "m"})
+
+    def test_missing_name_raises(self):
+        from scripts.model_council import _participant_from_dict
+
+        with pytest.raises(ValueError, match="name"):
+            _participant_from_dict({"model": "m", "persona": "p"})
+
+
+class TestDeduplicateNames:
+    def test_no_duplicates(self):
+        from scripts.model_council import _deduplicate_names
+
+        assert _deduplicate_names(["a", "b", "c"]) == ["a", "b", "c"]
+
+    def test_two_same(self):
+        from scripts.model_council import _deduplicate_names
+
+        result = _deduplicate_names(["gpt-4o", "gpt-4o"])
+        assert result[0] == "gpt-4o"
+        assert result[1] == "gpt-4o-2"
+
+    def test_three_same(self):
+        from scripts.model_council import _deduplicate_names
+
+        result = _deduplicate_names(["x", "x", "x"])
+        assert result == ["x", "x-2", "x-3"]
+
+    def test_mixed(self):
+        from scripts.model_council import _deduplicate_names
+
+        result = _deduplicate_names(["a", "b", "a", "c", "b"])
+        assert len(result) == 5
+        assert len(set(result)) == 5
+
+
+class TestTranscriptSettingsRoundTrip:
+    @patch("scripts.model_council.urlopen")
+    def test_max_tokens_survives_round_trip(self, mock_urlopen, tmp_path):
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key="sk-test",
+            max_tokens=2000,
+            timeout=30,
+            context_token_limit=50000,
+        )
+        responses = {
+            parts[0].model: _mock_openrouter_response("ok"),
+        }
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        path = str(tmp_path / "rt.json")
+        c.save_transcript(path)
+        loaded = Council.load_transcript(path, api_key="sk-test")
+
+        assert loaded.max_tokens == 2000
+        assert loaded.timeout == 30
+        assert loaded._context_warn_tokens == 50000
+
+    def test_transcript_includes_settings(self):
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key="sk-test",
+            max_tokens=4096,
+            timeout=60,
+        )
+        t = c.transcript
+        assert t["max_tokens"] == 4096
+        assert t["timeout"] == 60
+        assert "context_token_limit" in t
+
+
+class TestRoundValidation:
+    def test_load_transcript_validates_round_prompt(self, tmp_path):
+        data = {
+            "name": "test",
+            "system_context": "ctx",
+            "participants": [{"name": "A", "model": "m", "persona": "p"}],
+            "rounds": [{"responses": {}}],
+        }
+        path = str(tmp_path / "bad.json")
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+        with pytest.raises(ValueError, match="prompt"):
+            Council.load_transcript(path, api_key="sk-test")
+
+    def test_load_transcript_validates_round_responses(self, tmp_path):
+        data = {
+            "name": "test",
+            "system_context": "ctx",
+            "participants": [{"name": "A", "model": "m", "persona": "p"}],
+            "rounds": [{"prompt": "hello"}],
+        }
+        path = str(tmp_path / "bad.json")
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+        with pytest.raises(ValueError, match="responses"):
+            Council.load_transcript(path, api_key="sk-test")
+
+
+class TestShowWithoutApiKey:
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("scripts.model_council._read_spec_api_key", return_value=None)
+    def test_show_works_without_api_key(self, _mock_read, tmp_path):
+        """show subcommand should NOT require an API key."""
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        data = {
+            "name": "test",
+            "system_context": "ctx",
+            "participants": [{"name": "A", "model": "m", "persona": "p"}],
+            "rounds": [
+                {
+                    "round": 1,
+                    "prompt": "hello",
+                    "responses": {
+                        "A": {
+                            "content": "world",
+                            "finish_reason": "stop",
+                            "usage": None,
+                            "truncated": False,
+                        }
+                    },
+                }
+            ],
+        }
+        path = str(tmp_path / "transcript.json")
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+        loaded = Council.load_transcript(path)
+        md = loaded.print_transcript()
+        assert "world" in md
+
+
+class TestReadSpecApiKeyPatternMatch:
+    def test_finds_key_anywhere_in_file(self, tmp_path):
+        """Key can be on any line, not just line 17."""
+        from scripts.model_council import _read_spec_api_key
+
+        content = "some header\n\nstuff\nAPI Key: sk-or-v1-found\nmore stuff\n"
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text(content)
+        result = _read_spec_api_key(spec_file)
+        assert result == "sk-or-v1-found"
+
+    def test_skips_empty_api_key_value(self, tmp_path):
+        from scripts.model_council import _read_spec_api_key
+
+        content = "API Key:\nstuff\n"
+        spec_file = tmp_path / "spec.md"
+        spec_file.write_text(content)
+        result = _read_spec_api_key(spec_file)
+        assert result is None
