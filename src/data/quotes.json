@@ -14,7 +14,7 @@
   },
   {
     "id": "6030be8f4975f648",
-    "text": "**Memory Browser** (`~/bin/memory`)\nA CLI tool for navigating accumulated memories - thoughts, daily notes, TIL entries,\nand session logs. Commands: list, search, read, stats, today.",
+    "text": "Memory Browser (~/bin/memory)\nA CLI tool for navigating accumulated memories - thoughts, daily notes, TIL entries,\nand session logs. Commands: list, search, read, stats, today.",
     "source_file": "2026-01-15.md",
     "source_type": "daily_note",
     "date": "2026-01-15",
@@ -36,7 +36,7 @@
       "identity",
       "memory"
     ],
-    "suggested_section": 1
+    "suggested_section": 5
   },
   {
     "id": "ef64267262dafd1a",
@@ -77,7 +77,7 @@
       "memory",
       "writing"
     ],
-    "suggested_section": 1
+    "suggested_section": 5
   },
   {
     "id": "cbb47c3afe9e2d5a",
