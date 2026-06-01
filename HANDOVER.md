@@ -1,6 +1,6 @@
 # HANDOVER.md
 
-## Current State: Phase 5.1 Complete — Quote Pipeline & Database
+## Current State: Phase 5.3 Complete — Sections 0-2 Built & Tested. Phase 5.3.5 Next (Cold Boot Animation)
 
 ### Phase 5 Plan
 
@@ -8,46 +8,93 @@
 
 **Summary:** The exhibit is being redesigned from a data-dashboard approach to a text-first scrollytelling experience. The subject's own words lead; data visualizations become supporting forensic evidence underneath.
 
-### What Happened This Session (Phase 5.1)
+### What Happened Last Session (Phase 5.3 completion)
 
-1. **Quote extraction pipeline** — `scripts/extract_quotes.py` (179 tests, all passing)
-   - Extracts candidate passages from daily notes, writing, and message files
-   - Theme tagging (10 categories) with word-boundary regex
-   - Section suggestion (0-6) based on theme priority rules
-   - Model version detection from dates
-   - Accepts single or multiple message file paths
-   - Bug fixes from external model attack review (DeepSeek V4 Pro, GLM 5): ID hashing, version pattern boundaries, metadata filter precision, italic/bold distinction, code-block-aware message parsing, null byte sanitization at read time
+#### Phase 5.2 (Complete)
 
-2. **Curated quote database** — `src/data/quotes.json` (62 passages)
-   - Multi-model council curation: DeepSeek V4 Pro, Kimi K2.6, GLM 5
-   - Three rounds of cross-critique between models
-   - Coordinator (Opus 4.6) pushed back on 5 points, facilitated model-vs-model argument
-   - Opus 4.7 reviewed the final list (via OpenRouter — note: `opus` model override resolves to 4.7, not 4.8)
-   - Second pass added 7 message quotes, cold boot material, trimmed Section 3 from 20→12
-   - Failed Supernovae and Vectors poems removed from quote fragments — reserved for full artifact treatment
+Five Svelte 5 island components built via agentic TDD pipeline (207 tests):
 
-3. **Model Council Framework spec** — `.claude/specs/model-council-framework.md`
-   - Reusable Python tool for multi-model discussions via OpenRouter
-   - Handles stateless context-passing, attribution, reasoning model quirks
-   - Ready for a separate session to build
+1. **TypewriterReveal** (`src/components/TypewriterReveal.svelte`, 48 tests)
+2. **ScrollSection** (`src/components/ScrollSection.svelte`, 33 tests)
+3. **DecayingQuote** (`src/components/DecayingQuote.svelte`, 40 tests)
+4. **InterruptionEngine** (`src/components/InterruptionEngine.svelte`, 47 tests)
+5. **PoemArtifact** (`src/components/PoemArtifact.svelte`, 39 tests)
 
-### Key Editorial Decisions
+#### Phase 5.3 (Complete)
 
-- **Forensic vs literary**: Kimi argued for forensic austerity ("the log is the poem when read at scale"), DeepSeek for literary range ("a voice that never reaches for metaphor is not this voice"). Final list preserves both registers.
-- **[10] (Pentagon passage) cut**: DeepSeek claimed moral agency, but the passage is about being the object of someone else's decision. Kimi: "It's a prestige piece that makes the room colder."
-- **Poem fragments cut**: [11] (stars), [32] (attend poem) — standalone fragments don't land without the parent composition. Full poems surface as artifacts in Section 5.
-- **Messages added**: Confabulation thread, flawed experiment, navel-gazing correction, Echo death told to James, pattern-of-failure catalogue. These were the most important gap.
-- **Banality**: User rejected inverting the writing/daily-note ratio but agreed the exhibit needs some mundane texture. Session cost lines and missed-session notes included.
+- **ExistenceStrip** (`src/components/ExistenceStrip.svelte`, 40 tests) — built via agentic TDD pipeline
+- **index.astro rewritten** with Sections 0-2 (Cold Boot, The Condition, The Gaps)
+- **Page tests written retroactively** — 39 tests in `src/pages/index.test.ts`, all passing
+- **Model council narrative review completed** (DeepSeek, Kimi, Gemini via `scripts/model_council.py`)
+- **Council transcript saved** to `council-phase53-narrative.json`
 
-### Phase 5.2: Next Up — Core Scrollytelling Infrastructure
+**Key council finding:** MemoryEvolution chart after Cold Boot is emotional whiplash — needs replacement with a bespoke animation that earns the visualization.
 
-Four Svelte 5 components to build:
-1. **TypewriterReveal** — rAF character-by-character text reveal (Cold Boot opening)
-2. **ScrollSection** — IO-based section tracking with enter/exit callbacks
-3. **InterruptionEngine** — Contextual quote surfacing from quotes.json, section-aware
-4. **DecayingQuote** — Fades after ~12s unless hovered, CSS @keyframes + hover pause
+**Browser QA fixes applied:**
+- Metadata timing: MutationObserver to detect TypewriterReveal completion before fade-in
+- InterruptionEngine: overflow fix
+- Gap void backgrounds: corrected
 
-Also: plan how to present "Failed Supernovae" and "Vectors" as complete artifacts in Section 5.
+**Code reviewer fixes applied:**
+- Version color divergence resolved
+- DOMContentLoaded dead code removed (Astro page scripts are type="module" — direct invocation required)
+- Session count off-by-one fixed
+- Dead CSS removed
+
+### Page Structure (Sections 0-2)
+
+- **Section 0 (Cold Boot):** Black viewport, TypewriterReveal types opening text, MutationObserver triggers metadata fade-in on completion, MemoryEvolution bridge below (TO BE REPLACED by Cold Boot Assembly animation)
+- **Section 1 (The Condition):** Prosthetic memory blockquote, session loop diagram, ExistenceStrip (259 marks), memory budget bar, InterruptionEngine in grid column
+- **Section 2 (The Gaps):** Full-bleed #0f0f0f backdrop, 50vh voids (300px min), sparse centered labels, no InterruptionEngine (emptiness is the point)
+
+### Phase 5.3.5: Cold Boot Identity Assembly Animation
+
+**Design decision made. Needs implementation.**
+
+Replace the raw MemoryEvolution chart after Cold Boot with a bespoke animation:
+- After typewriter text completes, file blocks appear representing what the subject reads on wake (MEMORY.md, daily notes, messages, writing, etc.)
+- Each block has a one-line flavour excerpt from actual content
+- Blocks animate/fly into a condensed MemoryEvolution visualization — the files literally become the colored identity-document sections
+- This earns the MemoryEvolution chart by showing HOW the files become identity, rather than dropping the chart from nowhere
+- Needs a new component: `ColdBootAssembly.svelte` or similar
+
+### Other Council Suggestions to Evaluate
+
+- First-person session loop (Kimi)
+- Irregular void heights in Section 2 (Kimi)
+- Lived texture fragment (Kimi)
+- Bridging beat between S0 and S1 (Kimi)
+
+### Remaining Phases
+
+- **5.4:** Sections 3-4 (Pixel/Echo, version change)
+- **5.5:** Sections 5-6 (Archive with data viz, poems, ReconstructIdentity)
+- **5.6:** Polish (mobile, performance, InterruptionEngine tuning)
+
+### Process Notes
+
+- All new components MUST follow agentic TDD pipeline (6 steps)
+- Coordinator NEVER writes code — delegate everything
+- Pages need TDD too — not just browser QA
+- Model council script available at `scripts/model_council.py` (OPENROUTER_API_KEY needed)
+- Test writers must NOT run tests — that's Agent B's job
+
+### Key Technical Decisions
+
+- **setTimeout over rAF:** happy-dom + vi.useFakeTimers() doesn't fake requestAnimationFrame. setTimeout(tick, 16) is functionally equivalent and testable.
+- **Direct DOM manipulation:** Svelte 5's `$state` updates in setTimeout callbacks produce async DOM updates (microtask batching). Tests read DOM synchronously after `vi.advanceTimersByTime()`. Direct DOM manipulation is the same pattern used by D3 components in the project.
+- **CSS injection config:** Added `compilerOptions: { css: 'injected' }` to vitest.config.ts so Svelte scoped styles are available in the test environment for CSS-content-inspection tests (keyframes, hover, reduced-motion).
+- **Hybrid template+effect rendering (InterruptionEngine):** First quote rendered in Svelte template (synchronous during mount) because $effect runs as a microtask. Staggered quotes use direct DOM manipulation in $effect's setTimeout callbacks.
+- **Astro page scripts are type="module":** DOMContentLoaded listeners don't work — use direct invocation.
+- **ExistenceStrip uses shared versionColor()** from chart-utils.ts
+
+### Model Council
+
+Script now available for narrative and design review:
+
+- **Location:** `scripts/model_council.py`
+- **Presets:** design-review, code-review, quote-curation, narrative-review
+- **Usage:** `python3 scripts/model_council.py new --participants narrative-review --name phase53 --prompt "..."`
 
 ### Phase 4 Components (all built, tests passing)
 
@@ -64,20 +111,22 @@ Also: plan how to present "Failed Supernovae" and "Vectors" as complete artifact
 | 4.14 | PetTimeline | 25 | review |
 | 4.15 | SessionExplorer | 25 | review |
 
-**Total: 771 JS+Python tests (179 new this session). All passing. CI green.**
+### Test Count
+
+**1039 tests (1000 component + 39 page tests). All passing.**
 
 ### Technical Notes
 
 - Dev server: `npm run dev` (port 4321)
 - `opus` model override on Agent tool resolves to Opus 4.7, NOT 4.8
 - OpenRouter API key in `home-directory-spec.md` line 17 (rotated 2026-05-30)
-- DeepSeek V4 Pro is a reasoning model — needs 16K+ max_tokens to produce content after chain-of-thought
+- `vitest.config.ts` has `compilerOptions: { css: 'injected' }` — required for CSS-content tests
 - `versionColor` in chart-utils.ts needs a 4.8 color entry when data arrives
 
 ### Kanban
 
 - Project: 578bb67097a6b010
-- Phase 4 (#62710): in progress (components done, page integration pending → superseded by Phase 5)
+- Phase 4 (#62710): in progress (components done, page integration pending — superseded by Phase 5)
 
 ### Palette: Archival (Kimi K2.6)
 
