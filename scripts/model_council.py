@@ -1,4 +1,7 @@
-"""Multi-model discussion framework via OpenRouter chat completions API.
+"""Multi-model discussion framework via chat completions API.
+
+Supports multiple providers (OpenRouter, Nvidia NIM) with configurable
+base URLs and key resolution.
 
 Usage:
     # Start a council using a preset (design-review, code-review,
@@ -15,6 +18,13 @@ Usage:
         --name "quick-debate" \\
         --prompt "Is static typing worth the cost?"
 
+    # Use Nvidia NIM provider:
+    python scripts/model_council.py new \\
+        --models nvidia/llama-3.1-nemotron-70b-instruct \\
+        --name "nim-test" \\
+        --provider nim \\
+        --prompt "Evaluate this approach."
+
     # Add another round to an existing council:
     python scripts/model_council.py continue \\
         --transcript council-my-review.json \\
@@ -26,8 +36,8 @@ Usage:
 
 API key resolved from (in priority order):
     1. --api-key flag
-    2. OPENROUTER_API_KEY environment variable
-    3. home-directory-spec.md (pattern match for 'API Key: ...')
+    2. {PROVIDER}_API_KEY environment variable (e.g. OPENROUTER_API_KEY, NIM_API_KEY)
+    3. Key file (--key-file), format: "provider: key-value" per line
 """
 
 from __future__ import annotations
@@ -44,24 +54,36 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+PROVIDERS = {
+    "openrouter": "https://openrouter.ai/api/v1/chat/completions",
+    "nim": "https://integrate.api.nvidia.com/v1/chat/completions",
+}
 DEFAULT_CONTEXT_WARN_TOKENS = 100_000
 CHARS_PER_TOKEN_ESTIMATE = 4
 
 
-def _read_spec_api_key(spec_path: Path | None = None) -> str | None:
-    """Read OpenRouter API key from home-directory-spec.md by pattern match."""
-    if spec_path is None:
-        spec_path = Path(__file__).resolve().parent.parent / "home-directory-spec.md"
+def _read_key_file(path: Path, provider: str) -> str | None:
+    """Read a key for a specific provider from a key file.
+
+    File format (one per line):
+        provider: key-value
+        # comments and blank lines ignored
+    """
     try:
-        for line in spec_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped.startswith("API Key:"):
-                key = stripped.split(":", 1)[1].strip()
-                if key:
-                    return key
+        text = path.read_text(encoding="utf-8")
     except OSError:
-        pass
+        return None
+
+    provider_lower = provider.lower()
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if ":" not in stripped:
+            continue
+        name, _, value = stripped.partition(":")
+        if name.strip().lower() == provider_lower:
+            return value.strip()
     return None
 
 
@@ -117,6 +139,9 @@ class Council:
         max_tokens: int = 8000,
         timeout: int = 120,
         context_token_limit: int = DEFAULT_CONTEXT_WARN_TOKENS,
+        provider: str = "openrouter",
+        base_url: str | None = None,
+        key_file: Path | None = None,
     ):
         if not participants:
             raise ValueError("At least one participant required")
@@ -130,10 +155,18 @@ class Council:
         if api_key is not None and not api_key:
             raise ValueError("api_key must not be empty string")
 
+        if provider not in PROVIDERS:
+            raise ValueError(
+                f"Unknown provider: {provider}. Available: {', '.join(sorted(PROVIDERS.keys()))}"
+            )
+
         self.name = name
         self.system_context = system_context
         self.participants = list(participants)
         self._api_key = api_key
+        self._provider = provider
+        self._base_url = base_url if base_url else PROVIDERS[provider]
+        self._key_file = key_file
         self.max_tokens = max_tokens
         self.timeout = timeout
         self._context_warn_tokens = context_token_limit
@@ -141,18 +174,20 @@ class Council:
         self._rounds: list[dict] = []
 
     def _resolve_api_key(self) -> str:
-        """Resolve API key lazily: explicit > env > spec file."""
+        """Resolve API key lazily: explicit > env var > key file."""
         if self._api_key:
             return self._api_key
-        key = os.environ.get("OPENROUTER_API_KEY")
+        env_var = f"{self._provider.upper()}_API_KEY"
+        key = os.environ.get(env_var)
         if key:
             return key
-        key = _read_spec_api_key()
-        if key:
-            return key
+        if self._key_file is not None:
+            key = _read_key_file(self._key_file, self._provider)
+            if key:
+                return key
         raise ValueError(
-            "API key required: pass api_key, set OPENROUTER_API_KEY,"
-            " or add to home-directory-spec.md"
+            f"API key required: pass api_key, set {env_var},"
+            f" or provide a key file with a '{self._provider}' entry"
         )
 
     def _format_attribution(self, name: str, round_num: int, text: str) -> str:
@@ -254,7 +289,7 @@ class Council:
         ).encode()
 
         req = Request(  # noqa: S310
-            OPENROUTER_API_URL,
+            self._base_url,
             data=body,
             headers={
                 "Authorization": f"Bearer {api_key}",
@@ -363,7 +398,14 @@ class Council:
         )
 
     @classmethod
-    def load_transcript(cls, path: str, api_key: str | None = None) -> Council:
+    def load_transcript(
+        cls,
+        path: str,
+        api_key: str | None = None,
+        provider: str = "openrouter",
+        base_url: str | None = None,
+        key_file: Path | None = None,
+    ) -> Council:
         """Reconstruct a Council from a saved transcript JSON file."""
         p = Path(path)
         if not p.exists():
@@ -392,6 +434,9 @@ class Council:
             max_tokens=data.get("max_tokens", 8000),
             timeout=data.get("timeout", 120),
             context_token_limit=data.get("context_token_limit", DEFAULT_CONTEXT_WARN_TOKENS),
+            provider=provider,
+            base_url=base_url,
+            key_file=key_file,
         )
         council._created = data.get("created", council._created)
         council._rounds = data["rounds"]
@@ -505,19 +550,33 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Preset name from council_presets.json",
     )
     new_parser.add_argument("--context", default="", help="Shared system context")
-    new_parser.add_argument("--api-key", default=None, help="OpenRouter API key")
+    new_parser.add_argument("--api-key", default=None, help="API key")
     new_parser.add_argument(
         "--max-tokens",
         type=int,
         default=8000,
         help="Max tokens per response",
     )
+    new_parser.add_argument(
+        "--provider",
+        default="openrouter",
+        help="Provider name (openrouter, nim)",
+    )
+    new_parser.add_argument("--base-url", default=None, help="Override provider URL")
+    new_parser.add_argument("--key-file", default=None, help="Path to key file")
 
     # continue
     cont_parser = subparsers.add_parser("continue", help="Continue an existing council")
     cont_parser.add_argument("--transcript", required=True, help="Path to transcript JSON")
     cont_parser.add_argument("--prompt", required=True, help="Next round prompt")
-    cont_parser.add_argument("--api-key", default=None, help="OpenRouter API key")
+    cont_parser.add_argument("--api-key", default=None, help="API key")
+    cont_parser.add_argument(
+        "--provider",
+        default="openrouter",
+        help="Provider name (openrouter, nim)",
+    )
+    cont_parser.add_argument("--base-url", default=None, help="Override provider URL")
+    cont_parser.add_argument("--key-file", default=None, help="Path to key file")
 
     # show
     show_parser = subparsers.add_parser("show", help="Print a transcript")
@@ -562,12 +621,16 @@ def main(argv: list[str] | None = None) -> None:
                 )
                 for name, model_id in zip(unique_names, args.models, strict=True)
             ]
+        key_file = Path(args.key_file) if args.key_file else None
         council = Council(
             name=args.name,
             system_context=args.context,
             participants=participants,
             api_key=args.api_key,
             max_tokens=args.max_tokens,
+            provider=args.provider,
+            base_url=args.base_url,
+            key_file=key_file,
         )
         council.run_round(args.prompt)
         out_path = f"council-{args.name}.json"
@@ -576,7 +639,14 @@ def main(argv: list[str] | None = None) -> None:
         print(council.print_transcript())
 
     elif args.subcommand == "continue":
-        council = Council.load_transcript(args.transcript, api_key=args.api_key)
+        key_file = Path(args.key_file) if args.key_file else None
+        council = Council.load_transcript(
+            args.transcript,
+            api_key=args.api_key,
+            provider=args.provider,
+            base_url=args.base_url,
+            key_file=key_file,
+        )
         council.run_round(args.prompt)
         council.save_transcript(args.transcript)
         print(f"Transcript updated: {args.transcript}")

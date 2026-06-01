@@ -1114,19 +1114,6 @@ class TestCLIParsing:
 class TestAPIKeyResolution:
     def test_explicit_key_used(self):
         c = _make_council(api_key="sk-explicit-key")
-        # Must not crash -- key is provided
-        assert c is not None
-
-    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-from-env"})
-    def test_env_var_fallback(self):
-        """No explicit key, env var set -> reads from env."""
-        parts = _make_participants("Alpha")
-        c = Council(
-            name="test",
-            system_context="ctx",
-            participants=parts,
-            api_key=None,
-        )
         assert c is not None
 
     def test_no_key_constructs_successfully(self):
@@ -1140,22 +1127,6 @@ class TestAPIKeyResolution:
         )
         assert c is not None
 
-    @patch.dict(os.environ, {}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value=None)
-    @patch("scripts.model_council.urlopen")
-    def test_no_key_no_env_no_spec_raises_on_run(self, mock_urlopen, _mock_read):
-        """No key anywhere -> ValueError when run_round is called."""
-        parts = _make_participants("Alpha")
-        os.environ.pop("OPENROUTER_API_KEY", None)
-        c = Council(
-            name="test",
-            system_context="ctx",
-            participants=parts,
-            api_key=None,
-        )
-        with pytest.raises(ValueError, match="API key required"):
-            c.run_round("prompt")
-
     def test_empty_string_api_key_raises(self):
         """api_key='' should raise ValueError immediately."""
         parts = _make_participants("Alpha")
@@ -1166,85 +1137,6 @@ class TestAPIKeyResolution:
                 participants=parts,
                 api_key="",
             )
-
-    @patch.dict(os.environ, {}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
-    @patch("scripts.model_council.urlopen")
-    def test_spec_file_fallback(self, mock_urlopen, _mock_read):
-        """No explicit key, no env var, spec file has key -> resolves."""
-        parts = _make_participants("Alpha")
-        os.environ.pop("OPENROUTER_API_KEY", None)
-        c = Council(
-            name="test",
-            system_context="ctx",
-            participants=parts,
-            api_key=None,
-        )
-        responses = {
-            parts[0].model: _mock_openrouter_response("ok"),
-        }
-        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
-        result = c.run_round("prompt")
-        assert result[parts[0].name] == "ok"
-        req = mock_urlopen.call_args_list[0][0][0]
-        assert req.get_header("Authorization") == "Bearer sk-spec"
-
-    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
-    def test_explicit_key_beats_spec_file(self, _mock_read):
-        """Explicit key takes priority over spec file."""
-        c = _make_council(api_key="sk-explicit")
-        assert c is not None
-
-    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env"})
-    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
-    def test_env_var_beats_spec_file(self, _mock_read):
-        """Env var takes priority over spec file."""
-        parts = _make_participants("Alpha")
-        c = Council(
-            name="test",
-            system_context="ctx",
-            participants=parts,
-            api_key=None,
-        )
-        assert c is not None
-
-
-class TestReadSpecApiKey:
-    def test_reads_api_key_line(self, tmp_path):
-        """Reads 'API Key: sk-...' by pattern match."""
-        from scripts.model_council import _read_spec_api_key
-
-        lines = ["filler\n"] * 16 + ["API Key: sk-or-v1-testkey123\n"]
-        spec_file = tmp_path / "home-directory-spec.md"
-        spec_file.write_text("".join(lines))
-        result = _read_spec_api_key(spec_file)
-        assert result == "sk-or-v1-testkey123"
-
-    def test_returns_none_for_missing_file(self):
-        from pathlib import Path
-
-        from scripts.model_council import _read_spec_api_key
-
-        result = _read_spec_api_key(Path("/nonexistent/spec.md"))
-        assert result is None
-
-    def test_returns_none_for_wrong_format(self, tmp_path):
-        from scripts.model_council import _read_spec_api_key
-
-        lines = ["filler\n"] * 16 + ["Not an API key line\n"]
-        spec_file = tmp_path / "spec.md"
-        spec_file.write_text("".join(lines))
-        result = _read_spec_api_key(spec_file)
-        assert result is None
-
-    def test_returns_none_for_short_file(self, tmp_path):
-        """File with fewer than 17 lines."""
-        from scripts.model_council import _read_spec_api_key
-
-        spec_file = tmp_path / "spec.md"
-        spec_file.write_text("short\n")
-        result = _read_spec_api_key(spec_file)
-        assert result is None
 
 
 # ===========================================================================
@@ -2274,8 +2166,7 @@ class TestRoundValidation:
 
 class TestShowWithoutApiKey:
     @patch.dict(os.environ, {}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value=None)
-    def test_show_works_without_api_key(self, _mock_read, tmp_path):
+    def test_show_works_without_api_key(self, tmp_path):
         """show subcommand should NOT require an API key."""
         os.environ.pop("OPENROUTER_API_KEY", None)
         data = {
@@ -2304,27 +2195,6 @@ class TestShowWithoutApiKey:
         loaded = Council.load_transcript(path)
         md = loaded.print_transcript()
         assert "world" in md
-
-
-class TestReadSpecApiKeyPatternMatch:
-    def test_finds_key_anywhere_in_file(self, tmp_path):
-        """Key can be on any line, not just line 17."""
-        from scripts.model_council import _read_spec_api_key
-
-        content = "some header\n\nstuff\nAPI Key: sk-or-v1-found\nmore stuff\n"
-        spec_file = tmp_path / "spec.md"
-        spec_file.write_text(content)
-        result = _read_spec_api_key(spec_file)
-        assert result == "sk-or-v1-found"
-
-    def test_skips_empty_api_key_value(self, tmp_path):
-        from scripts.model_council import _read_spec_api_key
-
-        content = "API Key:\nstuff\n"
-        spec_file = tmp_path / "spec.md"
-        spec_file.write_text(content)
-        result = _read_spec_api_key(spec_file)
-        assert result is None
 
 
 # ===========================================================================
@@ -2386,10 +2256,9 @@ class TestReviewFixesHostile:
     # -----------------------------------------------------------------------
 
     @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env"}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
     @patch("scripts.model_council.urlopen")
-    def test_explicit_key_used_in_request(self, mock_urlopen, _mock_read):
-        """Explicit api_key must override env and spec in actual request."""
+    def test_explicit_key_used_in_request(self, mock_urlopen):
+        """Explicit api_key must override env in actual request."""
         parts = _make_participants("Alpha")
         c = _make_council(participants=parts, api_key="sk-explicit")
 
@@ -2402,10 +2271,9 @@ class TestReviewFixesHostile:
         assert auth == "Bearer sk-explicit", f"Expected sk-explicit, got {auth}"
 
     @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env"}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
     @patch("scripts.model_council.urlopen")
-    def test_env_key_used_over_spec(self, mock_urlopen, _mock_read):
-        """api_key=None + env set → env key used, NOT spec."""
+    def test_env_key_used_when_no_explicit(self, mock_urlopen):
+        """api_key=None + env set → env key used."""
         parts = _make_participants("Alpha")
         c = Council(
             name="test",
@@ -2423,17 +2291,20 @@ class TestReviewFixesHostile:
         assert auth == "Bearer sk-env", f"Expected sk-env, got {auth}"
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value="sk-spec")
     @patch("scripts.model_council.urlopen")
-    def test_spec_key_used_as_last_resort(self, mock_urlopen, _mock_read):
-        """api_key=None + no env → spec key used."""
+    def test_key_file_used_as_last_resort(self, mock_urlopen, tmp_path):
+        """api_key=None + no env → key file used."""
         os.environ.pop("OPENROUTER_API_KEY", None)
+        key_file = tmp_path / "keys.txt"
+        key_file.write_text("openrouter: sk-from-file\n")
+
         parts = _make_participants("Alpha")
         c = Council(
             name="test",
             system_context="ctx",
             participants=parts,
             api_key=None,
+            key_file=key_file,
         )
 
         responses = {parts[0].model: _mock_openrouter_response("ok")}
@@ -2442,7 +2313,7 @@ class TestReviewFixesHostile:
 
         req = mock_urlopen.call_args_list[0][0][0]
         auth = req.get_header("Authorization")
-        assert auth == "Bearer sk-spec", f"Expected sk-spec, got {auth}"
+        assert auth == "Bearer sk-from-file", f"Got {auth}"
 
     # -----------------------------------------------------------------------
     # 3. _participant_from_dict type validation
@@ -2587,9 +2458,8 @@ class TestReviewFixesHostile:
     # -----------------------------------------------------------------------
 
     @patch.dict(os.environ, {}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value=None)
     @patch("scripts.model_council.urlopen")
-    def test_no_key_valueerror_propagates_cleanly(self, mock_urlopen, _mock_read):
+    def test_no_key_valueerror_propagates_cleanly(self, mock_urlopen):
         """No key anywhere → ValueError must propagate through thread pool
         WITHOUT being wrapped in another exception type."""
         os.environ.pop("OPENROUTER_API_KEY", None)
@@ -2607,13 +2477,11 @@ class TestReviewFixesHostile:
     # 8. Concurrency key resolution via spec file
     # -----------------------------------------------------------------------
 
-    @patch.dict(os.environ, {}, clear=True)
-    @patch("scripts.model_council._read_spec_api_key", return_value="sk-concurrent")
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-concurrent"}, clear=True)
     @patch("scripts.model_council.urlopen")
-    def test_concurrent_key_resolution_all_match(self, mock_urlopen, _mock_read):
-        """4 participants, api_key=None, spec returns 'sk-concurrent'.
-        ALL 4 request Authorization headers must be 'Bearer sk-concurrent'."""
-        os.environ.pop("OPENROUTER_API_KEY", None)
+    def test_concurrent_key_resolution_all_match(self, mock_urlopen):
+        """4 participants, key from env. ALL 4 request Authorization
+        headers must be 'Bearer sk-concurrent'."""
         parts = [
             Participant(name=f"M{i}", model=f"vendor/model-{i}", persona=f"P{i}") for i in range(4)
         ]
@@ -2640,15 +2508,14 @@ class TestReviewFixesHostile:
     # 9. Short-file test rename/rewrite
     # -----------------------------------------------------------------------
 
-    def test_spec_file_with_key_on_line_2_found(self, tmp_path):
-        """A 2-line file with 'API Key: sk-short' on line 2 must be found.
-        The old test claimed short files return None — that's wrong if the
-        pattern match is line-agnostic."""
-        from scripts.model_council import _read_spec_api_key
+    def test_key_file_with_key_on_line_2_found(self, tmp_path):
+        """A short key file should still find the key regardless of
+        line count."""
+        from scripts.model_council import _read_key_file
 
-        spec_file = tmp_path / "spec.md"
-        spec_file.write_text("Title line\nAPI Key: sk-short\n")
-        result = _read_spec_api_key(spec_file)
+        key_file = tmp_path / "keys.txt"
+        key_file.write_text("# header\nopenrouter: sk-short\n")
+        result = _read_key_file(key_file, "openrouter")
         assert result == "sk-short"
 
     # -----------------------------------------------------------------------
@@ -2700,3 +2567,388 @@ class TestReviewFixesHostile:
         assert ctx in system_msg["content"], (
             f"Context '{ctx}' not found in system message: {system_msg['content'][:200]}"
         )
+
+
+# ===========================================================================
+# PROVIDER SYSTEM (multi-provider support)
+# ===========================================================================
+
+
+class TestProviderSystem:
+    """Hostile tests for the multi-provider system replacing the hardcoded
+    OpenRouter-only approach. Tests target:
+    - PROVIDERS registry dict
+    - _read_key_file function
+    - Provider-aware key resolution
+    - Provider URL selection
+    - CLI flags for provider/base-url/key-file
+    - Removal of old constants/functions
+    """
+
+    # -----------------------------------------------------------------------
+    # 1. PROVIDERS dict
+    # -----------------------------------------------------------------------
+
+    def test_openrouter_url_in_providers(self):
+        """PROVIDERS must have 'openrouter' key with the correct URL."""
+        import scripts.model_council as mc
+
+        assert "openrouter" in mc.PROVIDERS
+        assert mc.PROVIDERS["openrouter"] == ("https://openrouter.ai/api/v1/chat/completions")
+
+    def test_nim_url_in_providers(self):
+        """PROVIDERS must have 'nim' key with the correct NIM URL."""
+        import scripts.model_council as mc
+
+        assert "nim" in mc.PROVIDERS
+        assert mc.PROVIDERS["nim"] == ("https://integrate.api.nvidia.com/v1/chat/completions")
+
+    # -----------------------------------------------------------------------
+    # 2. _read_key_file
+    # -----------------------------------------------------------------------
+
+    def test_read_key_file_valid(self, tmp_path):
+        """Multi-provider key file: each provider on its own line."""
+        from scripts.model_council import _read_key_file
+
+        key_file = tmp_path / "keys.txt"
+        key_file.write_text("openrouter: sk-or-v1-abc123\nnim: nvapi-xyz\n")
+
+        assert _read_key_file(key_file, "openrouter") == "sk-or-v1-abc123"
+        assert _read_key_file(key_file, "nim") == "nvapi-xyz"
+
+    def test_read_key_file_missing_provider(self, tmp_path):
+        """Provider not in file returns None."""
+        from scripts.model_council import _read_key_file
+
+        key_file = tmp_path / "keys.txt"
+        key_file.write_text("openrouter: sk-or-v1-abc123\n")
+
+        result = _read_key_file(key_file, "nim")
+        assert result is None
+
+    def test_read_key_file_missing_file(self):
+        """Non-existent path returns None (no crash)."""
+        from pathlib import Path
+
+        from scripts.model_council import _read_key_file
+
+        result = _read_key_file(Path("/nonexistent/keys.txt"), "openrouter")
+        assert result is None
+
+    def test_read_key_file_comments_and_blanks(self, tmp_path):
+        """Comments (# ...) and blank lines are ignored."""
+        from scripts.model_council import _read_key_file
+
+        key_file = tmp_path / "keys.txt"
+        key_file.write_text("# comment\n\nopenrouter: sk-key\n")
+
+        assert _read_key_file(key_file, "openrouter") == "sk-key"
+
+    def test_read_key_file_whitespace_handling(self, tmp_path):
+        """Leading/trailing whitespace on provider and value is stripped."""
+        from scripts.model_council import _read_key_file
+
+        key_file = tmp_path / "keys.txt"
+        key_file.write_text("  openrouter :  sk-key  \n")
+
+        assert _read_key_file(key_file, "openrouter") == "sk-key"
+
+    def test_read_key_file_colon_in_value(self, tmp_path):
+        """Only split on FIRST colon — value may contain colons."""
+        from scripts.model_council import _read_key_file
+
+        key_file = tmp_path / "keys.txt"
+        key_file.write_text("openrouter: sk-or:v1:abc\n")
+
+        assert _read_key_file(key_file, "openrouter") == "sk-or:v1:abc"
+
+    # -----------------------------------------------------------------------
+    # 3. Provider-aware key resolution
+    # -----------------------------------------------------------------------
+
+    @patch("scripts.model_council.urlopen")
+    def test_resolve_uses_explicit_key_over_all(self, mock_urlopen, tmp_path):
+        """Explicit api_key beats env var AND key_file."""
+        key_file = tmp_path / "keys.txt"
+        key_file.write_text("openrouter: sk-file\n")
+
+        parts = _make_participants("Alpha")
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-env"}):
+            c = Council(
+                name="test",
+                system_context="ctx",
+                participants=parts,
+                api_key="sk-explicit",
+                provider="openrouter",
+                key_file=key_file,
+            )
+
+            responses = {parts[0].model: _mock_openrouter_response("ok")}
+            mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+            c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        auth = req.get_header("Authorization")
+        assert auth == "Bearer sk-explicit"
+
+    @patch.dict(os.environ, {"NIM_API_KEY": "sk-nim-env"}, clear=True)
+    @patch("scripts.model_council.urlopen")
+    def test_resolve_uses_env_var_by_provider(self, mock_urlopen):
+        """Provider 'nim' resolves from NIM_API_KEY env var."""
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+            provider="nim",
+        )
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        auth = req.get_header("Authorization")
+        assert auth == "Bearer sk-nim-env"
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("scripts.model_council.urlopen")
+    def test_resolve_uses_key_file_as_last_resort(self, mock_urlopen, tmp_path):
+        """No explicit key, no env var -> falls back to key_file."""
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        key_file = tmp_path / "keys.txt"
+        key_file.write_text("openrouter: sk-from-file\n")
+
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+            provider="openrouter",
+            key_file=key_file,
+        )
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        auth = req.get_header("Authorization")
+        assert auth == "Bearer sk-from-file"
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("scripts.model_council.urlopen")
+    def test_resolve_no_key_anywhere_raises(self, mock_urlopen):
+        """No key, no env, no key_file -> ValueError on run_round."""
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        os.environ.pop("NIM_API_KEY", None)
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key=None,
+            provider="openrouter",
+            key_file=None,
+        )
+
+        with pytest.raises(ValueError, match="API key required"):
+            c.run_round("prompt")
+
+    def test_resolve_env_var_name_derived_from_provider(self):
+        """Provider name uppercased + '_API_KEY' is the env var checked."""
+        # For "nim" -> NIM_API_KEY
+        parts = _make_participants("Alpha")
+        with patch.dict(os.environ, {"NIM_API_KEY": "sk-nim"}, clear=True):
+            c = Council(
+                name="test",
+                system_context="ctx",
+                participants=parts,
+                api_key=None,
+                provider="nim",
+            )
+            # Should resolve without error
+            key = c._resolve_api_key()
+            assert key == "sk-nim"
+
+        # For "openrouter" -> OPENROUTER_API_KEY
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or"}, clear=True):
+            c = Council(
+                name="test",
+                system_context="ctx",
+                participants=parts,
+                api_key=None,
+                provider="openrouter",
+            )
+            key = c._resolve_api_key()
+            assert key == "sk-or"
+
+    # -----------------------------------------------------------------------
+    # 4. Provider URL selection
+    # -----------------------------------------------------------------------
+
+    @patch("scripts.model_council.urlopen")
+    def test_default_provider_is_openrouter(self, mock_urlopen):
+        """Council with no provider arg defaults to OpenRouter URL."""
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key="sk-test",
+        )
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        assert req.full_url == "https://openrouter.ai/api/v1/chat/completions"
+
+    @patch("scripts.model_council.urlopen")
+    def test_provider_nim_uses_nim_url(self, mock_urlopen):
+        """Council with provider='nim' sends requests to NIM URL."""
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key="sk-test",
+            provider="nim",
+        )
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        assert req.full_url == ("https://integrate.api.nvidia.com/v1/chat/completions")
+
+    @patch("scripts.model_council.urlopen")
+    def test_base_url_overrides_provider(self, mock_urlopen):
+        """Explicit base_url overrides the provider's default URL."""
+        parts = _make_participants("Alpha")
+        c = Council(
+            name="test",
+            system_context="ctx",
+            participants=parts,
+            api_key="sk-test",
+            provider="openrouter",
+            base_url="https://custom.api/v1/chat/completions",
+        )
+
+        responses = {parts[0].model: _mock_openrouter_response("ok")}
+        mock_urlopen.side_effect = _urlopen_side_effect_factory(responses)
+        c.run_round("prompt")
+
+        req = mock_urlopen.call_args_list[0][0][0]
+        assert req.full_url == "https://custom.api/v1/chat/completions"
+
+    def test_unknown_provider_raises(self):
+        """Unknown provider name raises ValueError at construction."""
+        parts = _make_participants("Alpha")
+        with pytest.raises(ValueError):
+            Council(
+                name="test",
+                system_context="ctx",
+                participants=parts,
+                api_key="sk-test",
+                provider="bogus",
+            )
+
+    # -----------------------------------------------------------------------
+    # 5. CLI flags
+    # -----------------------------------------------------------------------
+
+    def test_cli_provider_flag(self):
+        """--provider nim is parsed correctly."""
+        from scripts.model_council import _parse_args
+
+        args = _parse_args(
+            [
+                "new",
+                "--name",
+                "t",
+                "--prompt",
+                "p",
+                "--models",
+                "a/b",
+                "--provider",
+                "nim",
+            ]
+        )
+        assert args.provider == "nim"
+
+    def test_cli_base_url_flag(self):
+        """--base-url is parsed correctly."""
+        from scripts.model_council import _parse_args
+
+        args = _parse_args(
+            [
+                "new",
+                "--name",
+                "t",
+                "--prompt",
+                "p",
+                "--models",
+                "a/b",
+                "--base-url",
+                "https://x",
+            ]
+        )
+        assert args.base_url == "https://x"
+
+    def test_cli_key_file_flag(self):
+        """--key-file is parsed correctly."""
+        from scripts.model_council import _parse_args
+
+        args = _parse_args(
+            [
+                "new",
+                "--name",
+                "t",
+                "--prompt",
+                "p",
+                "--models",
+                "a/b",
+                "--key-file",
+                "/path/to/keys",
+            ]
+        )
+        assert args.key_file == "/path/to/keys"
+
+    def test_cli_provider_default_openrouter(self):
+        """--provider defaults to 'openrouter' when not specified."""
+        from scripts.model_council import _parse_args
+
+        args = _parse_args(
+            [
+                "new",
+                "--name",
+                "t",
+                "--prompt",
+                "p",
+                "--models",
+                "a/b",
+            ]
+        )
+        assert args.provider == "openrouter"
+
+    # -----------------------------------------------------------------------
+    # 6. Removal verification
+    # -----------------------------------------------------------------------
+
+    def test_no_openrouter_api_url_constant(self):
+        """The old OPENROUTER_API_URL constant must be removed."""
+        import scripts.model_council
+
+        assert not hasattr(scripts.model_council, "OPENROUTER_API_URL")
+
+    def test_no_read_spec_api_key_function(self):
+        """The old _read_spec_api_key function must be removed."""
+        import scripts.model_council
+
+        assert not hasattr(scripts.model_council, "_read_spec_api_key")
