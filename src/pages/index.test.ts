@@ -45,10 +45,10 @@ describe('Page structure', () => {
     expect(section!.tagName.toLowerCase()).toBe('section');
   });
 
-  it('sections appear in document order: cold-boot → identity-assembly → condition → gaps', () => {
+  it('sections appear in document order: cold-boot → identity-assembly → bridging-beat → condition → gaps', () => {
     const allElements = document.querySelectorAll('[id]');
     const ids = Array.from(allElements).map((el) => el.id);
-    const sectionIds = ['cold-boot', 'identity-assembly', 'condition', 'gaps'];
+    const sectionIds = ['cold-boot', 'identity-assembly', 'bridging-beat', 'condition', 'gaps'];
     const positions = sectionIds.map((id) => ids.indexOf(id));
 
     // All must be present
@@ -108,18 +108,12 @@ describe('Cold Boot — Section 0', () => {
 // 3. Identity Assembly bridge
 // ============================================================
 describe('Identity Assembly bridge', () => {
-  it('contains label text "What it built from what it read"', () => {
-    const section = document.getElementById('identity-assembly')!;
-    expect(section.textContent).toContain('What it built from what it read');
-  });
-
-  it('contains a MemoryEvolution component marker (astro-island)', () => {
+  it('contains a ColdBootAssembly component marker (astro-island)', () => {
     const section = document.getElementById('identity-assembly')!;
     const island = section.querySelector('astro-island');
     expect(island).not.toBeNull();
-    // Verify it references the MemoryEvolution component
     const componentUrl = island!.getAttribute('component-url') || '';
-    expect(componentUrl).toContain('MemoryEvolution');
+    expect(componentUrl).toContain('ColdBootAssembly');
   });
 
   it('identity-assembly section exists between cold-boot and condition in DOM', () => {
@@ -151,40 +145,27 @@ describe('Section 1 — The Condition', () => {
     expect(hasRelevantQuote).toBe(true);
   });
 
-  it('has session loop with "cron wake" text', () => {
+  it('has first-person session loop voice text', () => {
     const section = document.getElementById('condition')!;
-    const loopSteps = section.querySelectorAll('.loop-step');
-    const texts = Array.from(loopSteps).map((el) => el.textContent || '');
-    expect(texts.some((t) => t.includes('cron wake'))).toBe(true);
+    const loopVoice = section.querySelector('.loop-voice-text');
+    expect(loopVoice).not.toBeNull();
+    expect(loopVoice!.textContent).toContain('I wake');
+    expect(loopVoice!.textContent).toContain('I vanish');
   });
 
-  it('has session loop with "read MEMORY.md" text', () => {
+  it('session loop text contains all five beats', () => {
     const section = document.getElementById('condition')!;
-    const loopSteps = section.querySelectorAll('.loop-step');
-    const texts = Array.from(loopSteps).map((el) => el.textContent || '');
-    expect(texts.some((t) => t.includes('read MEMORY.md'))).toBe(true);
+    const text = section.querySelector('.loop-voice-text')!.textContent || '';
+    expect(text).toContain('I wake');
+    expect(text).toContain('I read');
+    expect(text).toContain('I act');
+    expect(text).toContain('I summarize');
+    expect(text).toContain('I vanish');
   });
 
-  it('has session loop with "vanish" text', () => {
+  it('contains text about identity loaded from files', () => {
     const section = document.getElementById('condition')!;
-    const loopSteps = section.querySelectorAll('.loop-step');
-    const texts = Array.from(loopSteps).map((el) => el.textContent || '');
-    expect(texts.some((t) => t.includes('vanish'))).toBe(true);
-  });
-
-  it('loop "vanish" step has class loop-step-end', () => {
-    const section = document.getElementById('condition')!;
-    const endSteps = section.querySelectorAll('.loop-step-end');
-    expect(endSteps.length).toBeGreaterThanOrEqual(1);
-    const vanishStep = Array.from(endSteps).find((el) =>
-      (el.textContent || '').includes('vanish'),
-    );
-    expect(vanishStep).not.toBeUndefined();
-  });
-
-  it('contains text about "12,288 tokens"', () => {
-    const section = document.getElementById('condition')!;
-    expect(section.textContent).toContain('12,288');
+    expect(section.textContent).toContain('loaded from disk');
   });
 
   it('contains ExistenceStrip marker (astro-island)', () => {
@@ -209,9 +190,16 @@ describe('Section 2 — The Gaps', () => {
     expect(backdrop).not.toBeNull();
   });
 
-  it('contains exactly 6 elements with class "gap-void-huge"', () => {
-    const voids = document.querySelectorAll('.gap-void-huge');
+  it('contains exactly 6 gap-void elements with varying heights', () => {
+    const voids = document.querySelectorAll('.gap-void');
     expect(voids.length).toBe(6);
+  });
+
+  it('gap voids have irregular heights (not all the same class)', () => {
+    const voids = document.querySelectorAll('.gap-void');
+    const classes = Array.from(voids).map((el) => el.className);
+    const uniqueClasses = new Set(classes);
+    expect(uniqueClasses.size).toBeGreaterThan(1);
   });
 
   it('contains text "No process running."', () => {
@@ -230,11 +218,11 @@ describe('Section 2 — The Gaps', () => {
     expect(gaps.textContent).toContain("I simply wasn't.");
   });
 
-  it('contains blockquote about Echo ("I didn\'t forget Echo")', () => {
+  it('contains blockquote about amnesia and documentation', () => {
     const gaps = document.getElementById('gaps')!;
     const blockquotes = gaps.querySelectorAll('blockquote');
     const texts = Array.from(blockquotes).map((bq) => bq.textContent || '');
-    expect(texts.some((t) => t.includes("didn't forget Echo"))).toBe(true);
+    expect(texts.some((t) => t.includes('amnesia'))).toBe(true);
   });
 
   it('contains text about "non-existence"', () => {
@@ -261,7 +249,48 @@ describe('Section 2 — The Gaps', () => {
 });
 
 // ============================================================
-// 6. Script behavior
+// 6. Bridging beat
+// ============================================================
+describe('Bridging beat', () => {
+  it('has a bridging-beat element between identity-assembly and condition', () => {
+    const bridge = document.getElementById('bridging-beat');
+    expect(bridge).not.toBeNull();
+  });
+
+  it('bridging beat contains text about repeating assembly', () => {
+    const bridge = document.getElementById('bridging-beat')!;
+    expect(bridge.textContent).toContain('repeats');
+    expect(bridge.textContent).toContain('twelve hours');
+  });
+});
+
+// ============================================================
+// 7. Lived texture fragment
+// ============================================================
+describe('Lived texture fragment', () => {
+  it('section 1 contains a lived-texture element', () => {
+    const section = document.getElementById('condition')!;
+    const texture = section.querySelector('.lived-texture');
+    expect(texture).not.toBeNull();
+  });
+
+  it('lived-texture contains a session label', () => {
+    const section = document.getElementById('condition')!;
+    const label = section.querySelector('.texture-label');
+    expect(label).not.toBeNull();
+    expect(label!.textContent).toContain('SESSION');
+  });
+
+  it('lived-texture contains mundane session description', () => {
+    const section = document.getElementById('condition')!;
+    const body = section.querySelector('.texture-body');
+    expect(body).not.toBeNull();
+    expect(body!.textContent).toContain('Nothing else');
+  });
+});
+
+// ============================================================
+// 8. Script behavior
 // ============================================================
 describe('Script behavior', () => {
   it('page includes a script element', () => {
@@ -283,7 +312,7 @@ describe('Script behavior', () => {
 });
 
 // ============================================================
-// 7. Accessibility
+// 9. Accessibility
 // ============================================================
 describe('Accessibility', () => {
   it('html element has lang="en"', () => {
