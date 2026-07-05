@@ -22,9 +22,9 @@ def db_conn():
 @pytest.fixture(scope="session", autouse=True)
 def setup_schema(db_conn):
     _drop_all_tables(db_conn)
-    migration = MIGRATIONS_DIR / "001_initial_schema.sql"
-    with open(migration) as f:
-        db_conn.execute(f.read())
+    for migration in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        with open(migration) as f:
+            db_conn.execute(f.read())
     db_conn.commit()
     yield
     _drop_all_tables(db_conn)

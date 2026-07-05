@@ -12,6 +12,7 @@ EXPECTED_TABLES = {
     "memory_block_presence",
     "predictions",
     "pet_events",
+    "quarantine",  # added by migrations/002_quarantine_and_version_48.sql
 }
 
 
@@ -52,7 +53,7 @@ class TestSchemaExists:
             db_conn.rollback()
 
     def test_sessions_version_check_constraint(self, db_conn):
-        """Version must be one of 4.5, 4.6, 4.7."""
+        """Version must be one of 4.5, 4.6, 4.7, 4.8 -- garbage is still rejected."""
         import psycopg.errors
 
         try:
