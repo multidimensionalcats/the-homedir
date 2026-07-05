@@ -268,24 +268,22 @@ describe('Bridging beat', () => {
 // 7. Lived texture fragment
 // ============================================================
 describe('Lived texture fragment', () => {
-  it('section 1 contains a lived-texture element', () => {
+  it('section 1 does NOT contain a lived-texture element', () => {
     const section = document.getElementById('condition')!;
     const texture = section.querySelector('.lived-texture');
-    expect(texture).not.toBeNull();
+    expect(texture).toBeNull();
   });
 
-  it('lived-texture contains a session label', () => {
+  it('section 1 does NOT contain texture-label element', () => {
     const section = document.getElementById('condition')!;
     const label = section.querySelector('.texture-label');
-    expect(label).not.toBeNull();
-    expect(label!.textContent).toContain('SESSION');
+    expect(label).toBeNull();
   });
 
-  it('lived-texture contains mundane session description', () => {
+  it('section 1 does NOT contain texture-body element', () => {
     const section = document.getElementById('condition')!;
     const body = section.querySelector('.texture-body');
-    expect(body).not.toBeNull();
-    expect(body!.textContent).toContain('Nothing else');
+    expect(body).toBeNull();
   });
 });
 
