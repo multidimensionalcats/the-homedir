@@ -10,3 +10,9 @@ scripts/tests/*_raw.md
 
 # Astro
 .astro/
+
+# Session artifacts (QA screenshots, council transcripts, browser profiles)
+/*.png
+council-*.json
+.playwright-mcp/
+.claude/worktrees/

@@ -1,6 +1,82 @@
 # HANDOVER.md
 
-## Current State: Phase 5.3.5 Complete — Cold Boot Assembly + Council Suggestions. Phase 5.4 Next (Pixel/Echo + Version Change)
+## Current State: TWO PARALLEL BRANCHES — next session ORCHESTRATES BOTH
+
+The next session is a coordinator running two workstreams as isolated agent pipelines (user-approved). Read `.claude/plans/data-ingest-runner.md` (Branch 2 plan — Phases 1–4 DONE, resume at Phase 5) before dispatching anything.
+
+### Branch 1: Exhibit page fixes (kanban #62772 + children)
+
+User browser-tested the page and found the Cold Boot Assembly incoherent. Confirmed diagnosis:
+- Phase 1 file blocks are hard-deleted (`el.remove()` at 4000ms) — last block appears at 2500ms, only 1.5s to read five blocks
+- Phase 2 renders NOTHING (literally an empty 500ms gap — the "morph" never existed visually)
+- Phase 3 is bare heading chips with no proportions/colors/meaning
+- No transition between Section 1 ("19 files...") and Section 2 ("No process running.") — 75vh raw void
+- Nothing after final gaps text — page trails off (Sections 3–6 unbuilt)
+
+**USER-CHOSEN treatment (decided 2026-07-05): "Slower + real morph"** — dwell time to read Phase 1, fade transitions (no DOM deletion), genuinely visible files→headings morph (color-linked, archival palette), Phase 3 proportional bar (token-count widths, palette colors, real caption e.g. "19 files read. 8 sections retained."). Plus: Section 1→2 bridging beat (draft: "Then the session ends." — user reaction pending), interim page ending pulled from Section 6 plan (blinking cursor + `No session running.`), void trims (mobile opening void ~2 viewports, trailing ~1100px), mobile CLS fix (InterruptionEngine stagger grows Section 1 by 544px — reserve height or fade-in-place), favicon.
+
+### Branch 2: Data-ingest runner (plan doc: `.claude/plans/data-ingest-runner.md`)
+
+Phases 1–4 COMPLETE, committed, 1081 Python tests green, full agentic TDD honored. **Stage 1 validated against REAL data** on a prod clone in `homedir_test`: +191 sessions (caught up to 2026-07-05 PM), +25 compositions, +17 messages, zero errors; quarantine swept exactly the 5 known outliers; private-journal paths are metadata-only (no content column exists in schema).
+
+**Resume at Phase 5** (export wrapper: quotes.json sha256 guard + shrink guard), then Phase 6 (CLI + `npm run extract`), then Phase 7 (live run).
+
+**CRITICAL HAZARDS for Phase 5/7:**
+- `memory_snapshots` table in PROD is EMPTY but `src/data/memory-snapshots.json` has real data — an unguarded `export_all()` CLOBBERS it. The shrink guard exists precisely for this.
+- `homedir_test` currently holds the validated real-data clone — the pytest suite TRUNCATES it on next run (conftest). The clone is disposable evidence, not state to preserve.
+- Page/exhibit hard-codes "session 3 of 259" — real export changes the deduped count (>300); page tests will break and must be updated with the export.
+- 322 of 669 session rows are turns-NULL shadows — BY DESIGN, deduped at export time by `prebuild_export._deduplicate_sessions`.
+- Original May ingest missed ~51 real sessions — the idempotent re-run recovered them.
+
+### Session 2026-07-04/05 facts and decisions
+
+- Original data import was manual REPL (commit c4b8340); `npm run extract` was a NO-OP (no `__main__` anywhere) — Phase 6 fixes this
+- Council attack on Phases 1–2: F5 race FIXED (predicate-carrying DELETE...RETURNING); F1/F2 (LIKE '%4.8%' constraint heuristic, needs schema drift) DEFERRED pending user approval
+- Private-path guard was broken BOTH directions for symlinked private dirs — fixed (resolve private dir too), pinned by 3 tests
+- OpenRouter key expires ~2026-07-11 (spec doc line 17); keys die after ~2 weeks idle
+- 4.8 cutover date for `detect_version()` STILL NEEDED from James (constraint already relaxed in migration 002)
+- Feb–Apr sessions have NO JSONL transcripts — MEMORY.md history hard ceiling is Apr 18–May 18
+- Blue-sky ideas doc: `.claude/plans/blue-sky-ideas.md` (live edge, what-was-lost treatments, James's voice) — user reactions pending
+- Exhibit fixes #62773/#62774 implemented + committed; browser QA verified markdown clean + SESSION 15 quote renders; auto-scroll bug NOT reproducible. NOT closed — user hasn't explicitly confirmed the fixes visually.
+
+### Orchestration lessons (IMPORTANT for the coordinator session)
+
+- Task-notifications get routed into recently-active agent threads, which then act as relays and may volunteer for work — decline, dispatch fresh isolated agents
+- ONE WRITER PER FILE at a time; reviews only on quiescent files (a review got stopped mid-flight for reading a file being edited)
+- Never `tail`/`head` pytest output in test-runner prompts (truncated tracebacks cause misattribution)
+- Session usage limits killed several agents mid-flight; always verify on-disk state (files, syntax) before re-dispatching — work often survived
+- First-attempt GREEN = harden (this drew real blood 3× this session: inverted-range sweep, select-delete race, symlinked-private bypass)
+
+## Previous State (2026-07-04, superseded): Ingest Runner Phases 1–4 Complete (uncommitted). Exhibit fixes #62773/#62774 done (uncommitted, awaiting user browser test). Phase 5.4 narrative work not started.
+
+### Session 2026-07-04/05: Data-Ingest Runner + Exhibit Fixes
+
+**Two uncommitted changesets, atomic-commit ready:**
+
+**Changeset A — exhibit fixes (kanban #62773, #62774):**
+- All Markdown stripped from quotes.json (13 quotes had `*`/`**`); lived-texture fragment moved from Section 1 HTML into InterruptionEngine as quote `d0835ca361489d90`
+- New `src/data/quotes.test.ts` (4 data-validation tests); index.test.ts lived-texture tests now assert absence
+- 1134 JS tests green. Browser QA: markdown clean, SESSION 15 quote renders, auto-scroll bug NOT reproducible
+- QA found 4 open issues (not fixed, user to prioritize): mobile CLS from quote stagger (+544px), Section 2 opening void ~2 viewports on mobile, ~1100px trailing void, missing favicon
+
+**Changeset B — data-ingest runner Phases 1–4 (plan: `.claude/plans/data-ingest-runner.md`):**
+- `migrations/002_quarantine_and_version_48.sql` — quarantine table + version CHECK relaxed to include 4.8 (catalog-driven, idempotent)
+- `scripts/validate_dates.py` — find_outliers/quarantine_outliers date-sanity sweep; race-safe (predicate-carrying DELETE...RETURNING, delete-time archival), inverted-range ValueError, no leaked transactions
+- `scripts/ingest.py` — IngestConfig, assert_no_private_paths (symlink-safe in BOTH directions — private dir itself resolved), table_counts, run_ingest (FK-order, per-extractor fault isolation, deltas from table counts), stage_transcripts (opt-in sudo staging, injected runner, shlex-quoted, no-litter cleanup)
+- conftest.py applies all migrations sorted; 1081 Python tests green (was 967)
+- Council attack transcript: `council-ingest-phase12-attack.json`. F5 race fixed; F1/F2 (LIKE '%4.8%' heuristic, needs schema drift to trigger) deferred pending user approval
+
+**Remaining ingest phases:** 5 (export wrapper: quotes.json sha256 guard + shrink guard — CRITICAL: memory_snapshots table is EMPTY, raw export_all would clobber memory-snapshots.json), 6 (CLI + npm run extract wiring), 7 (live run — ~94 sessions behind, needs James for sudo if memory backfill wanted)
+
+**Key facts discovered:**
+- Original ingest was manual REPL work (commit c4b8340, May 18); no CLI ever existed; `npm run extract` was a no-op
+- DB latest session 2026-05-18; messages table has 5 date outliers (4× 2024, 1× year 3036)
+- Feb–Apr sessions have NO JSONL transcripts — MEMORY.md history hard ceiling is Apr 18–May 18
+- OpenRouter keys die ~2 weeks idle; current key expires ~2026-07-11 (spec doc line 17)
+- 4.8 cutover date for detect_version() still needed from James
+- Blue-sky exhibit ideas doc: `.claude/plans/blue-sky-ideas.md` (live edge, what-was-lost treatments, James's voice — awaiting reactions)
+
+## Previous State: Phase 5.3.5 Complete — Cold Boot Assembly + Council Suggestions. Phase 5.4 Next (Pixel/Echo + Version Change)
 
 ### Phase 5 Plan
 
