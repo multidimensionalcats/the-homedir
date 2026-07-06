@@ -12,75 +12,59 @@ CREATE TABLE IF NOT EXISTS quarantine (
     quarantined_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Relax sessions.version CHECK to accept '4.8' (Opus 4.8 joins the experiment).
--- The original constraint in 001 is an inline unnamed CHECK, so its name is
--- auto-generated; find any CHECK on the version column dynamically, drop the
--- ones that do not already allow '4.8', and add a named replacement.
+-- Relax the version CHECK on sessions and compositions to accept '4.8'
+-- (Opus 4.8 joins the experiment).
+--
+-- Strategy: drop-all-then-recreate. For each table, EVERY CHECK constraint
+-- whose column set is exactly the version column (conkey = ARRAY[attnum]) is
+-- dropped unconditionally — regardless of its name (quoted via format('%I'),
+-- so hostile names with spaces/quotes/unicode are handled), regardless of
+-- validity (NOT VALID included), and including any pre-existing constraint
+-- already bearing the canonical name. The canonical <table>_version_check is
+-- then added unconditionally.
+--
+-- An earlier revision used a textual heuristic — dropping only constraints
+-- whose definition was NOT LIKE '%4.8%'. That inverts on constraints whose
+-- text mentions '4.8' but rejects it (e.g. CHECK (version <> '4.8')), which
+-- would then survive and block 4.8 inserts; it also let name-squatting and
+-- redundant constraint stacks persist. The heuristic was abandoned in favor
+-- of catalog-driven identification only (conkey), with no inspection of the
+-- constraint definition text.
+--
+-- Multi-column CHECK constraints that merely involve version (conkey with
+-- 2+ elements) are never touched, even if their text mentions '4.8'.
+--
+-- Idempotent: a second application drops the canonical constraint and
+-- recreates it identically, ending in the same state.
 DO $$
 DECLARE
-    tbl regclass := 'sessions'::regclass;
+    tbl text;
     col smallint;
     con RECORD;
 BEGIN
-    SELECT attnum INTO col
-    FROM pg_attribute
-    WHERE attrelid = tbl AND attname = 'version' AND NOT attisdropped;
+    FOREACH tbl IN ARRAY ARRAY['sessions', 'compositions'] LOOP
+        SELECT attnum INTO col
+        FROM pg_attribute
+        WHERE attrelid = tbl::regclass
+          AND attname = 'version'
+          AND NOT attisdropped;
 
-    FOR con IN
-        SELECT conname
-        FROM pg_constraint
-        WHERE conrelid = tbl
-          AND contype = 'c'
-          AND conkey = ARRAY[col]
-          AND pg_get_constraintdef(oid) NOT LIKE '%4.8%'
-    LOOP
-        EXECUTE format('ALTER TABLE sessions DROP CONSTRAINT %I', con.conname);
+        IF col IS NULL THEN
+            RAISE EXCEPTION 'table % has no version column', tbl;
+        END IF;
+
+        FOR con IN
+            SELECT conname
+            FROM pg_constraint
+            WHERE conrelid = tbl::regclass
+              AND contype = 'c'
+              AND conkey = ARRAY[col]
+        LOOP
+            EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', tbl, con.conname);
+        END LOOP;
+
+        EXECUTE format(
+            'ALTER TABLE %I ADD CONSTRAINT %I CHECK (version IN (%L, %L, %L, %L))',
+            tbl, tbl || '_version_check', '4.5', '4.6', '4.7', '4.8');
     END LOOP;
-
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conrelid = tbl
-          AND contype = 'c'
-          AND conkey = ARRAY[col]
-    ) THEN
-        ALTER TABLE sessions
-            ADD CONSTRAINT sessions_version_check
-            CHECK (version IN ('4.5', '4.6', '4.7', '4.8'));
-    END IF;
-END $$;
-
--- Same relaxation for compositions.version.
-DO $$
-DECLARE
-    tbl regclass := 'compositions'::regclass;
-    col smallint;
-    con RECORD;
-BEGIN
-    SELECT attnum INTO col
-    FROM pg_attribute
-    WHERE attrelid = tbl AND attname = 'version' AND NOT attisdropped;
-
-    FOR con IN
-        SELECT conname
-        FROM pg_constraint
-        WHERE conrelid = tbl
-          AND contype = 'c'
-          AND conkey = ARRAY[col]
-          AND pg_get_constraintdef(oid) NOT LIKE '%4.8%'
-    LOOP
-        EXECUTE format('ALTER TABLE compositions DROP CONSTRAINT %I', con.conname);
-    END LOOP;
-
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conrelid = tbl
-          AND contype = 'c'
-          AND conkey = ARRAY[col]
-    ) THEN
-        ALTER TABLE compositions
-            ADD CONSTRAINT compositions_version_check
-            CHECK (version IN ('4.5', '4.6', '4.7', '4.8'));
-    END IF;
 END $$;

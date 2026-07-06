@@ -5,22 +5,39 @@ Covers:
   - Relaxed version CHECK constraints on sessions/compositions ('4.8' allowed)
   - Idempotency of the migration file
   - Applying 001 + 002 against a fresh schema
+  - HARDENED CONTRACT (council findings F1/F2): 002 must drop ALL
+    single-column CHECK constraints on <table>.version unconditionally
+    (no textual inspection of the constraint definition), then create the
+    canonical `<table>_version_check CHECK (version IN
+    ('4.5','4.6','4.7','4.8'))`. Multi-column CHECKs that merely involve
+    version are out of scope and must be left untouched. The current
+    `pg_get_constraintdef(oid) NOT LIKE '%4.8%'` heuristic inverts on
+    constraints like CHECK (version <> '4.8') -- the text CONTAINS '4.8'
+    so the constraint is spared, and 4.8 inserts then fail while the
+    migration believes the schema is ready.
 
 These tests rely on conftest.setup_schema applying ALL migrations in
-sorted order (not just 001). They are expected to FAIL RED until both
-the migration file and the conftest change exist.
+sorted order (not just 001). The original tests were expected to FAIL
+RED until the migration file and conftest change existed. The hardened-
+contract tests (TestInvertedConstraint... onward) are expected to FAIL
+RED against the current LIKE-heuristic migration and pass only once 002
+is rewritten to the drop-all-single-column-version-checks contract.
 
 Cleanup note: conftest's autouse clean_tables truncates every table it
 finds in pg_tables for schemaname='public', so rows inserted into the
 new quarantine table are covered automatically -- no manual deletes
 needed. The fresh-schema test creates its own temporary schema and is
 responsible for dropping it itself (clean_tables only sweeps 'public').
+Hardened-contract tests create adversarial DDL; clean_tables does NOT
+undo DDL, so every such test restores constraint state itself via
+_restore_version_ddl in a finally block.
 """
 
 import json
 import pathlib
 
 import psycopg.errors
+from psycopg import sql
 
 MIGRATIONS_DIR = pathlib.Path(__file__).parent.parent.parent / "migrations"
 MIGRATION_001 = MIGRATIONS_DIR / "001_initial_schema.sql"
@@ -48,6 +65,110 @@ def _insert_composition(conn, slug, version):
         "INSERT INTO compositions (slug, filename, version) VALUES (%s, %s, %s)",
         (slug, f"{slug}.md", version),
     )
+
+
+def _apply_migration_002(conn):
+    """Re-execute the 002 migration file against the shared connection.
+
+    Same mechanism conftest.setup_schema uses (execute the file's SQL),
+    but scoped to 002 alone so tests can plant adversarial DDL first and
+    then observe what a re-run of the migration does to it. Rolls back
+    first so a prior expected-failure never poisons the DDL transaction.
+    """
+    conn.rollback()
+    with open(MIGRATION_002) as f:
+        conn.execute(f.read())
+    conn.commit()
+
+
+def _version_attnum(conn, table):
+    """attnum of <table>.version -- the key pg_constraint.conkey is matched on."""
+    row = conn.execute(
+        "SELECT attnum FROM pg_attribute "
+        "WHERE attrelid = %s::regclass AND attname = 'version' AND NOT attisdropped",
+        (table,),
+    ).fetchone()
+    assert row is not None, f"{table}.version column missing"
+    return row[0]
+
+
+def _single_column_version_checks(conn, table):
+    """Sorted names of CHECK constraints whose conkey is EXACTLY [version].
+
+    This is the population the hardened contract says 002 must reduce to
+    exactly one canonical constraint. Multi-column CHECKs that involve
+    version do not match (conkey has 2+ entries) -- by design.
+    """
+    col = _version_attnum(conn, table)
+    rows = conn.execute(
+        "SELECT conname FROM pg_constraint "
+        "WHERE conrelid = %s::regclass AND contype = 'c' "
+        "AND conkey = ARRAY[%s]::smallint[]",
+        (table, col),
+    ).fetchall()
+    return sorted(r[0] for r in rows)
+
+
+def _canonical_constraint_def(conn, table):
+    """pg_get_constraintdef of <table>_version_check, or None if absent."""
+    row = conn.execute(
+        "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+        "WHERE conrelid = %s::regclass AND contype = 'c' AND conname = %s",
+        (table, f"{table}_version_check"),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _add_check(conn, table, name, predicate, not_valid=False):
+    """Add a CHECK constraint with an arbitrary (possibly hostile) name.
+
+    Uses psycopg sql.Identifier so names with spaces, quotes, mixed case
+    and non-ASCII survive quoting. `predicate` is a trusted test constant.
+    """
+    conn.execute(
+        sql.SQL("ALTER TABLE {tbl} ADD CONSTRAINT {name} CHECK ({pred}){nv}").format(
+            tbl=sql.Identifier(table),
+            name=sql.Identifier(name),
+            pred=sql.SQL(predicate),
+            nv=sql.SQL(" NOT VALID" if not_valid else ""),
+        )
+    )
+
+
+def _drop_constraint(conn, table, name):
+    conn.execute(
+        sql.SQL("ALTER TABLE {tbl} DROP CONSTRAINT {name}").format(
+            tbl=sql.Identifier(table), name=sql.Identifier(name)
+        )
+    )
+
+
+def _restore_version_ddl(conn):
+    """Restore canonical constraint state after adversarial DDL.
+
+    conftest's autouse clean_tables only truncates ROWS; constraints added
+    by a test would otherwise leak into every subsequent test. Surgical
+    restore: drop every CHECK constraint whose conkey INVOLVES the version
+    column (single- or multi-column -- catches both adversarial planted
+    constraints and anything a buggy migration left behind), leaving 001's
+    inline checks on other columns (time_of_day, source_type, ...) alone,
+    then re-apply 002 so the canonical constraint is recreated.
+    """
+    conn.rollback()
+    for table in ("sessions", "compositions"):
+        col = _version_attnum(conn, table)
+        names = [
+            r[0]
+            for r in conn.execute(
+                "SELECT conname FROM pg_constraint "
+                "WHERE conrelid = %s::regclass AND contype = 'c' AND %s = ANY(conkey)",
+                (table, col),
+            ).fetchall()
+        ]
+        for name in names:
+            _drop_constraint(conn, table, name)
+    conn.commit()
+    _apply_migration_002(conn)
 
 
 # ===========================================================================
@@ -386,3 +507,323 @@ class TestConftestAppliesAllMigrations:
         assert names[0] == "001_initial_schema.sql", (
             f"a migration sorts before 001 -- fresh installs will break: {names}"
         )
+
+
+# ===========================================================================
+# HARDENED CONTRACT (council findings F1/F2)
+#
+# 002 must drop ALL single-column CHECK constraints on version -- no
+# textual inspection -- then create the canonical named constraint.
+# Everything below plants adversarial DDL, re-applies 002 via
+# _apply_migration_002, asserts the contract, and restores DDL state in
+# a finally block (clean_tables cannot undo DDL).
+# ===========================================================================
+
+
+# All four versions the canonical constraint must admit; used to assert
+# the recreated constraint definition names every one of them.
+CANONICAL_VERSIONS = ("4.5", "4.6", "4.7", "4.8")
+
+
+class TestInvertedConstraintSessions:
+    """F1: THE INVERSION CASE. CHECK (version <> '4.8') CONTAINS the
+    string '4.8', so the LIKE heuristic spares it -- then every 4.8
+    insert dies while the migration believes the schema is ready. The
+    hardened contract drops it unconditionally. Fails RED against the
+    current 002."""
+
+    def test_inverted_check_containing_48_is_dropped(self, db_conn):
+        try:
+            db_conn.rollback()
+            _add_check(db_conn, "sessions", "sessions_no48_trap", "version <> '4.8'")
+            db_conn.commit()
+
+            _apply_migration_002(db_conn)
+
+            # 4.8 must now be insertable -- the trap constraint is gone.
+            _insert_session(db_conn, "hardened-inv-s48", "4.8")
+            db_conn.commit()
+            got = db_conn.execute(
+                "SELECT version FROM sessions WHERE id = 'hardened-inv-s48'"
+            ).fetchone()
+            assert got == ("4.8",)
+
+            # 5.0 must still be rejected -- "drop them all" must not mean
+            # "drop them all and forget to recreate the canonical one".
+            try:
+                _insert_session(db_conn, "hardened-inv-s50", "5.0")
+                db_conn.commit()
+                assert False, "version='5.0' accepted -- canonical CHECK missing after 002"
+            except psycopg.errors.CheckViolation:
+                db_conn.rollback()
+
+            # Exactly one single-column version check remains, canonically named.
+            assert _single_column_version_checks(db_conn, "sessions") == ["sessions_version_check"]
+        finally:
+            _restore_version_ddl(db_conn)
+
+
+class TestInvertedConstraintCompositions:
+    """F2: same inversion, compositions table."""
+
+    def test_inverted_check_containing_48_is_dropped(self, db_conn):
+        try:
+            db_conn.rollback()
+            _add_check(db_conn, "compositions", "compositions_no48_trap", "version <> '4.8'")
+            db_conn.commit()
+
+            _apply_migration_002(db_conn)
+
+            _insert_composition(db_conn, "hardened-inv-c48", "4.8")
+            db_conn.commit()
+            got = db_conn.execute(
+                "SELECT version FROM compositions WHERE slug = 'hardened-inv-c48'"
+            ).fetchone()
+            assert got == ("4.8",)
+
+            try:
+                _insert_composition(db_conn, "hardened-inv-c50", "5.0")
+                db_conn.commit()
+                assert False, "version='5.0' accepted -- canonical CHECK missing after 002"
+            except psycopg.errors.CheckViolation:
+                db_conn.rollback()
+
+            assert _single_column_version_checks(db_conn, "compositions") == [
+                "compositions_version_check"
+            ]
+        finally:
+            _restore_version_ddl(db_conn)
+
+
+class TestHostileConstraintNames:
+    """Constraint names are attacker-controlled schema drift: mixed case,
+    spaces, embedded double quotes, non-ASCII. The migration's dynamic
+    DROP must quote them correctly (format %I or equivalent) and the
+    hardened contract must drop them regardless of their definition
+    text -- this one's predicate also rejects 4.8, so it doubles as an
+    inversion case and fails RED today."""
+
+    EVIL_NAME = 'Evil "Check" \N{CHECK MARK} 4.8 trap'
+
+    def test_hostile_quoted_name_dropped_and_canonical_added(self, db_conn):
+        try:
+            db_conn.rollback()
+            _add_check(db_conn, "sessions", self.EVIL_NAME, "version NOT IN ('4.8')")
+            db_conn.commit()
+
+            # Sanity: the hostile name really exists before 002 runs, so a
+            # passing test can't be explained by the ADD having failed.
+            assert self.EVIL_NAME in _single_column_version_checks(db_conn, "sessions")
+
+            _apply_migration_002(db_conn)
+
+            names = _single_column_version_checks(db_conn, "sessions")
+            assert self.EVIL_NAME not in names, "hostile-named constraint survived 002"
+            assert names == ["sessions_version_check"]
+
+            _insert_session(db_conn, "hardened-evilname-48", "4.8")
+            db_conn.commit()
+        finally:
+            _restore_version_ddl(db_conn)
+
+    def test_canonical_name_squatted_with_wrong_predicate_is_replaced(self, db_conn):
+        """Nastiest drift: a constraint that already HAS the canonical
+        name but the WRONG predicate. A lazy 'IF NOT EXISTS by name'
+        guard would spare it forever. Drop-all-then-recreate must end
+        with the canonical name AND the canonical predicate."""
+        try:
+            db_conn.rollback()
+            for name in _single_column_version_checks(db_conn, "sessions"):
+                _drop_constraint(db_conn, "sessions", name)
+            _add_check(db_conn, "sessions", "sessions_version_check", "version <> '4.8'")
+            db_conn.commit()
+
+            _apply_migration_002(db_conn)
+
+            assert _single_column_version_checks(db_conn, "sessions") == ["sessions_version_check"]
+            condef = _canonical_constraint_def(db_conn, "sessions")
+            assert condef is not None
+            for ver in CANONICAL_VERSIONS:
+                assert ver in condef, (
+                    f"canonical sessions_version_check does not admit '{ver}': {condef}"
+                )
+
+            _insert_session(db_conn, "hardened-squat-48", "4.8")
+            db_conn.commit()
+            try:
+                _insert_session(db_conn, "hardened-squat-50", "5.0")
+                db_conn.commit()
+                assert False, "version='5.0' accepted after canonical-name squat"
+            except psycopg.errors.CheckViolation:
+                db_conn.rollback()
+        finally:
+            _restore_version_ddl(db_conn)
+
+
+class TestRedundantConstraintStack:
+    """Multiple redundant single-column version checks stacked up --
+    including an exact duplicate of the canonical predicate under a
+    different name (spared by the LIKE heuristic: contains '4.8') and a
+    NOT VALID inverted trap (also spared today). After 002 exactly ONE
+    must remain: the canonical."""
+
+    STACK = (
+        # (name, predicate, not_valid)
+        ("sessions_dup_allow48", "version IN ('4.5', '4.6', '4.7', '4.8')", False),
+        ("sessions_len3", "length(version) = 3", False),
+        ("sessions_regex", "version ~ '^[0-9][.][0-9]$'", False),
+        ("sessions_notvalid_trap", "version <> '4.8'", True),
+    )
+
+    def test_stack_collapses_to_single_canonical(self, db_conn):
+        try:
+            db_conn.rollback()
+            for name, predicate, not_valid in self.STACK:
+                _add_check(db_conn, "sessions", name, predicate, not_valid=not_valid)
+            db_conn.commit()
+
+            # Sanity: the stack is really there (canonical + 4 planted).
+            assert len(_single_column_version_checks(db_conn, "sessions")) >= 5
+
+            _apply_migration_002(db_conn)
+
+            assert _single_column_version_checks(db_conn, "sessions") == [
+                "sessions_version_check"
+            ], "redundant single-column version checks survived 002"
+
+            _insert_session(db_conn, "hardened-stack-48", "4.8")
+            db_conn.commit()
+            try:
+                _insert_session(db_conn, "hardened-stack-50", "5.0")
+                db_conn.commit()
+                assert False, "version='5.0' accepted after stack collapse"
+            except psycopg.errors.CheckViolation:
+                db_conn.rollback()
+        finally:
+            _restore_version_ddl(db_conn)
+
+
+class TestMultiColumnChecksOutOfScope:
+    """Multi-column CHECKs that merely INVOLVE version (conkey has 2+
+    columns) are explicitly out of scope: 002 must leave them untouched.
+    Guards against over-correcting the LIKE bug into 'drop everything
+    that mentions version'. One probe's text even contains '4.8' to
+    prove definition text plays no role in either direction. (These may
+    already pass against the current 002 -- they pin the rewrite's
+    scope, not the inversion bug.)"""
+
+    def test_multicolumn_checks_survive_002(self, db_conn):
+        probes = (
+            ("sessions", "sessions_multicol_probe", "version <> '9.9' OR turns IS NULL"),
+            ("sessions", "sessions_multicol_48text", "version <> '4.8' OR turns IS NULL"),
+            (
+                "compositions",
+                "compositions_multicol_probe",
+                "version <> '9.9' OR size_bytes IS NULL",
+            ),
+        )
+        try:
+            db_conn.rollback()
+            for table, name, predicate in probes:
+                _add_check(db_conn, table, name, predicate)
+            db_conn.commit()
+
+            _apply_migration_002(db_conn)
+
+            for table, name, _predicate in probes:
+                row = db_conn.execute(
+                    "SELECT array_length(conkey, 1) FROM pg_constraint "
+                    "WHERE conrelid = %s::regclass AND contype = 'c' AND conname = %s",
+                    (table, name),
+                ).fetchone()
+                assert row is not None, f"multi-column CHECK {name} was dropped by 002"
+                assert row[0] == 2, f"{name} is not the 2-column constraint we planted"
+
+            # Canonical single-column constraint coexists with the probes...
+            assert _single_column_version_checks(db_conn, "sessions") == ["sessions_version_check"]
+            assert _single_column_version_checks(db_conn, "compositions") == [
+                "compositions_version_check"
+            ]
+
+            # ...and 4.8 inserts satisfy both canonical and probes.
+            _insert_session(db_conn, "hardened-multicol-48", "4.8")
+            _insert_composition(db_conn, "hardened-multicol-c48", "4.8")
+            db_conn.commit()
+        finally:
+            _restore_version_ddl(db_conn)
+
+
+class TestIdempotencyWithDataPresent:
+    """The hardened drop-all-then-recreate re-validates existing rows on
+    ADD CONSTRAINT. With committed '4.8' (and legacy) rows present, 002
+    applied twice must not error, must not lose rows, and must leave
+    constraint behavior intact."""
+
+    def test_double_reapply_with_48_rows_present(self, db_conn):
+        db_conn.rollback()
+        for ver in CANONICAL_VERSIONS:
+            _insert_session(db_conn, f"hardened-idem-{ver.replace('.', '')}", ver)
+        _insert_composition(db_conn, "hardened-idem-c48", "4.8")
+        db_conn.commit()
+
+        _apply_migration_002(db_conn)
+        _apply_migration_002(db_conn)
+
+        s_count = db_conn.execute(
+            "SELECT COUNT(*) FROM sessions WHERE id LIKE 'hardened-idem-%'"
+        ).fetchone()[0]
+        c_count = db_conn.execute(
+            "SELECT COUNT(*) FROM compositions WHERE slug = 'hardened-idem-c48'"
+        ).fetchone()[0]
+        assert s_count == 4, "re-applying 002 lost sessions rows"
+        assert c_count == 1, "re-applying 002 lost compositions rows"
+
+        # Constraint behavior intact after the double run.
+        _insert_session(db_conn, "hardened-idem-post-48", "4.8")
+        db_conn.commit()
+        try:
+            _insert_session(db_conn, "hardened-idem-post-50", "5.0")
+            db_conn.commit()
+            assert False, "version='5.0' accepted after double re-apply"
+        except psycopg.errors.CheckViolation:
+            db_conn.rollback()
+        try:
+            _insert_composition(db_conn, "hardened-idem-post-c50", "5.0")
+            db_conn.commit()
+            assert False, "compositions version='5.0' accepted after double re-apply"
+        except psycopg.errors.CheckViolation:
+            db_conn.rollback()
+
+        # No duplicate constraints accumulated across runs.
+        assert _single_column_version_checks(db_conn, "sessions") == ["sessions_version_check"]
+        assert _single_column_version_checks(db_conn, "compositions") == [
+            "compositions_version_check"
+        ]
+
+
+class TestConstraintCountAudit:
+    """Catalog-level audit: after a re-apply on the pristine schema,
+    pg_constraint holds EXACTLY ONE contype='c' constraint per table
+    whose conkey is exactly the version column, it carries the canonical
+    name, and its definition admits all four versions. Behavioral tests
+    can be fooled by overlapping constraints; the catalog cannot."""
+
+    def test_exactly_one_single_column_version_check_per_table(self, db_conn):
+        _apply_migration_002(db_conn)
+
+        for table in ("sessions", "compositions"):
+            names = _single_column_version_checks(db_conn, table)
+            assert names == [f"{table}_version_check"], (
+                f"{table}: expected exactly the canonical single-column version "
+                f"check, found {names}"
+            )
+            condef = _canonical_constraint_def(db_conn, table)
+            for ver in CANONICAL_VERSIONS:
+                assert ver in condef, f"{table}_version_check does not admit '{ver}': {condef}"
+
+        # Quarantine half of 002 is unchanged by the hardening.
+        rows = db_conn.execute(
+            "SELECT tablename FROM pg_tables "
+            "WHERE schemaname = 'public' AND tablename = 'quarantine'"
+        ).fetchall()
+        assert len(rows) == 1, "quarantine table missing after hardened 002"
