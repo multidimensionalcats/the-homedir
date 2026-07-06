@@ -93,22 +93,47 @@ def _sanitize_path(path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Version boundaries (inclusive start dates)
+# Version boundaries (inclusive start date + start time-of-day, newest first)
 # ---------------------------------------------------------------------------
 _VERSION_BOUNDARIES = [
-    (datetime.date(2026, 4, 18), "4.7"),
-    (datetime.date(2026, 2, 13), "4.6"),
+    (datetime.date(2026, 6, 5), "evening", "4.8"),
+    (datetime.date(2026, 4, 18), "morning", "4.7"),
+    (datetime.date(2026, 2, 13), "morning", "4.6"),
 ]
 
 
-def detect_version(date: datetime.date | str) -> str:
-    """Return the model version active on the given date."""
+def detect_version(date: datetime.date | str, time_of_day: str | None = None) -> str:
+    """Return the model version active for a session at the given date and time.
+
+    Version cutovers can happen mid-day: the 4.8 boundary begins with the
+    EVENING session of 2026-06-05 (the morning session that day was still 4.7).
+    A session at (date, time_of_day) is at-or-after a boundary
+    (boundary_date, boundary_tod) when its date is after boundary_date, or
+    equal to boundary_date and either the boundary starts in the morning or
+    the session itself is not a morning session.
+
+    Only the EXACT string "morning" counts as morning; None or any other
+    value (including non-strings) is treated as evening-or-later. Boundaries
+    are scanned newest-first; the first match wins, else "4.5".
+    """
     if isinstance(date, str):
         date = datetime.date.fromisoformat(date)
-    for boundary, version in _VERSION_BOUNDARIES:
-        if date >= boundary:
+    for boundary_date, boundary_tod, version in _VERSION_BOUNDARIES:
+        if date > boundary_date:
+            return version
+        if date == boundary_date and (boundary_tod == "morning" or time_of_day != "morning"):
             return version
     return "4.5"
+
+
+def _session_time_of_day(session: dict) -> str | None:
+    """Translate a session's internal "AM"/"PM" time_of_day for detect_version."""
+    tod = session.get("time_of_day")
+    if tod == "AM":
+        return "morning"
+    if tod == "PM":
+        return "evening"
+    return tod
 
 
 # ---------------------------------------------------------------------------
@@ -718,7 +743,10 @@ def store_session(conn: psycopg.Connection, session: dict) -> None:
                 sid,
                 session["date"],
                 session["time_of_day"],
-                session.get("version", detect_version(session["date"])),
+                session.get(
+                    "version",
+                    detect_version(session["date"], _session_time_of_day(session)),
+                ),
                 session.get("timestamp_start"),
                 session.get("turns"),
                 session["source_type"],
@@ -849,8 +877,8 @@ def extract_all(
 
 def _enrich_session(session: dict) -> None:
     """Add version, file_operations, and output flags to a session dict."""
-    # Detect version
-    session["version"] = detect_version(session["date"])
+    # Detect version (time-aware: AM/PM sessions on a cutover date can differ)
+    session["version"] = detect_version(session["date"], _session_time_of_day(session))
 
     # Classify file operations from tool events
     file_ops: list[dict] = []

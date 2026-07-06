@@ -18,6 +18,8 @@ from scripts.extract_sessions import (
     compute_output_flags,
     store_session,
     extract_all,
+    _session_time_of_day,
+    _VERSION_BOUNDARIES,
 )
 
 
@@ -484,6 +486,149 @@ class TestVersionDetection:
     def test_mid_range_4_6(self):
         """A date solidly within the 4.6 range."""
         assert detect_version(datetime.date(2026, 3, 15)) == "4.6"
+
+
+# ===========================================================================
+# 3b. VERSION DETECTION -- 4.8 MID-DAY CUTOVER (2026-06-05 evening)
+# ===========================================================================
+
+
+class TestVersionDetectionCutover:
+    """The 4.8 cutover happened mid-day: the 2026-06-05 MORNING session was
+    still 4.7; the 2026-06-05 EVENING session was the first 4.8 session.
+
+    Contract: detect_version(date, time_of_day=None). Only the exact string
+    "morning" counts as morning; None or any other value is treated as
+    evening-or-later (preserving old date-only behavior). The 4.7 and 4.6
+    boundaries are morning-inclusive, so time_of_day never changes them.
+    """
+
+    # Values that must NOT be treated as "morning" (exact-match contract).
+    # "AM" is the sneaky one: session dicts use "AM"/"PM" internally, and
+    # passing that representation straight through must not read as morning.
+    GARBAGE_TIMES = [
+        "night",
+        "",
+        "MORNING",
+        "Morning",
+        " morning",
+        "morning ",
+        "AM",
+        "PM",
+        "noon",
+        "afternoon",
+        "mornings",
+        42,
+    ]
+
+    # -- The critical real-world case ------------------------------------
+    def test_cutover_day_morning_is_4_7(self):
+        """2026-06-05 morning was still 4.7 (per primary session material)."""
+        assert detect_version(datetime.date(2026, 6, 5), "morning") == "4.7"
+
+    def test_cutover_day_evening_is_4_8(self):
+        """2026-06-05 evening was the first 4.8 session."""
+        assert detect_version(datetime.date(2026, 6, 5), "evening") == "4.8"
+
+    def test_cutover_day_none_time_is_4_8(self):
+        """time_of_day=None keeps old date-only semantics: boundary date matches."""
+        assert detect_version(datetime.date(2026, 6, 5), None) == "4.8"
+
+    def test_cutover_day_omitted_time_is_4_8(self):
+        """Calling with only a date (old signature) matches the boundary date."""
+        assert detect_version(datetime.date(2026, 6, 5)) == "4.8"
+
+    def test_cutover_day_morning_via_keyword(self):
+        """time_of_day must be accepted as a keyword argument."""
+        assert detect_version(datetime.date(2026, 6, 5), time_of_day="morning") == "4.7"
+
+    # -- Days adjacent to the cutover -------------------------------------
+    @pytest.mark.parametrize("tod", ["morning", "evening", None])
+    def test_day_before_cutover_always_4_7(self, tod):
+        """2026-06-04 is 4.7 regardless of time of day -- even evening."""
+        assert detect_version(datetime.date(2026, 6, 4), tod) == "4.7"
+
+    def test_day_before_cutover_omitted_time_is_4_7(self):
+        assert detect_version(datetime.date(2026, 6, 4)) == "4.7"
+
+    @pytest.mark.parametrize("tod", ["morning", "evening", None])
+    def test_day_after_cutover_always_4_8(self, tod):
+        """2026-06-06 is 4.8 regardless of time of day -- even morning."""
+        assert detect_version(datetime.date(2026, 6, 6), tod) == "4.8"
+
+    # -- Garbage time_of_day values ----------------------------------------
+    @pytest.mark.parametrize("tod", GARBAGE_TIMES)
+    def test_garbage_time_on_cutover_day_is_4_8(self, tod):
+        """Anything other than the exact string 'morning' is evening-or-later."""
+        assert detect_version(datetime.date(2026, 6, 5), tod) == "4.8"
+
+    @pytest.mark.parametrize("tod", GARBAGE_TIMES)
+    def test_garbage_time_day_before_cutover_is_4_7(self, tod):
+        """Garbage time_of_day must not push a pre-cutover date into 4.8."""
+        assert detect_version(datetime.date(2026, 6, 4), tod) == "4.7"
+
+    # -- Older boundaries are morning-inclusive ----------------------------
+    @pytest.mark.parametrize("tod", ["morning", "evening", None, "night"])
+    def test_4_7_boundary_day_unaffected_by_time(self, tod):
+        """2026-04-18 is 4.7 for any time_of_day (boundary starts at morning)."""
+        assert detect_version(datetime.date(2026, 4, 18), tod) == "4.7"
+
+    @pytest.mark.parametrize("tod", ["morning", "evening", None, "night"])
+    def test_4_6_boundary_day_unaffected_by_time(self, tod):
+        """2026-02-13 is 4.6 for any time_of_day (boundary starts at morning)."""
+        assert detect_version(datetime.date(2026, 2, 13), tod) == "4.6"
+
+    @pytest.mark.parametrize("tod", ["morning", "evening", None])
+    def test_day_before_4_7_boundary_still_4_6(self, tod):
+        assert detect_version(datetime.date(2026, 4, 17), tod) == "4.6"
+
+    @pytest.mark.parametrize("tod", ["morning", "evening", None])
+    def test_day_before_4_6_boundary_still_4_5(self, tod):
+        assert detect_version(datetime.date(2026, 2, 12), tod) == "4.5"
+
+    # -- Far past / far future ---------------------------------------------
+    def test_far_past_with_time_is_4_5(self):
+        assert detect_version(datetime.date(2020, 1, 1), "evening") == "4.5"
+
+    def test_far_past_morning_is_4_5(self):
+        assert detect_version(datetime.date(2020, 1, 1), "morning") == "4.5"
+
+    def test_far_future_date_only_is_4_8(self):
+        """After the cutover, date-only far-future calls now resolve to 4.8."""
+        assert detect_version(datetime.date(2027, 1, 1)) == "4.8"
+
+    def test_far_future_morning_is_4_8(self):
+        assert detect_version(datetime.date(2030, 6, 5), "morning") == "4.8"
+
+    # -- ISO string dates combined with time_of_day -------------------------
+    def test_iso_string_cutover_morning(self):
+        assert detect_version("2026-06-05", "morning") == "4.7"
+
+    def test_iso_string_cutover_evening(self):
+        assert detect_version("2026-06-05", "evening") == "4.8"
+
+    def test_iso_string_cutover_date_only(self):
+        assert detect_version("2026-06-05") == "4.8"
+
+    def test_iso_string_day_before_cutover_evening(self):
+        assert detect_version("2026-06-04", "evening") == "4.7"
+
+    def test_iso_string_garbage_time_on_cutover_day(self):
+        assert detect_version("2026-06-05", "MORNING") == "4.8"
+
+    # -- Invalid ISO strings still raise ValueError --------------------------
+    @pytest.mark.parametrize(
+        "bad",
+        ["not-a-date", "", "2026-13-45", "2026/06/05", "05-06-2026", "2026-06-32"],
+    )
+    def test_invalid_iso_string_raises(self, bad):
+        with pytest.raises(ValueError):
+            detect_version(bad)
+
+    def test_invalid_iso_string_with_time_of_day_raises(self):
+        """A valid time_of_day must not mask an invalid date string."""
+        with pytest.raises(ValueError):
+            detect_version("garbage", "morning")
 
 
 # ===========================================================================
@@ -1156,3 +1301,482 @@ class TestEndToEnd:
             "SELECT time_of_day FROM sessions WHERE id = %s", ("day20-pm",)
         ).fetchone()
         assert pm[0] == "PM"
+
+
+# ===========================================================================
+# 8. VERSION CUTOVER INTEGRATION -- time_of_day must reach detect_version
+# ===========================================================================
+
+
+class TestVersionCutoverIntegration:
+    """The extraction path must feed each session's time of day into version
+    detection. A session on 2026-06-05 that ran in the morning must be stored
+    with version 4.7; the evening session of the same day must be 4.8.
+
+    Session dicts carry time_of_day as "AM"/"PM" internally -- if that raw
+    representation leaks into detect_version, every 2026-06-05 session would
+    come out 4.8. These tests pin the observable DB result on both source
+    paths (JSONL activity logs and text session logs).
+    """
+
+    def _dirs(self, tmp_path):
+        activity_dir = tmp_path / "activity_logs"
+        activity_dir.mkdir()
+        session_log_dir = tmp_path / "session_logs"
+        session_log_dir.mkdir()
+        return activity_dir, session_log_dir
+
+    def _write_cutover_day_jsonl(self, activity_dir):
+        """One morning (10:00) and one evening (22:00) session on 2026-06-05."""
+        am = _make_complete_session(
+            session_id="cutover-am",
+            start_time="10:00:00",
+            end_time="10:05:00",
+            tools=[{"t": "Read", "i": "/home/claude/messages_from_james.md", "ts": "10:00:11"}],
+        )
+        pm = _make_complete_session(
+            session_id="cutover-pm",
+            start_time="22:00:00",
+            end_time="22:10:00",
+            tools=[{"t": "Write", "i": "/home/claude/notes/daily/2026-06-05.md", "ts": "22:01:00"}],
+        )
+        _write_jsonl(activity_dir, "activity-2026-06-05.jsonl", am + pm)
+
+    @staticmethod
+    def _write_session_log(session_log_dir, filename, day, start_hm, end_hm):
+        content = textwrap.dedent(f"""\
+            === Session started: {day} {start_hm}:00 ===
+            Routine session.
+            === Session ended: {day} {end_hm}:00 ===
+        """)
+        (session_log_dir / filename).write_text(content)
+
+    def _version_by_date_and_tod(self, db_conn, day, tod):
+        rows = db_conn.execute(
+            "SELECT version FROM sessions WHERE date = %s AND time_of_day = %s",
+            (day, tod),
+        ).fetchall()
+        assert len(rows) == 1, f"expected exactly one {tod} session on {day}, got {len(rows)}"
+        return rows[0][0]
+
+    # -- JSONL activity-log path ---------------------------------------------
+    def test_jsonl_cutover_day_morning_session_is_4_7(self, tmp_path, db_conn):
+        activity_dir, session_log_dir = self._dirs(tmp_path)
+        self._write_cutover_day_jsonl(activity_dir)
+        extract_all(activity_dir, session_log_dir, db_conn)
+
+        row = db_conn.execute(
+            "SELECT version FROM sessions WHERE id = %s", ("cutover-am",)
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "4.7"
+
+    def test_jsonl_cutover_day_evening_session_is_4_8(self, tmp_path, db_conn):
+        activity_dir, session_log_dir = self._dirs(tmp_path)
+        self._write_cutover_day_jsonl(activity_dir)
+        extract_all(activity_dir, session_log_dir, db_conn)
+
+        row = db_conn.execute(
+            "SELECT version FROM sessions WHERE id = %s", ("cutover-pm",)
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "4.8"
+
+    # -- Text session-log path -------------------------------------------------
+    def test_log_cutover_day_morning_session_is_4_7(self, tmp_path, db_conn):
+        activity_dir, session_log_dir = self._dirs(tmp_path)
+        self._write_session_log(
+            session_log_dir, "2026-06-05-morning.log", "2026-06-05", "10:00", "10:05"
+        )
+        extract_all(activity_dir, session_log_dir, db_conn)
+
+        version = self._version_by_date_and_tod(db_conn, datetime.date(2026, 6, 5), "AM")
+        assert version == "4.7"
+
+    def test_log_cutover_day_evening_session_is_4_8(self, tmp_path, db_conn):
+        activity_dir, session_log_dir = self._dirs(tmp_path)
+        self._write_session_log(
+            session_log_dir, "2026-06-05-evening.log", "2026-06-05", "22:00", "22:10"
+        )
+        extract_all(activity_dir, session_log_dir, db_conn)
+
+        version = self._version_by_date_and_tod(db_conn, datetime.date(2026, 6, 5), "PM")
+        assert version == "4.8"
+
+    def test_log_evening_before_cutover_day_still_4_7(self, tmp_path, db_conn):
+        """Guards against 'any evening session is 4.8' plumbing mistakes."""
+        activity_dir, session_log_dir = self._dirs(tmp_path)
+        self._write_session_log(
+            session_log_dir, "2026-06-04-evening.log", "2026-06-04", "22:00", "22:10"
+        )
+        extract_all(activity_dir, session_log_dir, db_conn)
+
+        version = self._version_by_date_and_tod(db_conn, datetime.date(2026, 6, 4), "PM")
+        assert version == "4.7"
+
+    def test_log_morning_after_cutover_day_is_4_8(self, tmp_path, db_conn):
+        """Guards against 'any morning session is 4.7' plumbing mistakes."""
+        activity_dir, session_log_dir = self._dirs(tmp_path)
+        self._write_session_log(
+            session_log_dir, "2026-06-06-morning.log", "2026-06-06", "10:00", "10:05"
+        )
+        extract_all(activity_dir, session_log_dir, db_conn)
+
+        version = self._version_by_date_and_tod(db_conn, datetime.date(2026, 6, 6), "AM")
+        assert version == "4.8"
+
+    def test_both_cutover_day_sessions_in_one_run(self, tmp_path, db_conn):
+        """Morning and evening logs on the cutover day processed together must
+        end up with DIFFERENT versions -- catches any per-date version caching."""
+        activity_dir, session_log_dir = self._dirs(tmp_path)
+        self._write_session_log(
+            session_log_dir, "2026-06-05-morning.log", "2026-06-05", "10:00", "10:05"
+        )
+        self._write_session_log(
+            session_log_dir, "2026-06-05-evening.log", "2026-06-05", "22:00", "22:10"
+        )
+        extract_all(activity_dir, session_log_dir, db_conn)
+
+        am = self._version_by_date_and_tod(db_conn, datetime.date(2026, 6, 5), "AM")
+        pm = self._version_by_date_and_tod(db_conn, datetime.date(2026, 6, 5), "PM")
+        assert am == "4.7"
+        assert pm == "4.8"
+
+
+# ===========================================================================
+# 9. CUTOVER HARDENING -- adversarial pins added after first-attempt GREEN
+# ===========================================================================
+# The cutover suite above went GREEN on the implementation's first attempt,
+# which per project rule means it was not hostile enough. This section pins
+# behavior the original suite left unobserved: exotic date types, interpreter
+# -version-sensitive ISO parsing, equality-spoofing time_of_day values, the
+# _session_time_of_day translation seam, the store_session version fallback
+# (which bypasses _enrich_session), boundary-table integrity, and ordering
+# of sessions within a single activity file.
+
+
+class _ClaimsToBeMorning:
+    """An object whose equality lies: it compares equal to the string
+    "morning" without being it. Exercises the implementation's use of
+    ``time_of_day != "morning"``, which dispatches to the object's own
+    equality rather than an identity or isinstance check."""
+
+    def __eq__(self, other):
+        return other == "morning"
+
+    def __hash__(self):
+        return hash("morning")
+
+
+class TestDetectVersionTypeHostility:
+    """Non-date-typed `date` arguments and non-string time_of_day values."""
+
+    # -- datetime.datetime passed as the date --------------------------------
+    # FINDING (pinned): datetime.datetime is a subclass of datetime.date, but
+    # CPython's datetime refuses ORDERING comparisons against a plain date
+    # (== returns False; < / > raise TypeError). detect_version's very first
+    # boundary check is `date > boundary_date`, so ANY datetime input raises
+    # TypeError immediately -- it never falls through to a wrong version.
+    # Verified on Python 3.14.6. These tests pin "raises TypeError", so if a
+    # future change starts silently mislabeling datetimes instead, they fail.
+    @pytest.mark.parametrize(
+        "dt",
+        [
+            datetime.datetime(2026, 6, 10, 10, 0, 0),  # mid-4.8 era
+            datetime.datetime(2026, 6, 5, 0, 0, 0),  # midnight on cutover date
+            datetime.datetime(2026, 5, 15, 12, 30),  # mid-4.7 era
+            datetime.datetime(2020, 1, 1, 0, 0),  # far past (still hits `>` first)
+            datetime.datetime(2026, 6, 5, 22, 0, tzinfo=datetime.timezone.utc),  # aware datetime
+        ],
+    )
+    def test_datetime_instance_raises_typeerror(self, dt):
+        with pytest.raises(TypeError):
+            detect_version(dt)
+
+    def test_datetime_instance_with_time_of_day_raises_typeerror(self):
+        """A valid time_of_day must not mask the datetime type error."""
+        with pytest.raises(TypeError):
+            detect_version(datetime.datetime(2026, 6, 5, 10, 0), "morning")
+
+    # -- bytes and other non-string time_of_day values must never raise ------
+    @pytest.mark.parametrize(
+        "tod",
+        [b"morning", 3.14, [], {}, ("morning",), ["morning"], object(), True],
+    )
+    def test_nonstring_time_on_cutover_day_is_4_8(self, tod):
+        """b"morning" is NOT "morning" in Python 3; nor is any other
+        non-string. All are evening-or-later and none may raise."""
+        assert detect_version(datetime.date(2026, 6, 5), tod) == "4.8"
+
+    @pytest.mark.parametrize(
+        "tod",
+        [b"morning", 3.14, [], {}, ("morning",), ["morning"], object(), True],
+    )
+    def test_nonstring_time_day_before_cutover_is_4_7(self, tod):
+        assert detect_version(datetime.date(2026, 6, 4), tod) == "4.7"
+
+    # -- equality-spoofing object ---------------------------------------------
+    # FINDING (pinned): the implementation tests `time_of_day != "morning"`,
+    # which honors the OPERAND's equality. An object whose __eq__ returns
+    # True against "morning" therefore IS treated as morning (no crash).
+    # This is the current observable contract of the `!=` seam; if the
+    # implementation ever switches to an identity/isinstance check, these
+    # pins must be consciously revisited.
+    def test_equality_spoofer_on_cutover_day_reads_as_morning(self):
+        assert detect_version(datetime.date(2026, 6, 5), _ClaimsToBeMorning()) == "4.7"
+
+    def test_equality_spoofer_after_cutover_day_is_irrelevant(self):
+        """Day after the cutover, time of day cannot rescue 4.7."""
+        assert detect_version(datetime.date(2026, 6, 6), _ClaimsToBeMorning()) == "4.8"
+
+    def test_equality_spoofer_never_raises_in_far_past(self):
+        assert detect_version(datetime.date(2020, 1, 1), _ClaimsToBeMorning()) == "4.5"
+
+
+class TestDetectVersionIsoStringHostility:
+    """ISO-8601 edge cases whose acceptance is interpreter-version-sensitive.
+
+    Pinned against Python 3.14: date.fromisoformat REJECTS strings carrying a
+    time component. If a future interpreter (or a switch to
+    datetime.fromisoformat) starts accepting them, sessions could silently be
+    relabeled -- these tests force that change to be a conscious one.
+    """
+
+    @pytest.mark.parametrize(
+        "s",
+        [
+            "2026-06-05T10:00:00",
+            "2026-06-05T23:59:59",
+            "2026-06-05 10:00:00",
+            "2026-06-05T10:00:00+00:00",
+            "2026-06-05T00:00:00Z",
+        ],
+    )
+    def test_iso_string_with_time_component_raises(self, s):
+        with pytest.raises(ValueError):
+            detect_version(s)
+
+    def test_iso_string_with_time_component_and_tod_still_raises(self):
+        """time_of_day must not mask rejection of a datetime-shaped string."""
+        with pytest.raises(ValueError):
+            detect_version("2026-06-05T10:00:00", "morning")
+
+    # -- compact ISO basic format IS accepted (Python >= 3.11) ---------------
+    def test_compact_iso_basic_format_accepted_as_cutover_date(self):
+        """date.fromisoformat("20260605") parses since 3.11 -- pin the label."""
+        assert detect_version("20260605") == "4.8"
+
+    def test_compact_iso_basic_format_respects_morning(self):
+        assert detect_version("20260605", "morning") == "4.7"
+
+    # -- leap-day and impossible calendar dates -------------------------------
+    def test_leap_day_2024_is_4_5(self):
+        assert detect_version(datetime.date(2024, 2, 29)) == "4.5"
+
+    def test_leap_day_2024_string_is_4_5(self):
+        assert detect_version("2024-02-29") == "4.5"
+
+    def test_impossible_feb_30_string_raises(self):
+        with pytest.raises(ValueError):
+            detect_version("2026-02-30")
+
+    def test_feb_29_in_non_leap_year_raises(self):
+        with pytest.raises(ValueError):
+            detect_version("2023-02-29")
+
+
+class TestSessionTimeOfDayTranslation:
+    """_session_time_of_day only translates the EXACT strings "AM"/"PM";
+    everything else passes through untouched -- including values that a human
+    would read as morning. These pins make that pass-through explicit."""
+
+    @pytest.mark.parametrize(
+        "session,expected",
+        [
+            ({"time_of_day": "AM"}, "morning"),
+            ({"time_of_day": "PM"}, "evening"),
+            ({}, None),  # key missing entirely
+            ({"time_of_day": None}, None),
+            ({"time_of_day": "am"}, "am"),  # lowercase NOT translated
+            ({"time_of_day": "pm"}, "pm"),
+            ({"time_of_day": "A.M."}, "A.M."),
+            ({"time_of_day": " AM"}, " AM"),  # whitespace defeats translation
+            ({"time_of_day": 0}, 0),  # non-strings pass through
+            ({"time_of_day": b"AM"}, b"AM"),
+        ],
+    )
+    def test_translation_table(self, session, expected):
+        assert _session_time_of_day(session) == expected
+
+    # -- composed through detect_version on the cutover day -------------------
+    @pytest.mark.parametrize(
+        "session,expected_version",
+        [
+            ({"time_of_day": "AM"}, "4.7"),
+            ({"time_of_day": "PM"}, "4.8"),
+            ({}, "4.8"),  # missing time key: evening-or-later semantics
+            ({"time_of_day": None}, "4.8"),
+            ({"time_of_day": "am"}, "4.8"),  # lowercase leak reads as evening
+            ({"time_of_day": "pm"}, "4.8"),
+            ({"time_of_day": "A.M."}, "4.8"),  # punctuated variant is not morning
+        ],
+    )
+    def test_cutover_day_version_through_translation(self, session, expected_version):
+        tod = _session_time_of_day(session)
+        assert detect_version(datetime.date(2026, 6, 5), tod) == expected_version
+
+    def test_day_before_cutover_untranslatable_time_still_4_7(self):
+        """An untranslated "am" must not push a pre-cutover date forward."""
+        tod = _session_time_of_day({"time_of_day": "am"})
+        assert detect_version(datetime.date(2026, 6, 4), tod) == "4.7"
+
+
+class TestStoreSessionVersionFallback:
+    """store_session computes the version itself when the dict lacks one.
+    That code path BYPASSES _enrich_session, so it must be independently
+    time-aware -- a date-only fallback would label every 2026-06-05 session
+    4.8 and these tests would catch it."""
+
+    def _session_without_version(self, session_id, date, time_of_day):
+        return {
+            "session_id": session_id,
+            "date": date,
+            "time_of_day": time_of_day,
+            "source_type": "jsonl",
+            "source_file": f"activity-{date.isoformat()}.jsonl",
+            # NOTE: no "version" key -- store_session must derive it.
+        }
+
+    def _stored_version(self, db_conn, session_id):
+        row = db_conn.execute(
+            "SELECT version FROM sessions WHERE id = %s", (session_id,)
+        ).fetchone()
+        assert row is not None, f"session {session_id!r} was not stored"
+        return row[0]
+
+    def test_am_session_on_cutover_day_stored_as_4_7(self, db_conn):
+        session = self._session_without_version(
+            "fallback-cutover-am", datetime.date(2026, 6, 5), "AM"
+        )
+        store_session(db_conn, session)
+        assert self._stored_version(db_conn, "fallback-cutover-am") == "4.7"
+
+    def test_pm_session_on_cutover_day_stored_as_4_8(self, db_conn):
+        session = self._session_without_version(
+            "fallback-cutover-pm", datetime.date(2026, 6, 5), "PM"
+        )
+        store_session(db_conn, session)
+        assert self._stored_version(db_conn, "fallback-cutover-pm") == "4.8"
+
+    def test_pm_session_day_before_cutover_stored_as_4_7(self, db_conn):
+        """Guards a fallback that maps every PM session to 4.8."""
+        session = self._session_without_version(
+            "fallback-day-before-pm", datetime.date(2026, 6, 4), "PM"
+        )
+        store_session(db_conn, session)
+        assert self._stored_version(db_conn, "fallback-day-before-pm") == "4.7"
+
+    def test_explicit_version_wins_over_fallback(self, db_conn):
+        """A caller-supplied version must NOT be second-guessed by the fallback."""
+        session = self._session_without_version(
+            "fallback-explicit", datetime.date(2026, 6, 5), "AM"
+        )
+        session["version"] = "4.8"  # deliberately contradicts the fallback
+        store_session(db_conn, session)
+        assert self._stored_version(db_conn, "fallback-explicit") == "4.8"
+
+
+class TestVersionBoundariesIntegrity:
+    """Meta-tests on the boundary table itself. detect_version scans
+    newest-first with first-match-wins, so an out-of-order edit (e.g. adding
+    a 4.9 boundary at the END of the list) would be silently shadowed by an
+    older entry. These pins make the invariants explicit."""
+
+    def test_boundaries_sorted_strictly_newest_first(self):
+        dates = [d for d, _, _ in _VERSION_BOUNDARIES]
+        assert all(a > b for a, b in zip(dates, dates[1:])), (
+            f"_VERSION_BOUNDARIES dates must be strictly descending "
+            f"(first-match-wins shadows out-of-order entries): {dates}"
+        )
+
+    def test_versions_strictly_increase_forward_in_time(self):
+        parsed = [tuple(int(part) for part in v.split(".")) for _, _, v in _VERSION_BOUNDARIES]
+        assert all(a > b for a, b in zip(parsed, parsed[1:])), (
+            f"boundary versions must strictly decrease down the list "
+            f"(i.e. increase forward in time): {parsed}"
+        )
+
+    def test_boundary_time_of_day_values_are_canonical(self):
+        assert all(tod in ("morning", "evening") for _, tod, _ in _VERSION_BOUNDARIES)
+
+    def test_boundary_dates_are_plain_dates_not_datetimes(self):
+        """A datetime in the table would break ordering comparisons for every
+        date-typed input (mixed date/datetime ordering raises TypeError)."""
+        for d, _, _ in _VERSION_BOUNDARIES:
+            assert type(d) is datetime.date, f"boundary date {d!r} is {type(d)}"
+
+    def test_fallback_version_not_present_in_table(self):
+        """ "4.5" is the implicit fallback; listing it as a boundary would
+        change far-past semantics."""
+        assert all(v != "4.5" for _, _, v in _VERSION_BOUNDARIES)
+
+
+class TestExtractAllOrderIndependence:
+    """Session labeling must be per-session, not per-file or order-dependent.
+    The evening session appearing FIRST in the activity JSONL must not bleed
+    its version (or its time of day) into the morning session parsed after it.
+    """
+
+    def _dirs(self, tmp_path):
+        activity_dir = tmp_path / "activity_logs"
+        activity_dir.mkdir()
+        session_log_dir = tmp_path / "session_logs"
+        session_log_dir.mkdir()
+        return activity_dir, session_log_dir
+
+    def test_pm_before_am_in_same_cutover_day_jsonl(self, tmp_path, db_conn):
+        activity_dir, session_log_dir = self._dirs(tmp_path)
+        pm = _make_complete_session(
+            session_id="reversed-pm",
+            start_time="22:00:00",
+            end_time="22:10:00",
+            tools=[{"t": "Write", "i": "/home/claude/notes/daily/2026-06-05.md", "ts": "22:01:00"}],
+        )
+        am = _make_complete_session(
+            session_id="reversed-am",
+            start_time="10:00:00",
+            end_time="10:05:00",
+            tools=[{"t": "Read", "i": "/home/claude/messages_from_james.md", "ts": "10:00:11"}],
+        )
+        # PM session's lines come FIRST in the file.
+        _write_jsonl(activity_dir, "activity-2026-06-05.jsonl", pm + am)
+        extract_all(activity_dir, session_log_dir, db_conn)
+
+        rows = dict(
+            db_conn.execute(
+                "SELECT id, version FROM sessions WHERE date = %s",
+                (datetime.date(2026, 6, 5),),
+            ).fetchall()
+        )
+        assert rows == {"reversed-pm": "4.8", "reversed-am": "4.7"}
+
+    def test_pm_before_am_time_of_day_also_correct(self, tmp_path, db_conn):
+        """The same reversed file must still assign AM/PM from timestamps,
+        not from file position."""
+        activity_dir, session_log_dir = self._dirs(tmp_path)
+        pm = _make_complete_session(
+            session_id="reversed-pm", start_time="22:00:00", end_time="22:10:00"
+        )
+        am = _make_complete_session(
+            session_id="reversed-am", start_time="10:00:00", end_time="10:05:00"
+        )
+        _write_jsonl(activity_dir, "activity-2026-06-05.jsonl", pm + am)
+        extract_all(activity_dir, session_log_dir, db_conn)
+
+        rows = dict(
+            db_conn.execute(
+                "SELECT id, time_of_day FROM sessions WHERE date = %s",
+                (datetime.date(2026, 6, 5),),
+            ).fetchall()
+        )
+        assert rows == {"reversed-pm": "PM", "reversed-am": "AM"}
