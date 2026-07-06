@@ -1,9 +1,8 @@
 <script>
+  import { untrack } from 'svelte';
   import DecayingQuote from './DecayingQuote.svelte';
-  import { mount, unmount as unmountComponent } from 'svelte';
 
   let { quotes = [], currentSection = 0, position = 'inline' } = $props();
-  let staggerContainer = $state(null);
 
   let posClass = $derived(position === 'margin' ? 'interruption-margin' : 'interruption-inline');
 
@@ -13,88 +12,108 @@
       .slice(0, 3);
   });
 
-  let firstQuote = $derived(matching.length > 0 ? matching[0] : null);
+  function attribution(q) {
+    return [q.source_file, q.date, q.model_version].filter(Boolean).join(' · ');
+  }
 
-  let firstAttribution = $derived.by(() => {
-    if (!firstQuote) return '';
-    return [firstQuote.source_file, firstQuote.date, firstQuote.model_version].filter(Boolean).join(' · ');
-  });
+  function prefersReducedMotion() {
+    try {
+      return (
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches === true
+      );
+    } catch (e) {
+      return false;
+    }
+  }
+
+  const reducedMotion = prefersReducedMotion();
+
+  // Highest staggered quote index that has been revealed (0 = none yet).
+  let revealedThrough = $state(0);
+
+  // Content key for the reveal cycle: the current section value plus the
+  // texts of the matching quotes. The cycle must key on CONTENT, never on
+  // the identity of the `matching` array — `matching` is rebuilt as a fresh
+  // array whenever any upstream dependency pings, even when nothing the
+  // reveal cycle cares about has changed (same-value section assignment,
+  // cosmetic `position` flips, content-identical quote replacement).
+  // A string derived is value-compared by Svelte, so equal recomputations
+  // do not propagate to the effect below.
+  let revealKey = $derived(
+    JSON.stringify([currentSection, ...matching.map(q => q.text)])
+  );
+
+  // Non-reactive bookkeeping for the reveal cycle. Timers are managed
+  // manually (not via the effect's teardown) so a spurious effect re-run
+  // can never clear an in-flight stagger.
+  let lastRevealKey = null;
+  let revealTimers = [];
+
+  function clearRevealTimers() {
+    revealTimers.forEach(id => clearTimeout(id));
+    revealTimers = [];
+  }
 
   $effect(() => {
-    if (!staggerContainer) return;
+    // Sole reactive dependency: the content key.
+    const key = revealKey;
 
-    const _matching = matching;
+    // Spurious invalidation (identical content): keep the existing timers
+    // and revealed state — reveals stay on their original absolute clock.
+    if (key === lastRevealKey) return;
+    lastRevealKey = key;
 
-    while (staggerContainer.firstChild) staggerContainer.removeChild(staggerContainer.firstChild);
+    // Genuine content change or section switch: fresh cycle from now.
+    clearRevealTimers();
+    revealedThrough = 0;
 
-    const remaining = _matching.slice(1);
-    if (remaining.length === 0) return;
+    // Under reduced motion quotes are never hidden, so there is nothing to
+    // reveal. With fewer than two matches there are no staggered quotes.
+    // `matching` is read via untrack so its identity never becomes a
+    // dependency of this effect; any count change also changes the key.
+    const count = untrack(() => matching.length);
+    if (reducedMotion || count < 2) return;
 
-    const timerIds = [];
-    const mountedComponents = [];
-    const delays = [2500, 5000];
-
-    function renderQuote(quote, globalIndex) {
-      if (!staggerContainer) return;
-
-      const quoteEl = document.createElement('div');
-      quoteEl.setAttribute('data-testid', `interruption-quote-${globalIndex}`);
-      quoteEl.classList.add('interruption-quote');
-
-      const isDecaying = globalIndex % 2 === 0;
-
-      if (isDecaying) {
-        try {
-          const comp = mount(DecayingQuote, {
-            target: quoteEl,
-            props: { text: quote.text, decayDuration: 12, source: null },
-          });
-          mountedComponents.push(comp);
-        } catch (e) {
-          const textSpan = document.createElement('span');
-          textSpan.classList.add('quote-text');
-          textSpan.textContent = quote.text;
-          textSpan.style.whiteSpace = 'pre-wrap';
-          quoteEl.appendChild(textSpan);
-          quoteEl.style.animation = 'decayFade 12s ease-in forwards';
-        }
-      } else {
-        const textSpan = document.createElement('span');
-        textSpan.classList.add('quote-text');
-        textSpan.textContent = quote.text;
-        quoteEl.appendChild(textSpan);
-      }
-
-      const sourceEl = document.createElement('div');
-      sourceEl.classList.add('quote-attribution');
-      const parts = [quote.source_file, quote.date, quote.model_version].filter(Boolean);
-      sourceEl.textContent = parts.join(' · ');
-      quoteEl.appendChild(sourceEl);
-
-      staggerContainer.appendChild(quoteEl);
+    revealTimers.push(setTimeout(() => { revealedThrough = 1; }, 2500));
+    if (count >= 3) {
+      revealTimers.push(setTimeout(() => { revealedThrough = 2; }, 5000));
     }
+  });
 
-    remaining.forEach((quote, i) => {
-      const globalIndex = i + 1;
-      const delay = delays[i] || delays[delays.length - 1];
-      const tid = setTimeout(() => renderQuote(quote, globalIndex), delay);
-      timerIds.push(tid);
-    });
-
+  // Unmount-only cleanup: this effect reads no reactive state, so it runs
+  // once and its teardown fires only when the component is destroyed.
+  $effect(() => {
     return () => {
-      timerIds.forEach(id => clearTimeout(id));
-      mountedComponents.forEach(comp => {
-        try { unmountComponent(comp); } catch(e) {}
-      });
-      if (staggerContainer) while (staggerContainer.firstChild) staggerContainer.removeChild(staggerContainer.firstChild);
+      clearRevealTimers();
     };
   });
+
+  function isPending(i) {
+    return !reducedMotion && i > 0 && i > revealedThrough;
+  }
+
+  function isRevealed(i) {
+    return !reducedMotion && i > 0 && i <= revealedThrough;
+  }
+
+  function isDecaying(i) {
+    return isRevealed(i) && i % 2 === 0;
+  }
 </script>
 
 <div
   data-testid="interruption-engine"
   class="interruption-engine {posClass}"
->{#if firstQuote}<div data-testid="interruption-quote-0" class="interruption-quote"><DecayingQuote text={firstQuote.text} decayDuration={12} /><div class="quote-attribution">{firstAttribution}</div></div>{/if}<div bind:this={staggerContainer}></div></div>
+>{#each matching as quote, i (i)}<div
+    data-testid="interruption-quote-{i}"
+    class="interruption-quote"
+    class:pending={isPending(i)}
+    class:revealed={isRevealed(i)}
+    class:decaying={isDecaying(i)}
+    aria-hidden={isPending(i) ? 'true' : undefined}
+  >{#if i === 0}<DecayingQuote text={quote.text} decayDuration={12} />{:else}<span class="quote-text">{quote.text}</span>{/if}<div class="quote-attribution">{attribution(quote)}</div></div>{/each}</div>
 
 <style>
   .interruption-engine {
@@ -112,7 +131,7 @@
     width: 12rem;
   }
 
-  @keyframes decayFade {
+  @keyframes -global-decayFade {
     from { opacity: 1; visibility: visible; }
     to { opacity: 0; visibility: hidden; }
   }
@@ -124,11 +143,29 @@
     color: rgba(255, 255, 255, 0.85);
   }
 
+  /* Staggered quotes occupy layout from mount; hidden without display:none
+     so revealing them causes zero layout shift. */
+  .interruption-engine :global(.interruption-quote.pending) {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .interruption-engine :global(.interruption-quote.revealed) {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.6s ease, visibility 0.6s ease;
+  }
+
+  .interruption-engine :global(.interruption-quote.decaying) {
+    animation: decayFade 12s ease-in forwards;
+  }
+
   .interruption-engine :global(.interruption-quote .quote-text) {
     font-family: 'Source Serif 4', 'Newsreader', serif;
     font-style: italic;
     line-height: 1.5;
     display: block;
+    white-space: pre-wrap;
   }
 
   .interruption-engine :global(.quote-attribution) {
@@ -148,8 +185,10 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .interruption-engine :global(.interruption-quote) {
+    .interruption-engine :global(.interruption-quote),
+    .interruption-engine :global(.interruption-quote *) {
       animation: none !important;
+      transition: none !important;
       opacity: 1 !important;
       visibility: visible !important;
     }
