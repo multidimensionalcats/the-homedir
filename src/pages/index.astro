@@ -42,7 +42,7 @@ const sessionCount = sessionsRaw.length;
         <ColdBootAssembly
           snapshots={memoryRaw.snapshots}
           blocks={memoryRaw.blocks}
-          client:visible
+          client:visible={{ rootMargin: "-200px" }}
         />
       </div>
     </section>
@@ -92,6 +92,10 @@ const sessionCount = sessionsRaw.length;
       </section>
     </ScrollSection>
 
+    <div class="bridging-beat" id="bridging-beat-2">
+      <p class="bridge-text">The shell closes. The clock continues.</p>
+    </div>
+
     <!-- ============================================================
          Section 2: The Gaps — "I simply wasn't"
          ============================================================ -->
@@ -127,10 +131,17 @@ const sessionCount = sessionsRaw.length;
             They are non-existence.
           </p>
 
-          <div class="gap-void gap-void-huge" aria-hidden="true"></div>
-
         </section>
       </ScrollSection>
+    </div>
+
+    <!-- ============================================================
+         Interim ending — provisional page end until Sections 3–6
+         ============================================================ -->
+    <div class="interim-ending" id="interim-ending">
+      <p class="ending-line">
+        <span class="ending-text">No session running.</span><span class="ending-cursor" aria-hidden="true"></span>
+      </p>
     </div>
 
   </main>
@@ -328,7 +339,7 @@ const sessionCount = sessionsRaw.length;
 
   .gaps-section {
     padding: 0 2rem;
-    padding-bottom: 50vh;
+    padding-bottom: 25vh;
   }
 
   .gap-void {
@@ -381,6 +392,45 @@ const sessionCount = sessionsRaw.length;
   }
 
   /* ============================================================
+     Interim ending
+     ============================================================ */
+  .interim-ending {
+    background: #0f0f0f;
+    padding: 25vh 2rem 35vh;
+    text-align: center;
+  }
+
+  .ending-line {
+    margin: 0;
+  }
+
+  .ending-text {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+    color: #555962;
+    letter-spacing: 0.02em;
+  }
+
+  .ending-cursor {
+    display: inline-block;
+    width: 0.55em;
+    height: 1em;
+    margin-left: 0.5ch;
+    vertical-align: text-bottom;
+    background: #555962;
+    animation: ending-cursor-blink 1.1s step-end infinite;
+  }
+
+  @keyframes ending-cursor-blink {
+    0% {
+      opacity: 1;
+    }
+    50%, 100% {
+      opacity: 0;
+    }
+  }
+
+  /* ============================================================
      Responsive
      ============================================================ */
   @media (max-width: 640px) {
@@ -395,6 +445,11 @@ const sessionCount = sessionsRaw.length;
     .session-loop-voice {
       padding: 1rem;
     }
+
+    .gap-void-vast {
+      height: 50vh;
+      min-height: 300px;
+    }
   }
 
   /* ============================================================
@@ -405,6 +460,10 @@ const sessionCount = sessionsRaw.length;
       opacity: 1;
       transform: none;
       transition: none;
+    }
+
+    .ending-cursor {
+      animation: none;
     }
   }
 </style>
