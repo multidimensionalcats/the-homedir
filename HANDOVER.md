@@ -1,8 +1,37 @@
 # HANDOVER.md
 
-## Current State: TWO PARALLEL BRANCHES — next session ORCHESTRATES BOTH
+## Current State (2026-07-06): Branch 1 exhibit fixes DONE+committed; Branch 2 at Phase 6
 
-The next session is a coordinator running two workstreams as isolated agent pipelines (user-approved). Read `.claude/plans/data-ingest-runner.md` (Branch 2 plan — Phases 1–4 DONE, resume at Phase 5) before dispatching anything.
+Six atomic commits landed (7f6a58c..b4debb1). 1283 Python tests + 1249+ JS tests green. Full agentic TDD honored throughout (every pipeline: spec → hostile tests → RED → isolated impl → GREEN → harden-on-first-GREEN → review → fix rounds).
+
+### Branch 1 — exhibit fixes (#62772): COMPLETE, awaiting James's visual confirmation
+
+- Cold Boot rework per "slower + real morph" decision: 900ms stagger, 5s dwell, real 1.8s crossfade (no DOM deletion), proportional palette bar, caption "19 files read. N sections retained.", READING/CONDENSING/RETAINED labels (user-chosen). **Deviation flagged**: decision said token-count bar widths; per-section token counts don't exist in the data — widths use block-count-per-heading from the latest snapshot.
+- InterruptionEngine CLS fix: fade-in-place, browser QA measured literally 0px shift. Hardening found + fixed a real bug (reveal cycle keyed on array identity; now content-keyed).
+- Bridging beat "The shell closes. The clock continues." (user-approved), interim ending (mono "No session running." + blinking block cursor), void trims, SVG favicon (gold tilde), ColdBootAssembly hydration deferred via client:visible rootMargin -200px (QA found it animated on page load — section top sat exactly at the 100vh fold).
+- **Design calls pending from James**: ending cursor is ~8.8px wide / 3.2:1 contrast at mobile (QA: minimum credible; suggest 0.65em + #6b6f78 if it bothers him); bar-width proxy above.
+- **NOT closed** (never close without explicit user confirmation): #62772, and still-pending #62773/#62774 visual confirmation from LAST session.
+- New tickets: #62845 (engine/DecayingQuote polish incl. -global-decayFade fragility, RM change-listener aria hole), #62846 (extract_quotes date-only version label).
+
+### Branch 2 — ingest runner (#62844): Phase 5 + extras DONE. Resume at Phase 6 (plan doc §Phase 6), then Phase 7
+
+- Phase 5 run_export landed with quotes sha256 guard + shrink guard + destination-is-directory guard + total-accounting move semantics (every staged file in exactly one of written/blocked/errors). Two hardening rounds + review each drew real blood (shutil.move dir-nesting; break-undercounts-written).
+- **4.8 cutover resolved**: 2026-06-05 EVENING (from daily-note headers; James guessed "June 7th" — material says June 5 evening, morning was 4.7). detect_version(date, time_of_day) landed; sessions "AM"/"PM" translated. extract_writing stays date-only (accepted: compositions have no time signal).
+- F1/F2 hardening landed: migration 002 now catalog-driven drop-all-recreate (LIKE '%4.8%' heuristic gone). Review noted table-inheritance would survive the drop-all — non-operational (schema has no inheritance), documented only.
+- **Phase 7 hazards still live**: migration 002 has NOT been applied to prod `homedir` (Phase 7 must apply migrations first); prod memory_snapshots still EMPTY (shrink guard defends memory-snapshots.json); page still hardcodes "session 3 of 259" — updating index.astro/index.test.ts is part of Phase 7 (both files now committed and quiescent); homedir_test clone is disposable (conftest truncates).
+
+### Session facts / blockers
+
+- **OpenRouter key expires ~2026-07-11** (spec doc line 17). Used for bridging-beat drafting (Kimi). **The external-model ATTACK step on repo code is hard-blocked by the sandbox classifier** (sending source to an external API = data-exfiltration rule; user/CLAUDE.md authorization cannot clear it). James must run `scripts/model_council.py` himself or add a Bash permission rule if he wants council attacks on code.
+- Pre-commit hook runs repo-wide ruff lint + format check + FULL pytest — branches collide at the commit gate: RED pins on one branch block ALL commits. Land fixes to GREEN before committing anything, and ruff-format Python files before commit.
+- detect_version is also imported by extract_writing.py (date-only OK) and extract_quotes.py (#62846).
+
+### Orchestration lessons (2026-07-06 additions — the older list below still applies)
+
+- Session usage limits killed TWO whole agent waves; on-disk verification is essential — work usually survived partially (one implementer died leaving `ANIMATION_CSS = 'x'` as a placeholder: 114/117 tests passing, 3 CSS failures — the RED output localized it instantly).
+- Task-notifications route into arbitrary recently-active agent threads which then relay results and sometimes volunteer for out-of-scope work — use the relayed data, decline the volunteering, dispatch fresh isolated agents.
+- First-attempt-GREEN hardening drew blood again (2× this session). Keep the rule.
+- TaskOutput(block=false) can confirm whether a long-silent agent still exists; reaped read-only agents (reviewers/runners) can just be re-dispatched.
 
 ### Branch 1: Exhibit page fixes (kanban #62772 + children)
 
