@@ -9,7 +9,7 @@
     "preview": "astro preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "extract": "python scripts/prebuild_export.py"
+    "extract": "python scripts/ingest.py"
   },
   "dependencies": {
     "@astrojs/svelte": "^8.1.1",

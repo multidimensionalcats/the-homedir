@@ -1,41 +1,54 @@
-"""Stage-1 ingest orchestration for the Home Directory data pipeline.
+"""Ingest orchestration and pipeline CLI for the Home Directory data pipeline.
 
 Coordinates the individual extractors (sessions, writing, messages,
 predictions, pets, memory snapshots) against a single database
 connection, enforcing the private-path guarantee before any source data
 is read and reporting per-table row deltas afterwards.
 
-This module is orchestration only: extraction is coordinated by
-:func:`run_ingest`, and the JSON export by :func:`run_export`, which
-wraps :mod:`scripts.prebuild_export` in a temp-then-move flow guarded
-against shrinking exports and quotes.json corruption. It does not run
-the quarantine sweep (:mod:`scripts.validate_dates`) — that is wired in
-a later phase — and it deliberately has no CLI.
+Orchestration lives in :func:`run_ingest` (Stage-1 extraction) and
+:func:`run_export` (Stage-2 JSON export, which wraps
+:mod:`scripts.prebuild_export` in a temp-then-move flow guarded against
+shrinking exports and quotes.json corruption). :func:`main` is the CLI
+entry point (``python scripts/ingest.py``, the package.json ``extract``
+script): it runs both stages with the date-quarantine sweep
+(:mod:`scripts.validate_dates`) between them, and offers a strictly
+read-only ``--dry-run`` mode that estimates deltas from the pure parse
+functions without writing a byte to the database or output directory.
 """
 
 from __future__ import annotations
 
+import argparse
+import datetime
 import hashlib
 import json
 import os
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+if not __package__:
+    # Direct execution (`python scripts/ingest.py`, the package.json
+    # "extract" script) puts scripts/ on sys.path rather than the repo
+    # root that the `scripts.` imports below require.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import psycopg
 
+from scripts.db import connect
 from scripts.extract_memory import extract_memory_from_jsonl
-from scripts.extract_messages import extract_all_messages
-from scripts.extract_pets import extract_all_pets
-from scripts.extract_predictions import extract_all_predictions
-from scripts.extract_sessions import extract_all
-from scripts.extract_writing import extract_all_writing
+from scripts.extract_messages import extract_all_messages, parse_messages
+from scripts.extract_pets import extract_all_pets, scan_daily_notes_for_pet_events
+from scripts.extract_predictions import extract_all_predictions, parse_prediction_file
+from scripts.extract_sessions import extract_all, parse_activity_log, parse_session_log
+from scripts.extract_writing import extract_all_writing, extract_composition
 from scripts.prebuild_export import export_all
-
+from scripts.validate_dates import EXPERIMENT_START, find_outliers, quarantine_outliers
 
 DEFAULT_SOURCE_ROOT = Path("/home/claude")
 
@@ -354,8 +367,11 @@ class ExportReport:
     no readable pre-existing baseline (missing file, invalid UTF-8, or
     unparseable JSON; all three mean "nothing trustworthy to compare
     against"). ``blocked`` maps filename to the same tuple for files the
-    shrink guard refused to copy. ``errors`` maps a failure site to its
-    message; operational failures land here rather than raising.
+    shrink guard refused to copy. ``overridden`` maps filename to the
+    same tuple for files a dry run predicts the shrink guard would block
+    but ``--force`` overwrites (dry-run only; a real forced run records
+    them in ``written``). ``errors`` maps a failure site to its message;
+    operational failures land here rather than raising.
     ``quotes_verified`` is True only when the content hash of
     ``quotes.json`` was confirmed unchanged (or absent) after the move —
     it stays False whenever verification never ran.
@@ -363,12 +379,17 @@ class ExportReport:
 
     written: dict[str, tuple[int | None, int]] = field(default_factory=dict)
     blocked: dict[str, tuple[int, int]] = field(default_factory=dict)
+    overridden: dict[str, tuple[int, int]] = field(default_factory=dict)
     quotes_verified: bool = False
     errors: dict[str, str] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
-        """True iff nothing was blocked, nothing errored, and quotes survived."""
+        """True iff nothing was blocked, nothing errored, and quotes survived.
+
+        Overridden files do not fail the report — an override is an
+        intentional ``--force`` outcome, mirroring a real forced run.
+        """
         return not self.blocked and not self.errors and self.quotes_verified
 
 
@@ -594,3 +615,607 @@ def run_export(
             conn.rollback()
         except Exception:  # noqa: BLE001 — hygiene must never mask the report
             pass
+
+
+# ---------------------------------------------------------------------------
+# CLI parsing
+# ---------------------------------------------------------------------------
+
+
+def _max_date_arg(value: str) -> datetime.date:
+    """argparse ``type=`` converter for ``--max-date`` (YYYY-MM-DD).
+
+    Conversion happens at argparse time so an invalid value fails with the
+    usual argparse error (SystemExit 2) naming --max-date, never deep
+    inside the pipeline.
+    """
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(
+            f"invalid --max-date value {value!r}: expected YYYY-MM-DD"
+        ) from e
+
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    """Parse CLI arguments. Pure argparse — no I/O, no side effects."""
+    parser = argparse.ArgumentParser(
+        prog="ingest.py",
+        description=(
+            "Run the Home Directory data pipeline: Stage-1 ingest, the "
+            "date-quarantine sweep, and the guarded Stage-2 JSON export."
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report what would change without writing to the database or output directory",
+    )
+    parser.add_argument(
+        "--skip-export",
+        action="store_true",
+        help="do not run the Stage-2 JSON export",
+    )
+    parser.add_argument(
+        "--skip-ingest",
+        action="store_true",
+        help="do not run the Stage-1 ingest",
+    )
+    transcripts = parser.add_mutually_exclusive_group()
+    transcripts.add_argument(
+        "--with-transcripts",
+        action="store_true",
+        help="stage the sudo-only JSONL transcripts for memory snapshot extraction",
+    )
+    transcripts.add_argument(
+        "--transcripts-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="read JSONL transcripts from this directory (used as-is, never staged or deleted)",
+    )
+    parser.add_argument(
+        "--source-root",
+        type=Path,
+        default=DEFAULT_SOURCE_ROOT,
+        metavar="PATH",
+        help="experiment home directory the source subdirectories derive from",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("src/data"),
+        metavar="PATH",
+        help="directory the Stage-2 JSON files are exported into",
+    )
+    parser.add_argument(
+        "--max-date",
+        type=_max_date_arg,
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="inclusive upper bound for the date-quarantine sweep (default: today)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="override the export shrink guard for intentional resets",
+    )
+    return parser.parse_args(argv)
+
+
+# ---------------------------------------------------------------------------
+# Report formatting
+# ---------------------------------------------------------------------------
+
+
+def _as_dict(value: object) -> dict:
+    """Best-effort dict view of a report field; degenerate values become {}."""
+    if isinstance(value, dict):
+        return value
+    if value is None:
+        return {}
+    try:
+        return dict(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return {}
+
+
+def _format_count(value: object) -> str:
+    """Render a record count; None (no readable baseline) renders as "none"."""
+    return "none" if value is None else str(value)
+
+
+def _format_delta_line(name: object, delta: object) -> str:
+    """Per-table delta line, e.g. ``sessions +3``."""
+    try:
+        return f"{name} {int(delta):+d}"  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return f"{name} {delta}"
+
+
+def _format_written_line(name: object, counts: object) -> str:
+    """Written-file line, e.g. ``sessions.json 3 -> 5 +2``."""
+    try:
+        old, new = counts  # type: ignore[misc]
+    except (TypeError, ValueError):
+        return f"{name} {counts}"
+    delta = ""
+    try:
+        delta = f" {int(new) - int(old):+d}"
+    except (TypeError, ValueError):
+        pass
+    return f"{name} {_format_count(old)} -> {_format_count(new)}{delta}"
+
+
+def _format_ingest_section(ingest: IngestReport | None, dry_run: bool) -> list[str]:
+    lines = ["== Stage 1: ingest =="]
+    if ingest is None:
+        lines.append("skipped")
+        return lines
+    if dry_run:
+        lines.append("dry run: estimated deltas only, nothing was ingested")
+    for name, delta in _as_dict(getattr(ingest, "deltas", None)).items():
+        lines.append(_format_delta_line(name, delta))
+    for name, message in _as_dict(getattr(ingest, "errors", None)).items():
+        lines.append(f"ERROR {name}: {message}")
+    for name, reason in _as_dict(getattr(ingest, "skipped", None)).items():
+        lines.append(f"SKIPPED {name}: {reason}")
+    return lines
+
+
+def _format_quarantine_section(
+    quarantine: dict | list | BaseException | None,
+) -> list[str]:
+    lines = ["== Quarantine =="]
+    if quarantine is None:
+        lines.append("skipped")
+        return lines
+    if isinstance(quarantine, BaseException):
+        lines.append(f"ERROR: quarantine sweep failed: {quarantine}")
+        return lines
+    if isinstance(quarantine, dict):
+        # Real-run result of quarantine_outliers: per-table moved counts.
+        total = 0
+        for count in quarantine.values():
+            try:
+                total += int(count)  # type: ignore[call-overload]
+            except (TypeError, ValueError):
+                continue
+        lines.append(f"quarantined {total} rows")
+        for table, count in quarantine.items():
+            lines.append(f"{table}: {count}")
+        return lines
+    # Dry-run result of find_outliers: a list of outlier dicts.
+    try:
+        outliers = list(quarantine)
+    except TypeError:
+        outliers = [quarantine]
+    lines.append(f"would quarantine {len(outliers)} rows")
+    for outlier in outliers:
+        if isinstance(outlier, dict):
+            table = outlier.get("source_table", "?")
+            pk = outlier.get("pk", "?")
+            reason = outlier.get("reason", "")
+            lines.append(f"{table} pk={pk}: {reason}")
+        else:
+            lines.append(str(outlier))
+    return lines
+
+
+def _format_export_section(export: ExportReport | None, dry_run: bool) -> list[str]:
+    lines = ["== Stage 2: export =="]
+    if export is None:
+        lines.append("skipped")
+        return lines
+    if dry_run:
+        lines.append("dry run: no files were written; deltas show what a real export would change")
+    for name, counts in _as_dict(getattr(export, "written", None)).items():
+        lines.append(_format_written_line(name, counts))
+    for name, counts in _as_dict(getattr(export, "blocked", None)).items():
+        lines.append(
+            f"BLOCKED {_format_written_line(name, counts)} "
+            f"(shrink guard; re-run with --force to override)"
+        )
+    for name, counts in _as_dict(getattr(export, "overridden", None)).items():
+        lines.append(
+            f"{_format_written_line(name, counts)} "
+            f"(shrink guard overridden by --force; existing file would be overwritten)"
+        )
+    if getattr(export, "quotes_verified", False):
+        lines.append("quotes.json untouched (verified)")
+    else:
+        lines.append("quotes.json NOT verified")
+    for site, message in _as_dict(getattr(export, "errors", None)).items():
+        lines.append(f"ERROR {site}: {message}")
+    return lines
+
+
+def format_report(
+    ingest: IngestReport | None,
+    quarantine: dict | list | BaseException | None,
+    export: ExportReport | None,
+    *,
+    dry_run: bool,
+) -> str:
+    """Render the three-stage pipeline report.
+
+    All three section markers are always present; a stage that did not
+    run (its report is None) renders as "skipped". ``quarantine`` is
+    polymorphic: a dict of per-table counts (real run), a list of outlier
+    dicts (dry run, "would quarantine" wording), an exception captured
+    from a failed sweep, or None (skipped).
+    """
+    lines: list[str] = []
+    if dry_run:
+        lines.append("DRY RUN — no database writes, no files written")
+        lines.append("")
+    lines.extend(_format_ingest_section(ingest, dry_run))
+    lines.append("")
+    lines.extend(_format_quarantine_section(quarantine))
+    lines.append("")
+    lines.extend(_format_export_section(export, dry_run))
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Dry run
+# ---------------------------------------------------------------------------
+
+
+def _rollback_quietly(conn: psycopg.Connection) -> None:
+    """Roll back the connection; hygiene must never mask a report."""
+    try:
+        conn.rollback()
+    except Exception:  # noqa: BLE001 — hygiene only
+        pass
+
+
+def _source_skip_reason(path: Path) -> str | None:
+    """Reason a dry-run source directory cannot be read, or None."""
+    if not path.is_dir():
+        return f"{path} is missing or not a directory"
+    if not os.access(path, os.R_OK | os.X_OK):
+        return f"{path} is not readable"
+    return None
+
+
+def _dry_ingest_report(conn: psycopg.Connection, cfg: IngestConfig) -> IngestReport:
+    """Estimate Stage-1 deltas without writing anything.
+
+    Uses only the pure parse functions against the configured source
+    directories and read-only SELECTs against the database: exact deltas
+    for sessions (parsed ids minus stored ids) and compositions (slugs),
+    count-difference estimates for messages, predictions, and pet
+    events. An unreadable source directory becomes a SKIPPED line, never
+    a crash. The implicit transaction opened by the SELECTs is rolled
+    back before returning.
+    """
+    report = IngestReport()
+    try:
+        # Sessions — exact: ids parsed from both log formats minus stored ids.
+        parsed_ids: set[str] = set()
+        activity_dir = Path(cfg.activity_logs_dir)
+        session_dir = Path(cfg.session_logs_dir)
+        activity_skip = _source_skip_reason(activity_dir)
+        session_skip = _source_skip_reason(session_dir)
+        if activity_skip:
+            report.skipped["activity_logs"] = activity_skip
+        else:
+            for path in sorted(activity_dir.glob("activity-*.jsonl")):
+                for session in parse_activity_log(path):
+                    parsed_ids.add(session["session_id"])
+        if session_skip:
+            report.skipped["session_logs"] = session_skip
+        else:
+            for path in sorted(session_dir.glob("*.log")):
+                session = parse_session_log(path)
+                if session is not None:
+                    parsed_ids.add(session["session_id"])
+        if activity_skip is None or session_skip is None:
+            rows = conn.execute("SELECT id FROM sessions").fetchall()
+            report.deltas["sessions"] = len(parsed_ids - {row[0] for row in rows})
+
+        # Compositions — exact: parsed slugs minus stored slugs.
+        writing_dir = Path(cfg.writing_dir)
+        writing_skip = _source_skip_reason(writing_dir)
+        if writing_skip:
+            report.skipped["writing"] = writing_skip
+        else:
+            slugs: set[str] = set()
+            for path in sorted(writing_dir.iterdir()):
+                if not (path.is_file() and path.suffix == ".md"):
+                    continue
+                try:
+                    slugs.add(extract_composition(path)["slug"])
+                except (OSError, PermissionError):
+                    continue
+            rows = conn.execute("SELECT slug FROM compositions").fetchall()
+            report.deltas["compositions"] = len(slugs - {row[0] for row in rows})
+
+        # Messages — estimate: extract_all_messages deletes and re-inserts
+        # per direction, so parsed-minus-stored may legitimately be negative.
+        messages_dir = Path(cfg.messages_dir)
+        messages_skip = _source_skip_reason(messages_dir)
+        if messages_skip:
+            report.skipped["messages"] = messages_skip
+        else:
+            parsed_messages = 0
+            for filename, direction in (
+                ("messages_from_james.md", "from_james"),
+                ("messages_to_james.md", "to_james"),
+            ):
+                path = messages_dir / filename
+                if not path.is_file():
+                    continue
+                try:
+                    parsed_messages += len(parse_messages(path, direction))
+                except (OSError, PermissionError, UnicodeDecodeError):
+                    continue
+            row = conn.execute("SELECT count(*) FROM messages").fetchone()
+            report.deltas["messages"] = parsed_messages - row[0]
+
+        # Predictions — estimate; idempotent inserts never shrink the table.
+        predictions_dir = Path(cfg.predictions_dir)
+        predictions_skip = _source_skip_reason(predictions_dir)
+        if predictions_skip:
+            report.skipped["predictions"] = predictions_skip
+        else:
+            parsed_predictions = 0
+            for path in sorted(predictions_dir.glob("*.md")):
+                try:
+                    parsed_predictions += len(parse_prediction_file(path))
+                except (OSError, PermissionError):
+                    continue
+            row = conn.execute("SELECT count(*) FROM predictions").fetchone()
+            report.deltas["predictions"] = max(0, parsed_predictions - row[0])
+
+        # Pet events — estimate; idempotent inserts never shrink the table.
+        notes_dir = Path(cfg.daily_notes_dir)
+        notes_skip = _source_skip_reason(notes_dir)
+        if notes_skip:
+            report.skipped["daily_notes"] = notes_skip
+        else:
+            events = scan_daily_notes_for_pet_events(notes_dir)
+            row = conn.execute("SELECT count(*) FROM pet_events").fetchone()
+            report.deltas["pet_events"] = max(0, len(events) - row[0])
+
+        # Memory snapshots need staged transcripts (a sudo copy — a write),
+        # so a dry run never estimates them.
+        if cfg.with_transcripts or cfg.transcripts_dir is not None:
+            report.skipped["memory"] = "memory snapshots are not estimated in a dry run"
+
+        return report
+    finally:
+        _rollback_quietly(conn)
+
+
+def _dry_export_report(
+    conn: psycopg.Connection,
+    cfg: IngestConfig,
+    force: bool = False,
+) -> ExportReport:
+    """Diff a real export (into a temp directory) against the output directory.
+
+    Runs the real :func:`export_all` into a staging directory guaranteed
+    outside ``cfg.output_dir``, compares per-file record counts against
+    the existing files, and removes the staging directory on every path.
+    ``cfg.output_dir`` itself is never created or touched — ``force``
+    changes only how a would-blocked file is classified, never whether
+    anything is written.
+
+    Both of :func:`run_export`'s guards are *predicted* with the same
+    semantics rather than papered over: an export that produced a
+    quotes.json (in staging or in the returned path list) is reported as
+    the quotes-guard error a real run would abort with, and
+    ``quotes_verified`` is not claimed; a file whose new export holds
+    zero records over a populated baseline lands in ``blocked`` (or in
+    ``overridden`` when ``force`` is set, exactly as a real forced run
+    would move it).
+    """
+    report = ExportReport()
+    out_dir = Path(cfg.output_dir)
+    try:
+        staging = _make_export_staging(out_dir)
+    except OSError as e:
+        report.errors["staging"] = str(e)
+        return report
+    try:
+        try:
+            exported = export_all(conn, staging)
+        except Exception as e:  # noqa: BLE001 — failures belong in the report
+            report.errors["export_all"] = str(e)
+            return report
+
+        # Quotes-guard prediction: mirror run_export's part-1 check so a
+        # dry run predicts the abort instead of masking it. Both the
+        # returned path list and the actual staging contents are checked.
+        exported_names: set[str] = set()
+        try:
+            for entry in exported or ():
+                exported_names.add(Path(entry).name)
+        except (TypeError, ValueError):
+            # Unusable return value; the staging scan below still guards.
+            pass
+        if _QUOTES_FILENAME in exported_names or (staging / _QUOTES_FILENAME).exists():
+            report.errors["quotes"] = (
+                f"export produced a {_QUOTES_FILENAME}; quotes are curated by "
+                f"hand and never exported — a real run would abort the move "
+                f"and leave {out_dir} alone"
+            )
+            return report
+
+        # Shrink-guard prediction: same would-block semantics as
+        # run_export (empty export over a populated baseline).
+        for src in sorted(p for p in staging.iterdir() if p.is_file()):
+            new_count = _record_count(src) or 0
+            old_count = _record_count(out_dir / src.name)
+            would_block = new_count == 0 and old_count is not None and old_count > 0
+            if would_block and not force:
+                report.blocked[src.name] = (old_count, new_count)
+            elif would_block:
+                report.overridden[src.name] = (old_count, new_count)
+            else:
+                report.written[src.name] = (old_count, new_count)
+        # Nothing outside the staging directory was touched, so the
+        # hand-curated quotes.json survives by construction.
+        report.quotes_verified = True
+        return report
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+        _rollback_quietly(conn)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def _quarantine_end(args: argparse.Namespace) -> datetime.date:
+    """Inclusive upper bound for the quarantine sweep (validate_dates semantics)."""
+    return args.max_date if args.max_date is not None else datetime.date.today()
+
+
+def _run_real(
+    conn: psycopg.Connection,
+    cfg: IngestConfig,
+    args: argparse.Namespace,
+) -> int:
+    """Real run: ingest, quarantine sweep, export; print the report.
+
+    The quarantine sweep is part of Stage 1: ``--skip-ingest`` skips it
+    along with the ingest, and its section renders as skipped.
+    """
+    ingest_report: IngestReport | None = None
+    quarantine_failed = False
+    quarantine_result: dict | BaseException | None = None
+    if not args.skip_ingest:
+        try:
+            ingest_report = run_ingest(conn, cfg)
+        except Exception as e:  # noqa: BLE001 — failures belong in the report
+            ingest_report = IngestReport(errors={"ingest": str(e)})
+            _rollback_quietly(conn)
+
+        try:
+            quarantine_result = quarantine_outliers(conn, EXPERIMENT_START, _quarantine_end(args))
+        except Exception as e:  # noqa: BLE001 — the sweep must never abort the run
+            quarantine_failed = True
+            quarantine_result = e
+            _rollback_quietly(conn)
+
+    export_report: ExportReport | None = None
+    if not args.skip_export:
+        try:
+            export_report = run_export(conn, cfg, force=args.force)
+        except Exception as e:  # noqa: BLE001 — failures belong in the report
+            export_report = ExportReport(errors={"export": str(e)})
+            _rollback_quietly(conn)
+
+    print(format_report(ingest_report, quarantine_result, export_report, dry_run=False))
+
+    failed = quarantine_failed
+    if ingest_report is not None and ingest_report.errors:
+        failed = True
+    if export_report is not None and not export_report.ok:
+        failed = True
+    return 1 if failed else 0
+
+
+def _run_dry(
+    conn: psycopg.Connection,
+    cfg: IngestConfig,
+    args: argparse.Namespace,
+) -> int:
+    """Dry run: read-only estimates for all three stages; print the report.
+
+    Mirrors the real run's gating and exit semantics: the quarantine
+    estimate is part of Stage 1, so ``--skip-ingest`` skips it along with
+    the ingest estimate (``find_outliers`` never runs, the section
+    renders as skipped); the export diff exits non-zero exactly when a
+    real export would not be ok (shrink-guard block, predicted quotes
+    abort, or an error) — ``--force`` lifts a would-block the same way it
+    lifts a real block, still without writing a byte.
+    """
+    failed = False
+
+    ingest_report: IngestReport | None = None
+    quarantine_result: list[dict] | BaseException | None = None
+    if not args.skip_ingest:
+        try:
+            ingest_report = _dry_ingest_report(conn, cfg)
+        except Exception as e:  # noqa: BLE001 — a dry run must still report
+            failed = True
+            ingest_report = IngestReport(errors={"dry-run ingest": str(e)})
+            _rollback_quietly(conn)
+
+        try:
+            quarantine_result = find_outliers(conn, EXPERIMENT_START, _quarantine_end(args))
+        except Exception as e:  # noqa: BLE001 — a dry run must still report
+            failed = True
+            quarantine_result = e
+        _rollback_quietly(conn)
+
+    export_report: ExportReport | None = None
+    if not args.skip_export:
+        try:
+            export_report = _dry_export_report(conn, cfg, force=args.force)
+        except Exception as e:  # noqa: BLE001 — a dry run must still report
+            export_report = ExportReport(errors={"dry-run export": str(e)})
+            _rollback_quietly(conn)
+        if not export_report.ok:
+            failed = True
+
+    print(format_report(ingest_report, quarantine_result, export_report, dry_run=True))
+    return 1 if failed else 0
+
+
+def main(argv: list[str] | None = None, conn: psycopg.Connection | None = None) -> int:
+    """Run the pipeline CLI and return a process exit code.
+
+    ``argv=None`` reads sys.argv. An injected ``conn`` is used as-is and
+    never closed; when ``conn`` is None exactly one connection is opened
+    via :func:`scripts.db.connect` and closed before returning.
+    Operational failures never raise — they land in the printed report
+    and the exit code (0 clean; 1 when ingest errored, the quarantine
+    sweep raised, or the export was not ok).
+    """
+    args = _parse_args(sys.argv[1:] if argv is None else argv)
+
+    cfg = IngestConfig(
+        source_root=args.source_root,
+        output_dir=args.output_dir,
+        transcripts_dir=args.transcripts_dir,
+        with_transcripts=args.with_transcripts,
+    )
+    try:
+        # Fail before touching anything — including in dry-run and
+        # skip-ingest modes, which would otherwise bypass run_ingest's
+        # own guard.
+        assert_no_private_paths(cfg)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+    owns_connection = conn is None
+    if owns_connection:
+        try:
+            conn = connect()
+        except Exception as e:  # noqa: BLE001 — operational failures never raise
+            print(f"ERROR: could not connect to the database: {e}", file=sys.stderr)
+            return 1
+    try:
+        if args.dry_run:
+            return _run_dry(conn, cfg, args)
+        return _run_real(conn, cfg, args)
+    except Exception as e:  # noqa: BLE001 — operational failures never raise
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    finally:
+        if owns_connection:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001 — hygiene only
+                pass
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
