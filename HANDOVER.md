@@ -1,6 +1,41 @@
 # HANDOVER.md
 
-## Current State (2026-07-06): Branch 1 exhibit fixes DONE+committed; Branch 2 at Phase 6
+## TO THE INCOMING COORDINATOR (Opus) — read this section in full before dispatching anything
+
+You are taking over from a Fable 5 coordinator session (2026-07-05..07). James is losing Fable access; this note is written to direct you precisely. Everything below is verified, not assumed. Repo state: commits `7f6a58c..9d6e00b`, working tree clean, 1330 Python tests + 1250+ JS tests green.
+
+### Your operating rules (these have drawn blood when violated — do not relitigate them)
+
+1. You ORCHESTRATE. You never write code, tests, or fixes yourself — not one-line lint wraps, not review findings. Dispatch isolated agents. (Mechanical tooling like `ruff format`/`ruff check --fix` is acceptable coordinator work; string edits are not.)
+2. Full pipeline for EVERYTHING, pages and one-attribute fixes included: spec → Agent A writes hostile tests → Agent B RED (never told expectations, never `tail`/`head` output) → isolated Agent C implements from spec + RED output only (must never read test files) → Agent D GREEN → harden on FIRST-attempt GREEN → Agent E review → review findings get pinned in tests BEFORE the fix round. This session the discipline caught: a `shutil.move`-into-directory report-laundering bug, an array-identity timer-reset bug, a move-loop undercounting bug, and three dry-run truthfulness bugs. It works.
+3. When tests and your prose spec disagree, THE TESTS WIN (two reconciliations this session prove the precedent).
+4. ONE WRITER PER FILE at a time; reviews only on quiescent files. Serialize pytest runs (shared `homedir_test` DB, conftest truncates).
+5. Session limits WILL kill agents mid-flight, sometimes whole waves. Before re-dispatching, check on-disk state (`git status`, targeted greps) — work usually partially survived. One implementer died leaving `ANIMATION_CSS = 'x'`; the RED output localized it instantly. Read-only agents (runners/reviewers) leave nothing; just re-dispatch them.
+6. Task-notifications route into arbitrary recently-active agent threads, which relay results and sometimes volunteer for out-of-scope work. Use the relayed data; decline the volunteering; dispatch fresh isolated agents.
+7. The pre-commit hook runs repo-wide ruff lint + format check + the FULL pytest suite. Consequence: RED pins on ANY branch block ALL commits — get to GREEN before committing anything, and ruff-format Python files before staging.
+8. The sandbox classifier HARD-blocks sending repo source to external APIs (attempted for the council-attack step; "user authorization cannot clear it"). Don't work around security blocks. Ask James to run `scripts/model_council.py` himself or add a permission rule. Non-code prompts (creative microcopy) still pass. The OpenRouter key (spec doc line 17) expires ~2026-07-11.
+9. NEVER close kanban items without James's explicit confirmation. Currently awaiting his visual confirmation: #62772 (this session's exhibit work), #62773/#62774 (previous session). Creative content (any visitor-facing text) needs his approval before commit — this session's bridge line went through an options-question; the pattern works.
+10. Exhibit language rules: "it read/it wrote", never "it felt"; clinical archival tone; dark theme #0f0f0f/#1A1D23 never pure black.
+
+### PHASE 7 RUNBOOK (the immediate next work — kanban #62844, plan doc `.claude/plans/data-ingest-runner.md`)
+
+Execute in this exact order; the hazards are real:
+
+1. **Apply migrations to prod.** The prod `homedir` DB has NEVER had migration 002 (no quarantine table; version CHECK still rejects '4.8'). Both migrations are idempotent; 002 is catalog-driven drop-all-recreate. Apply 001 then 002 via psql. Without this, ingest of post-June-5 sessions FAILS on the version constraint.
+2. **Dry run:** `python scripts/ingest.py --dry-run` (defaults: source-root /home/claude, output src/data). EXPECTED output: roughly +190 sessions (prod max date is 2026-05-18), some compositions/messages/predictions, 5 would-quarantine messages (ids 17–20 dated 2024, id 23 dated 3036), memory SKIPPED (no transcripts), and **memory-snapshots.json would-BLOCK with exit 1 — THIS IS CORRECT**: prod memory_snapshots is EMPTY while src/data/memory-snapshots.json holds real exhibit data. The shrink guard exists precisely for this. Do NOT reach for --force.
+3. **Real run:** `python scripts/ingest.py`. Expect exit 1 (the blocked memory-snapshots.json) — everything else exports. Verify: sessions max date == today, 5 messages quarantined, quotes.json byte-identical (report says so), memory-snapshots.json untouched.
+4. **Optional memory backfill:** only with James present for sudo: `python scripts/ingest.py --with-transcripts` (interactive sudo prompt; stages JSONL to a 0700 tempdir; transcripts-only glob, never private/). Only after memory_snapshots is genuinely populated does the memory-snapshots.json block legitimately clear. Note: Feb–Apr sessions have NO JSONL transcripts — the MEMORY.md history ceiling is Apr 18–May 18 + June onward.
+5. **Page count updates:** after real data lands, `npm run build` + page tests will break on the hardcoded "session 3 of 259" (index.astro / index.test.ts — both committed and quiescent now). New deduped count comes from the new sessions.json (dedup = `prebuild_export._deduplicate_sessions`; 322 of 669 pre-existing rows are turns-NULL shadows BY DESIGN). Full pipeline for this update, not a hand edit. Also `versionColor` in chart-utils.ts needs a 4.8 entry when 4.8 sessions render, and visualizations must handle 4 versions.
+6. `homedir_test` currently holds nothing precious — conftest truncates it every pytest run.
+
+### Open items beyond Phase 7
+
+- **James's design calls** (present with browser evidence, don't guess): ending-cursor size/contrast on mobile (~8.8px, 3.2:1 — QA says minimum credible; suggested 0.65em + #6b6f78); Cold Boot bar widths use block-count-per-heading (per-section token counts don't exist in the data — the decision said "token-count widths"; flag the deviation once).
+- **Backlog tickets:** #62845 (InterruptionEngine/DecayingQuote polish: -global-decayFade fragility, reduced-motion change-listener aria hole, i%2 parity, etc.), #62846 (extract_quotes date-only version label on the 2026-06-05 cutover day).
+- **Narrative build-out:** Phases 5.4–5.6 (Sections 3–6: Pixel/Echo, version change, Archive, ReconstructIdentity ending). The interim "No session running." ending was pulled forward from the Section 6 plan and will be REPLACED when Section 6 is built. Blue-sky ideas doc (`.claude/plans/blue-sky-ideas.md`) still awaits James's reactions.
+- **4.8 cutover is settled**: 2026-06-05 EVENING, from the daily-note headers (James recalled "June 7th" — the material says June 5 evening; morning was 4.7). detect_version(date, time_of_day) handles it; sessions carry "AM"/"PM" internally, translated by `_session_time_of_day`.
+
+## Previous state (2026-07-06, superseded detail): Branch 1 exhibit fixes DONE+committed; Branch 2 at Phase 6
 
 Six atomic commits landed (7f6a58c..b4debb1). 1283 Python tests + 1249+ JS tests green. Full agentic TDD honored throughout (every pipeline: spec → hostile tests → RED → isolated impl → GREEN → harden-on-first-GREEN → review → fix rounds).
 
