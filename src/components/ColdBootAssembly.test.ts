@@ -142,25 +142,45 @@ function cssRuleBodiesFor(className: string): string[] {
 }
 
 /**
- * True if some class carried by the element has an injected CSS rule that
- * transitions/animates opacity — excluding the morph-out rules, so the
- * fade-IN cannot be satisfied by .morphing/.morphed styling.
+ * Selectors of injected CSS rules whose body transitions/animates opacity —
+ * excluding the morph-out rules, so a fade-IN cannot be satisfied by
+ * .morphing/.morphed styling.
+ *
+ * Tokenizes the injected CSS in a single bounded pass so callers can check
+ * many elements without re-scanning every <style> tag in the document per
+ * element (repeated full scans are what made this expensive under happy-dom
+ * when the vitest worker is CPU-starved by full-suite parallel load).
  */
-function elementHasOpacityFadeRule(el: Element): boolean {
+function collectOpacityFadeSelectors(): string[] {
   const css = getInjectedCss();
   const re = /([^{}]+)\{([^{}]*)\}/g;
   let m: RegExpExecArray | null;
-  const classes = Array.from(el.classList);
+  const selectors: string[] = [];
   while ((m = re.exec(css)) !== null) {
     const sel = m[1];
     const body = m[2];
     if (sel.includes('.morphing') || sel.includes('.morphed')) continue;
-    const matches = classes.some((c) => sel.includes('.' + c));
-    if (matches && /opacity/.test(body) && /(transition|animation)/.test(body)) {
-      return true;
+    if (/opacity/.test(body) && /(transition|animation)/.test(body)) {
+      selectors.push(sel);
     }
   }
-  return false;
+  return selectors;
+}
+
+/**
+ * True if some class carried by the element has an injected CSS rule that
+ * transitions/animates opacity — excluding the morph-out rules, so the
+ * fade-IN cannot be satisfied by .morphing/.morphed styling.
+ *
+ * Pass a precomputed `fadeSelectors` (from collectOpacityFadeSelectors) when
+ * checking multiple elements so the CSS is only tokenized once.
+ */
+function elementHasOpacityFadeRule(
+  el: Element,
+  fadeSelectors: string[] = collectOpacityFadeSelectors(),
+): boolean {
+  const classes = Array.from(el.classList);
+  return fadeSelectors.some((sel) => classes.some((c) => sel.includes('.' + c)));
 }
 
 function hexToRgb(hex: string): string {
@@ -379,16 +399,22 @@ describe('ColdBootAssembly -- Phase 1: 900ms stagger', () => {
     expect(queryAllByTestId('file-block').length).toBe(5);
   });
 
-  it('each file block carries a class with an injected opacity fade-in rule', () => {
+  // Generous explicit timeout: this test is the file's most style-scan-heavy
+  // and has flaked at the 5s default purely from worker CPU starvation under
+  // full-suite parallel load (passes in isolation). The assertion itself is
+  // unchanged and the CSS is now tokenized once instead of once per block.
+  it('each file block carries a class with an injected opacity fade-in rule', { timeout: 15000 }, () => {
     const { queryAllByTestId } = render(ColdBootAssembly, {
       props: { snapshots: STANDARD_SNAPSHOTS, blocks: STANDARD_BLOCKS },
     });
     vi.advanceTimersByTime(LAST_BLOCK_MS);
     const blocks = queryAllByTestId('file-block');
     expect(blocks.length).toBe(5);
+    // Single bounded CSS tokenization pass, shared across all 5 blocks.
+    const fadeSelectors = collectOpacityFadeSelectors();
     for (const block of blocks) {
       expect(block.classList.length).toBeGreaterThan(0);
-      expect(elementHasOpacityFadeRule(block)).toBe(true);
+      expect(elementHasOpacityFadeRule(block, fadeSelectors)).toBe(true);
     }
   });
 
