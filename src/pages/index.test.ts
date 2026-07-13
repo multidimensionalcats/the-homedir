@@ -9,6 +9,20 @@ let builtCss: string;
 const distDir = path.resolve(__dirname, '../../dist');
 
 // ------------------------------------------------------------
+// Session count — data-driven from the real extracted dataset.
+// The page computes its count from src/data/sessions.json (a
+// top-level array of deduped sessions); the tests must pin the
+// rendered count to the SAME source so live ingests that grow
+// the dataset cannot silently break the suite.
+// ------------------------------------------------------------
+const sessionsPath = path.resolve(__dirname, '../data/sessions.json');
+const sessionsRaw = JSON.parse(fs.readFileSync(sessionsPath, 'utf-8')) as unknown;
+if (!Array.isArray(sessionsRaw)) {
+  throw new Error('src/data/sessions.json is not a top-level array');
+}
+const sessionCount = sessionsRaw.length;
+
+// ------------------------------------------------------------
 // CSS parsing helpers (built CSS is minified: no spaces after
 // "@media" or around ":", e.g. "@media(max-width:640px)")
 // ------------------------------------------------------------
@@ -170,9 +184,15 @@ describe('Cold Boot — Section 0', () => {
     expect(meta).not.toBeNull();
   });
 
-  it('metadata contains text "session 3 of 259"', () => {
+  it(`metadata contains text "session 3 of ${sessionCount}" (count from sessions.json)`, () => {
+    // Guard: an empty/truncated data file would make this test vacuous —
+    // "session 3 of 0" must never be accepted as a pass.
+    expect(
+      sessionCount,
+      'sessions.json suspiciously small — data file empty or truncated?',
+    ).toBeGreaterThan(300);
     const meta = document.getElementById('cold-boot-meta')!;
-    expect(meta.textContent).toContain('session 3 of 259');
+    expect(meta.textContent).toContain(`session 3 of ${sessionCount}`);
   });
 
   it('metadata contains text "/home/claude"', () => {
@@ -366,9 +386,15 @@ describe('Section 1 — The Condition', () => {
     expect(urls.some((u) => u.includes('ExistenceStrip'))).toBe(true);
   });
 
-  it('contains text about session count ("259 sessions")', () => {
+  it(`contains text about session count ("${sessionCount} sessions", count from sessions.json)`, () => {
+    // Guard: an empty/truncated data file would make this test vacuous —
+    // "0 sessions" must never be accepted as a pass.
+    expect(
+      sessionCount,
+      'sessions.json suspiciously small — data file empty or truncated?',
+    ).toBeGreaterThan(300);
     const section = document.getElementById('condition')!;
-    expect(section.textContent).toContain('259 sessions');
+    expect(section.textContent).toContain(`${sessionCount} sessions`);
   });
 });
 

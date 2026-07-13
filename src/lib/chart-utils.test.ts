@@ -122,25 +122,62 @@ describe('versionColor', () => {
     expect(versionColor('4.7')).toBe('#5BD47B');
   });
 
-  it('returns a valid hex fallback for unknown version "4.8"', () => {
-    const result = versionColor('4.8');
-    expect(result).toMatch(HEX_RE);
+  // #A55BD4 = violet: permutation of 4.6's channel set {0x5B, 0xA5, 0xD4}, same sat/lightness
+  // family (~hsl(277,58%,59%)), continues the max-channel rotation B->R->G->B. PENDING JAMES'S VISUAL REVIEW.
+  it('returns #A55BD4 for "4.8" (Opus 4.8 sessions must NOT render as fallback grey)', () => {
+    expect(versionColor('4.8')).toBe('#A55BD4');
   });
 
-  it('returns a valid hex fallback for unknown version "3.0"', () => {
-    const result = versionColor('3.0');
-    expect(result).toMatch(HEX_RE);
+  it('4.8 color is distinct from all prior version colors (case-insensitive)', () => {
+    const c48 = versionColor('4.8').toLowerCase();
+    for (const v of ['4.5', '4.6', '4.7']) {
+      expect(c48).not.toBe(versionColor(v).toLowerCase());
+    }
   });
 
-  it('returns a valid hex fallback for empty string', () => {
-    const result = versionColor('');
-    expect(result).toMatch(HEX_RE);
+  it('4.8 color is distinct from the unknown-version fallback', () => {
+    expect(versionColor('4.8').toLowerCase()).not.toBe(
+      versionColor('definitely-not-a-version').toLowerCase(),
+    );
+  });
+
+  // ---- unknown-version fallback: pinned to the exact current value ----
+  it('returns exactly #3A3F4B for future unknown version "4.9"', () => {
+    expect(versionColor('4.9')).toBe('#3A3F4B');
+  });
+
+  it('returns exactly #3A3F4B for unknown version "3.0"', () => {
+    expect(versionColor('3.0')).toBe('#3A3F4B');
+  });
+
+  it('returns exactly #3A3F4B for empty string', () => {
+    expect(versionColor('')).toBe('#3A3F4B');
+  });
+
+  it('returns exactly #3A3F4B for garbage input', () => {
+    expect(versionColor('<script>alert(1)</script>')).toBe('#3A3F4B');
+    expect(versionColor('🤖')).toBe('#3A3F4B');
+    expect(versionColor('NaN')).toBe('#3A3F4B');
+  });
+
+  // No fuzzy matching: near-misses of "4.8" must fall through to the fallback
+  it('does not fuzzy-match near-misses of "4.8"', () => {
+    expect(versionColor('4.80')).toBe('#3A3F4B');
+    expect(versionColor('4.8.0')).toBe('#3A3F4B');
+    expect(versionColor(' 4.8')).toBe('#3A3F4B');
+    expect(versionColor('4.8 ')).toBe('#3A3F4B');
+    expect(versionColor('v4.8')).toBe('#3A3F4B');
   });
 
   it('all known version colors are valid hex format', () => {
-    for (const v of ['4.5', '4.6', '4.7']) {
+    for (const v of ['4.5', '4.6', '4.7', '4.8']) {
       expect(isValidHex(versionColor(v))).toBe(true);
     }
+  });
+
+  it('all four known version colors are mutually distinct', () => {
+    const colors = ['4.5', '4.6', '4.7', '4.8'].map((v) => versionColor(v).toLowerCase());
+    expect(new Set(colors).size).toBe(4);
   });
 });
 

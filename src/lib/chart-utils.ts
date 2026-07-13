@@ -23,6 +23,7 @@ const VERSION_COLORS: Record<string, string> = {
   '4.5': '#5B8BD4',
   '4.6': '#D4A55B',
   '4.7': '#5BD47B',
+  '4.8': '#A55BD4',
 };
 
 const VERSION_FALLBACK = '#3A3F4B';
