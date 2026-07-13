@@ -1,5 +1,13 @@
 # HANDOVER.md
 
+## PHASE 7 EXECUTED (2026-07-13, Fable session continued) — commits 028abdc..7c7c78f
+
+The runbook below was executed by the Fable coordinator with James's explicit authorization:
+- Migrations 001+002 applied to prod `homedir` (quarantine table live; version CHECKs admit 4.8).
+- Dry run matched predictions exactly; real run: +220 sessions (deduped export 259→374; 147 sessions on 4.8; cutover day 2026-06-05 labels AM=4.7/PM=4.8 correctly), +28 compositions, +22 messages, +14 pet events; 5 known outlier messages quarantined; memory-snapshots.json BLOCKED as designed; quotes.json verified untouched.
+- Page adapted: index.test.ts session-count pins are now DATA-DRIVEN from sessions.json (>300 sanity guard); versionColor gained '4.8': #A55BD4 (violet — PENDING James's visual review); the ColdBootAssembly fade-in test was deflaked (single-pass CSS scan + 15s timeout). Full suites green: 1330 Python / 1260 JS.
+- STILL OPEN: (a) optional memory-snapshot backfill — needs James at the keyboard for sudo: `python scripts/ingest.py --with-transcripts`; until then memory-snapshots.json stays hand-curated and blocked; (b) kanban MCP was disconnected this session — #62844 needs a Phase-7-complete update and #62772/#62773/#62774 still await James's visual confirmation; (c) push to deploy (Cloudflare rebuilds on push) is James's call.
+
 ## TO THE INCOMING COORDINATOR (Opus) — read this section in full before dispatching anything
 
 You are taking over from a Fable 5 coordinator session (2026-07-05..07). James is losing Fable access; this note is written to direct you precisely. Everything below is verified, not assumed. Repo state: commits `7f6a58c..9d6e00b`, working tree clean, 1330 Python tests + 1250+ JS tests green.
