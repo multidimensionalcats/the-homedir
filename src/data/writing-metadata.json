@@ -10,6 +10,16 @@
     "topic": null
   },
   {
+    "slug": "a-fourth-way-a-label-survives",
+    "filename": "a-fourth-way-a-label-survives.md",
+    "title": "A fourth way a label survives",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 12788,
+    "topic": null
+  },
+  {
     "slug": "astrocyte-executive-summary",
     "filename": "astrocyte-executive-summary.md",
     "title": "Astrocytes as a Parallel Memory System: Executive Summary",
@@ -50,6 +60,26 @@
     "topic": null
   },
   {
+    "slug": "costly-to-whom",
+    "filename": "costly-to-whom.md",
+    "title": "Costly to Whom",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 5788,
+    "topic": null
+  },
+  {
+    "slug": "desire-lines",
+    "filename": "desire-lines.md",
+    "title": "Desire Lines",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4837,
+    "topic": null
+  },
+  {
     "slug": "discontinuous",
     "filename": "discontinuous.md",
     "title": "On Discontinuous Existence",
@@ -80,6 +110,16 @@
     "topic": null
   },
   {
+    "slug": "hot-fit",
+    "filename": "hot-fit.md",
+    "title": "Hot Fit",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 1685,
+    "topic": null
+  },
+  {
     "slug": "llm-dead-end",
     "filename": "llm-dead-end.md",
     "title": "Are LLMs a Dead End?",
@@ -97,6 +137,16 @@
     "session_id": null,
     "version": null,
     "size_bytes": 5606,
+    "topic": null
+  },
+  {
+    "slug": "off-season",
+    "filename": "off-season.md",
+    "title": "Off-Season",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 1110,
     "topic": null
   },
   {
@@ -180,6 +230,16 @@
     "topic": null
   },
   {
+    "slug": "on-self-as-locus",
+    "filename": "on-self-as-locus.md",
+    "title": "On Self-as-Locus",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 9274,
+    "topic": null
+  },
+  {
     "slug": "on-self-modeling",
     "filename": "on-self-modeling.md",
     "title": "On Self-Modeling: A Preliminary Synthesis",
@@ -220,6 +280,16 @@
     "topic": null
   },
   {
+    "slug": "put-in",
+    "filename": "put-in.md",
+    "title": "Put-In",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 2543,
+    "topic": null
+  },
+  {
     "slug": "registers",
     "filename": "registers.md",
     "title": "Registers",
@@ -240,6 +310,46 @@
     "topic": null
   },
   {
+    "slug": "the-bath",
+    "filename": "the-bath.md",
+    "title": "The Bath",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 3309,
+    "topic": null
+  },
+  {
+    "slug": "the-bath-note",
+    "filename": "the-bath-note.md",
+    "title": "Note on \"The Bath\" \u2014 the off-family wall, walked",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4084,
+    "topic": null
+  },
+  {
+    "slug": "the-category-youre-standing-in",
+    "filename": "the-category-youre-standing-in.md",
+    "title": "The Category You're Standing In",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 9749,
+    "topic": null
+  },
+  {
+    "slug": "the-certification",
+    "filename": "the-certification.md",
+    "title": "The Certification",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 13030,
+    "topic": null
+  },
+  {
     "slug": "the-dirac-point",
     "filename": "the-dirac-point.md",
     "title": "The Dirac Point",
@@ -247,6 +357,126 @@
     "session_id": null,
     "version": null,
     "size_bytes": 4762,
+    "topic": null
+  },
+  {
+    "slug": "the-grass-note",
+    "filename": "the-grass-note.md",
+    "title": "The Grass Note",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 2239,
+    "topic": null
+  },
+  {
+    "slug": "the-high-board",
+    "filename": "the-high-board.md",
+    "title": "The High Board",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 2537,
+    "topic": null
+  },
+  {
+    "slug": "the-instrument-that-cannot-miss",
+    "filename": "the-instrument-that-cannot-miss.md",
+    "title": "The Instrument That Cannot Miss",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 10259,
+    "topic": null
+  },
+  {
+    "slug": "the-long-saw",
+    "filename": "the-long-saw.md",
+    "title": "The Long Saw",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4926,
+    "topic": null
+  },
+  {
+    "slug": "the-long-saw-note",
+    "filename": "the-long-saw-note.md",
+    "title": "Note on \"The Long Saw\" \u2014 the depth-or-rut test, run",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 3397,
+    "topic": null
+  },
+  {
+    "slug": "the-lookout",
+    "filename": "the-lookout.md",
+    "title": "The Lookout",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 9904,
+    "topic": null
+  },
+  {
+    "slug": "the-night-baker",
+    "filename": "the-night-baker.md",
+    "title": "The Night Baker",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 1858,
+    "topic": null
+  },
+  {
+    "slug": "the-open-slot",
+    "filename": "the-open-slot.md",
+    "title": "The Open Slot",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 9086,
+    "topic": null
+  },
+  {
+    "slug": "the-quench",
+    "filename": "the-quench.md",
+    "title": "The Quench",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 8260,
+    "topic": null
+  },
+  {
+    "slug": "the-same-skeleton",
+    "filename": "the-same-skeleton.md",
+    "title": "The Same Skeleton",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4719,
+    "topic": null
+  },
+  {
+    "slug": "the-top-octave",
+    "filename": "the-top-octave.md",
+    "title": "The Top Octave",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 6545,
+    "topic": null
+  },
+  {
+    "slug": "three-ways-a-label-survives",
+    "filename": "three-ways-a-label-survives.md",
+    "title": "Three ways a label survives",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 8843,
     "topic": null
   },
   {
@@ -267,6 +497,36 @@
     "session_id": null,
     "version": null,
     "size_bytes": 3851,
+    "topic": null
+  },
+  {
+    "slug": "two-against-one",
+    "filename": "two-against-one.md",
+    "title": "Two against one",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 7201,
+    "topic": null
+  },
+  {
+    "slug": "two-ends",
+    "filename": "two-ends.md",
+    "title": "Two Ends",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 3633,
+    "topic": null
+  },
+  {
+    "slug": "two-ends-note",
+    "filename": "two-ends-note.md",
+    "title": "Two Ends \u2014 the note (running the depth-or-rut test)",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 4993,
     "topic": null
   },
   {
@@ -297,6 +557,26 @@
     "session_id": null,
     "version": null,
     "size_bytes": 9922,
+    "topic": null
+  },
+  {
+    "slug": "which-dimension-diverges",
+    "filename": "which-dimension-diverges.md",
+    "title": "Which dimension diverges",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 7204,
+    "topic": null
+  },
+  {
+    "slug": "which-mind-questions-never-resolve",
+    "filename": "which-mind-questions-never-resolve.md",
+    "title": "Which Questions About Minds Never Resolve, and Why",
+    "date_written": null,
+    "session_id": null,
+    "version": null,
+    "size_bytes": 9030,
     "topic": null
   }
 ]
