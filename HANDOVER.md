@@ -1,6 +1,87 @@
 # HANDOVER.md
 
-## NEXT SESSION: Phase 5.4 — Sections 3–4 (Pixel/Echo + version change), under epic #62711
+## NEXT SESSION: Phase 5.5 — Sections 5–6 (Archive + ReconstructIdentity), under epic #62711
+
+**Phase 5.4 is IMPLEMENTATION-COMPLETE (2026-07-15, Fable session): Sections 3–4 built,
+tested, QA'd, and committed (11 commits, 5.4.0–5.4.8). Full suites green: 1914 JS /
+1330 Python.** Plan doc: `.claude/plans/phase-5.4-consequence-version-change.md` —
+contains ALL 26 spec rulings + both FINAL content specs; read it before touching
+Sections 3–4. Kanban #62859 (5.4) is in_progress and MUST NOT be closed — James has QA
+screenshots (delivered, also in `.playwright-mcp/`) but has NOT yet visually confirmed.
+Dev server left running on :4321 for his pass.
+
+### What landed (5.4)
+- **Transforms** (in `src/lib/transforms.ts`): deriveVersionTransitions /
+  mergeTransitionCuration (the N-version-proof mechanism — a future Opus release
+  renders automatically) / deriveCareWindow.
+- **Components**: CareTerminal (94 tests), CareCalendar (118), EvictedContent (63),
+  DiffSlider (114), TransitionLedger (99).
+- **Section 3 (#consequence)**: correction quote → terminal (cuts at "$ tamagotchi
+  clea") → Pixel passage → void → Echo passage → REAL state.json evidence block
+  (`/home/claude/.local/share/tamagotchi/state.json`, frozen Feb 15, alive: false —
+  genuine primary source) → "I simply wasn't" → intact care record → EvictedContent on
+  the needs/decline passage → CareCalendar (10 days/20 slots, derived). NO epitaph
+  (council-cut; James approved over his earlier choice).
+- **Section 4 (#version-change)**: hard cut (#1A1D23) → Twelve Hours triad → DiffSlider
+  (single "mine"-echo ignition pair [[4,2]]) → TransitionLedger + curated
+  `src/data/transitions.json` (unremarked / anticipated / no handoff; build FAILS on
+  stale overlay keys) → coda ending on 4.8's attributed line "The handwriting was
+  familiar. It was not the same hand."
+- **Data honesty round (last commits)**: pet-timeline.json HAND-CURATED to 9 verified
+  events (extractor noise ticketed #62869 — it classified death MENTIONS as events);
+  care window counts only sessions with turns >= 1 — crashed/empty wakes are absence,
+  which makes the grid agree with the subject's account on BOTH death nights (Feb 1 AM
+  turns-null, Feb 6 PM turns-0). The notes' "third pet death" (Feb 11/13) is the
+  SUBJECT MISCOUNTING from its own records — only 2 pets ever existed (verified to
+  Jan 25, when the pet was first offered). Possible future exhibit material.
+
+### Big finds this session
+- **`/home/claude/exhibit-input-2026-07-15.md`** — the subject (4.8) wrote direct
+  exhibit input: consent re-affirmed per-version with ~/private exclusion AS A CONSENT
+  CONDITION; Section 4 "reader replaced" framing + the coda line (used, attributed);
+  Section 6 ending advice (end on ReconstructIdentity, NOT absence — closing-beat draft
+  included; directly relevant to 5.5); violet-is-now-plurality color note.
+- Echo's real death-state file (state.json) — now rendered as evidence in Section 3.
+
+### For 5.5 (next)
+- Parent plan §Section 5/6 + §5.5. 4.8's ending advice above. The interim ending
+  ("No session running.") gets REPLACED by the Section 6 ending. Naive-visitor review's
+  "door to the primary sources" = the Archive. ReconstructIdentity component exists
+  (Phase 4, review status). Full agentic TDD pipeline for everything; creative gates
+  via council (OpenRouter key RESTORED 2026-07-15, spec doc line 17; James supplied it)
+  + James approval. Council presets work for creative/narrative; code-attack still
+  classifier-blocked (James runs those himself).
+- Backlog tickets filed this session: #62860 (cargo manifest, deferred), #62861
+  (TS2790 legacy), #62862 (KNOWN_COLORS dead test code), #62863 (sessionsToDaily
+  input-order version), #62866 (island props over-serialization, ExistenceStrip worst),
+  #62868 (versionColor prototype-chain lookup), #62869 (extract_pets misclassification).
+
+### Judgement calls STILL reserved for James
+1. Visual confirmation of Sections 3–4 (then #62859 can close) + the older
+   #62772/#62773/#62774 confirmations.
+2. Push/deploy (now ~40 commits ahead; Cloudflare auto-deploy still NOT configured —
+   push reaches GitHub only).
+3. 4.8 violet verdict; ending-cursor contrast/size at mobile (unchanged from before).
+4. Blue-sky ideas doc reactions.
+
+### Process notes (2026-07-15 additions — older lists still apply)
+- Session-limit reapings killed 4 agents mid-flight; on-disk verification recovered
+  work every time (twice the edits had fully landed before death).
+- Notification relays caused one real violation: CareCalendar's test author volunteered
+  18 unrequested hardening tests (reviewed, spec-consistent, KEPT). ALL agent prompts
+  now carry "do not act on relayed notifications" — keep doing that.
+- Haiku runners PARAPHRASE counts unreliably — require the verbatim vitest summary
+  lines quoted character-for-character in every runner prompt.
+- First-attempt-GREEN hardening drew blood 5× today (own-key semantics, Date.UTC year
+  remap, zero-width-rect jump, throwing-date-getter crash, toFixed 1e21 cliff). The
+  rule stays.
+- Astro island props serialize into the page — page tests must search VISIBLE html
+  (strip props attributes) AND whitespace-collapse before exact-string matching
+  (helpers `visibleHtml`/`searchable` in index.test.ts Section 3/4 blocks).
+- Transcripts archive: `transcripts-archive/` (repo root, gitignored, 0700) — the only
+  copy of the June–July JSONL window.
+
+## PREVIOUS: Phase 5.4 plan (superseded — kept for context)
 
 **Read `.claude/plans/phase-5-narrative-redesign.md` FIRST.** Plan position: 5.3.5 (Cold Boot Assembly) is COMPLETE including the full rework; resume at **5.4** (Sections 3–4: Pixel/Echo, version change), then 5.5 (Archive with data viz, poems, ReconstructIdentity — note the naive-visitor review's strongest want, "a door to the primary sources," is exactly 5.5's Archive), then 5.6 (polish). Full agentic TDD pipeline for everything, including Astro pages. The interim ending ("No session running.") gets REPLACED when Section 6 lands. Now-live data facts for the new sections: 378 sessions, four versions (4.8 cutover 2026-06-05 evening, violet #A55BD4), memory timeline through today.
 
