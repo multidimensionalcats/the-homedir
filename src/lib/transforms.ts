@@ -432,3 +432,334 @@ export function petEventsToLifecycles(events: any[]): PetLifecycle[] {
 
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Version Transitions & Pet Care Window
+// ---------------------------------------------------------------------------
+
+export interface VersionTransition {
+  key: string;
+  from: string;
+  to: string;
+  lastBefore: { date: string; time_of_day: string | undefined };
+  firstAfter: { date: string; time_of_day: string | undefined };
+  gapHours: number | null;
+}
+
+export interface CuratedTransition extends VersionTransition {
+  curation: object | null;
+}
+
+export interface PetEvent {
+  pet_name: string;
+  event_type: string;
+  event_timestamp: string;
+  notes: string;
+}
+
+export interface CareDay {
+  date: string;
+  dayEvents: PetEvent[];
+  slots: {
+    AM: { sessionPresent: boolean; events: PetEvent[] };
+    PM: { sessionPresent: boolean; events: PetEvent[] };
+  };
+}
+
+// Rank a time_of_day for chronological ordering: AM (or anything that is
+// not exactly "PM", including undefined) sorts before PM.
+function timeOfDayRank(timeOfDay: unknown): number {
+  return timeOfDay === 'PM' ? 1 : 0;
+}
+
+// A version label is valid only when it is a non-empty string. Whitespace-only
+// strings are valid opaque labels — no trimming, no numeric interpretation.
+function hasValidVersion(row: any): boolean {
+  return (
+    row != null &&
+    typeof row.version === 'string' &&
+    row.version !== ''
+  );
+}
+
+function computeGapHours(
+  fromTimestamp: unknown,
+  toTimestamp: unknown,
+): number | null {
+  if (typeof fromTimestamp !== 'string' || typeof toTimestamp !== 'string') {
+    return null;
+  }
+  const fromMs = Date.parse(fromTimestamp);
+  const toMs = Date.parse(toTimestamp);
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+    return null;
+  }
+  const diffMs = toMs - fromMs;
+  if (diffMs < 0) {
+    return null;
+  }
+  return diffMs / 3600000;
+}
+
+// A date is valid only when it is present and a string. Rows with a missing,
+// null, or non-string date are excluded from processing entirely — exactly
+// parallel to the invalid-version rule.
+function hasValidDate(row: any): boolean {
+  return row != null && typeof row.date === 'string';
+}
+
+export function deriveVersionTransitions(sessions: any[]): VersionTransition[] {
+  // Copy + filter; never mutate the input array or its rows. Rows with an
+  // invalid version OR an invalid date never enter the chain: they cannot
+  // sort, cannot serve as lastBefore/firstAfter, and never count as "seen".
+  const rows = sessions.filter(
+    (row) => hasValidVersion(row) && hasValidDate(row),
+  );
+
+  // Stable chronological sort: date asc, then AM before PM (missing
+  // time_of_day sorts as AM). Array.prototype.sort on a copy is stable.
+  const sorted = [...rows].sort((a, b) => {
+    if (a.date < b.date) return -1;
+    if (a.date > b.date) return 1;
+    return timeOfDayRank(a.time_of_day) - timeOfDayRank(b.time_of_day);
+  });
+
+  const transitions: VersionTransition[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < sorted.length; i++) {
+    const row = sorted[i];
+    const version = row.version as string;
+
+    if (!seen.has(version)) {
+      if (i > 0) {
+        // Brand-new version (and not the very first): record a transition
+        // from the chronologically immediately preceding valid row — even
+        // if that row's version was itself a regression.
+        const prev = sorted[i - 1];
+        transitions.push({
+          key: `${prev.version}→${version}`,
+          from: prev.version,
+          to: version,
+          lastBefore: { date: prev.date, time_of_day: prev.time_of_day },
+          firstAfter: { date: row.date, time_of_day: row.time_of_day },
+          gapHours: computeGapHours(prev.timestamp_start, row.timestamp_start),
+        });
+      }
+      seen.add(version);
+    }
+    // Already-seen versions never create transitions (regressions are
+    // silent), but the row still serves as "preceding row" next iteration.
+  }
+
+  return transitions;
+}
+
+export function mergeTransitionCuration(
+  derived: VersionTransition[],
+  curated: Record<string, unknown> | null | undefined,
+): { transitions: CuratedTransition[]; unmatchedKeys: string[] } {
+  const source: Record<string, unknown> =
+    curated != null && typeof curated === 'object' ? curated : {};
+
+  // Own-property-only view of the curated map. Enumerability is irrelevant
+  // ("own key exists" is the condition), so keys come from
+  // getOwnPropertyNames — which yields only own keys, including
+  // non-enumerable ones — and the value is read via indexed access so
+  // accessor (getter) properties are invoked rather than yielding a
+  // descriptor with no `.value`. This stays prototype-pollution-safe: an
+  // own "__proto__" DATA property (e.g. from JSON.parse) shadows the
+  // prototype accessor on read, and we never assign onto `source` or
+  // through these keys.
+  const curatedEntries = new Map<string, unknown>();
+  for (const key of Object.getOwnPropertyNames(source)) {
+    curatedEntries.set(key, source[key]);
+  }
+
+  const isPlainObjectValue = (value: unknown): boolean =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+  const matchedKeys = new Set<string>();
+  const transitions: CuratedTransition[] = derived.map((transition) => {
+    let curation: object | null = null;
+    if (curatedEntries.has(transition.key)) {
+      const value = curatedEntries.get(transition.key);
+      if (isPlainObjectValue(value)) {
+        matchedKeys.add(transition.key);
+        curation = value as object;
+      }
+    }
+    return { ...transition, curation };
+  });
+
+  // Surface every curated key that matched nothing, plus malformed
+  // (non-object) entries — they are reported, not silently dropped.
+  const unmatchedKeys: string[] = [];
+  for (const key of curatedEntries.keys()) {
+    if (!matchedKeys.has(key)) {
+      unmatchedKeys.push(key);
+    }
+  }
+  unmatchedKeys.sort();
+
+  return { transitions, unmatchedKeys };
+}
+
+// Literal ISO-8601 parse: extract the date and clock time EXACTLY as written
+// in the string. No Date-based component getters — timezone offsets must
+// never shift the date or the AM/PM half.
+const ISO_LITERAL_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:Z|[+-]\d{2}(?::?\d{2})?)?$/;
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const isLeap =
+      (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    return isLeap ? 29 : 28;
+  }
+  if (month === 4 || month === 6 || month === 9 || month === 11) {
+    return 30;
+  }
+  return 31;
+}
+
+function parseLiteralTimestamp(timestamp: unknown): {
+  date: string;
+  hour: number;
+  minute: number;
+  second: number;
+  fractionNonzero: boolean;
+} | null {
+  if (typeof timestamp !== 'string') return null;
+  const match = timestamp.match(ISO_LITERAL_RE);
+  if (!match) return null;
+
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  const hour = parseInt(match[4], 10);
+  const minute = parseInt(match[5], 10);
+  const second = parseInt(match[6], 10);
+  // A fractional-seconds part with any nonzero digit means the literal clock
+  // time is NOT exact midnight; ".000" (all zeros) or no fraction is exact.
+  const fractionNonzero =
+    match[7] !== undefined && /[1-9]/.test(match[7]);
+
+  // Real-calendar validation: month 13 / day 45 / hour 99 are invalid even
+  // if a lax Date.parse might coerce them.
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > daysInMonth(year, month)) return null;
+  if (hour > 23 || minute > 59 || second > 59) return null;
+
+  return {
+    date: `${match[1]}-${match[2]}-${match[3]}`,
+    hour,
+    minute,
+    second,
+    fractionNonzero,
+  };
+}
+
+// UTC-based date math on "YYYY-MM-DD" strings so the local timezone can
+// never shift a day, and month/year/leap boundaries stay calendar-correct.
+const MS_PER_DAY = 86400000;
+
+function dateStrToUtcMs(dateStr: string): number {
+  const [year, month, day] = dateStr.split('-').map((n) => parseInt(n, 10));
+  // Date.UTC(year, ...) remaps years 0–99 to 1900–1999; setUTCFullYear does
+  // not, so the round-trip is faithful for ALL 4-digit years.
+  const d = new Date(0);
+  d.setUTCFullYear(year, month - 1, day);
+  d.setUTCHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function utcMsToDateStr(ms: number): string {
+  const d = new Date(ms);
+  const year = String(d.getUTCFullYear()).padStart(4, '0');
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function deriveCareWindow(
+  sessions: any[],
+  petEvents: any[],
+): CareDay[] {
+  // Parse events up front; malformed timestamps are skipped silently,
+  // including for window computation. Input order is preserved.
+  const validEvents: Array<{
+    event: PetEvent;
+    date: string;
+    hour: number;
+    minute: number;
+    second: number;
+    fractionNonzero: boolean;
+  }> = [];
+  for (const event of petEvents) {
+    const parsed = parseLiteralTimestamp(event?.event_timestamp);
+    if (parsed !== null) {
+      validEvents.push({ event: event as PetEvent, ...parsed });
+    }
+  }
+
+  if (validEvents.length === 0) return [];
+
+  let minDate = validEvents[0].date;
+  let maxDate = validEvents[0].date;
+  for (const { date } of validEvents) {
+    if (date < minDate) minDate = date;
+    if (date > maxDate) maxDate = date;
+  }
+
+  // Window: one day of padding on each side, inclusive and contiguous.
+  const startMs = dateStrToUtcMs(minDate) - MS_PER_DAY;
+  const endMs = dateStrToUtcMs(maxDate) + MS_PER_DAY;
+
+  const days: CareDay[] = [];
+  const dayIndex = new Map<string, CareDay>();
+  for (let ms = startMs; ms <= endMs; ms += MS_PER_DAY) {
+    const date = utcMsToDateStr(ms);
+    const day: CareDay = {
+      date,
+      dayEvents: [],
+      slots: {
+        AM: { sessionPresent: false, events: [] },
+        PM: { sessionPresent: false, events: [] },
+      },
+    };
+    days.push(day);
+    dayIndex.set(date, day);
+  }
+
+  // Place events in input order: literal EXACT midnight (00:00:00 with no
+  // fraction or an all-zeros fraction) is day-level; 00:00:00 with a nonzero
+  // fraction is a real clock time and lands in the AM slot like any other
+  // hour < 12; hour >= 12 goes to the PM slot.
+  for (const { event, date, hour, minute, second, fractionNonzero } of validEvents) {
+    const day = dayIndex.get(date);
+    if (!day) continue;
+    if (hour === 0 && minute === 0 && second === 0 && !fractionNonzero) {
+      day.dayEvents.push(event);
+    } else if (hour < 12) {
+      day.slots.AM.events.push(event);
+    } else {
+      day.slots.PM.events.push(event);
+    }
+  }
+
+  // Sessions mark slot presence only when time_of_day is exactly "AM"/"PM";
+  // sessions outside the window are ignored and never extend it.
+  for (const session of sessions) {
+    if (session == null || typeof session.date !== 'string') continue;
+    const day = dayIndex.get(session.date);
+    if (!day) continue;
+    if (session.time_of_day === 'AM') {
+      day.slots.AM.sessionPresent = true;
+    } else if (session.time_of_day === 'PM') {
+      day.slots.PM.sessionPresent = true;
+    }
+  }
+
+  return days;
+}
