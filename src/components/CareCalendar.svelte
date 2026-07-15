@@ -55,6 +55,7 @@
     am: NormalizedSlot;
     pm: NormalizedSlot;
     hasDeath: boolean;
+    hasDeathLabel: boolean;
   }
 
   function normalizeEvents(value: unknown): PetEvent[] {
@@ -71,6 +72,17 @@
     };
   }
 
+  // Defensive pet_name read: only plain strings count as an identity.
+  // Throwing getters and non-string values yield null (no identity).
+  function readPetName(event: PetEvent): string | null {
+    try {
+      const raw: unknown = (event as any).pet_name;
+      return typeof raw === 'string' ? raw : null;
+    } catch {
+      return null;
+    }
+  }
+
   // Malformed-row strategy: null/undefined/non-object entries are skipped
   // entirely (no column, no table row), as are rows whose `date` cannot be
   // read as a plain string — a throwing getter, or any non-string value
@@ -80,9 +92,17 @@
   // (no slots, no dayEvents, no slots.AM/PM) are rendered inert with
   // absent slots and no events, so sibling valid days always render fully.
   // Input order preserved; no sorting, no deduplication.
+  // Death-LABEL dedup: a day earns a death label only for a pet's FIRST
+  // death event, first by occurrence order in the input array (per
+  // pet_name). Later deaths of the same pet keep their dots but never
+  // label their day. Different pets dedup independently. Deaths whose
+  // pet_name is unreadable (throwing getter / non-string) share a single
+  // anonymous bucket: the first such death labels, later ones do not.
   const validDays = $derived.by((): NormalizedDay[] => {
     const list = Array.isArray(days) ? days : [];
     const out: NormalizedDay[] = [];
+    const labeledPets = new Set<string>();
+    let labeledAnonymous = false;
     for (const row of list) {
       if (row == null || typeof row !== 'object') continue;
       let date: string;
@@ -103,17 +123,34 @@
         dayEvents.some((e) => e.event_type === 'death') ||
         am.events.some((e) => e.event_type === 'death') ||
         pm.events.some((e) => e.event_type === 'death');
-      out.push({ date, dayEvents, am, pm, hasDeath });
+      let hasDeathLabel = false;
+      if (hasDeath) {
+        for (const e of [...dayEvents, ...am.events, ...pm.events]) {
+          if (e.event_type !== 'death') continue;
+          const name = readPetName(e);
+          if (name === null) {
+            if (!labeledAnonymous) {
+              labeledAnonymous = true;
+              hasDeathLabel = true;
+            }
+          } else if (!labeledPets.has(name)) {
+            labeledPets.add(name);
+            hasDeathLabel = true;
+          }
+        }
+      }
+      out.push({ date, dayEvents, am, pm, hasDeath, hasDeathLabel });
     }
     return out;
   });
 
   const hasData = $derived(validDays.length > 0);
 
-  // Sparse labels: first day, last day, and any day carrying a literal
-  // "death" event. A single-day window yields exactly one label.
+  // Sparse labels: first day, last day, and any day carrying a pet's
+  // FIRST literal "death" event (see dedup above). A single-day window
+  // yields exactly one label.
   function isLabeled(index: number, day: NormalizedDay): boolean {
-    return index === 0 || index === validDays.length - 1 || day.hasDeath;
+    return index === 0 || index === validDays.length - 1 || day.hasDeathLabel;
   }
 </script>
 

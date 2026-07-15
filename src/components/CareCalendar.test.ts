@@ -1502,15 +1502,17 @@ describe('hardening2: death-label uniqueness', () => {
     expect((labels[0].textContent || '').trim()).toBe('Feb 1');
   });
 
-  it('two ADJACENT middle death days each carry exactly one label (total 4 with endpoints)', () => {
+  it('two ADJACENT middle death days of DIFFERENT pets each carry exactly one label (total 4 with endpoints)', () => {
     const days = makeWindow(6);
     days[2] = makeDay('2026-02-03', {
-      dayEvents: [makeEvent({ event_type: 'death' })],
+      dayEvents: [makeEvent({ pet_name: 'Pixel', event_type: 'death' })],
     });
     days[3] = makeDay('2026-02-04', {
       slots: {
         AM: makeSlot(),
-        PM: makeSlot({ events: [makeEvent({ event_type: 'death' })] }),
+        PM: makeSlot({
+          events: [makeEvent({ pet_name: 'Echo', event_type: 'death' })],
+        }),
       },
     });
     const { getByTestId } = render(CareCalendar, { props: { days } });
@@ -1759,5 +1761,122 @@ describe('review pins 2026-07-15', () => {
     const cap = table.querySelector('caption');
     expect(cap).not.toBeNull();
     expect((cap!.textContent || '').trim()).toBe('Custodial record, Feb 2026');
+  });
+});
+
+// ============================================================
+// Death-label dedup — QA ruling 2026-07-15 (coordinator,
+// James-approved): a day earns a death LABEL only for a pet's
+// FIRST death event within the provided days, matching
+// PetTimeline's one-death-per-pet dedup. Repeat deaths of the
+// same pet on later days do NOT label those days. "First" means
+// first OCCURRENCE in input order — the component's input-order
+// contract; it has no timestamps to compare beyond day
+// membership. Event DOTS are unchanged: every death event still
+// renders. First/last-day labels are unaffected.
+// ============================================================
+describe('death-label dedup (QA ruling 2026-07-15)', () => {
+  function deathDotsIn(col: Element): Element[] {
+    return eventsIn(col).filter(
+      (e) => e.getAttribute('data-event-type') === 'death',
+    );
+  }
+
+  it('same pet dying on 3 consecutive middle days (Feb 7/8/9 of 12) labels ONLY Feb 7; dots still render on Feb 8/9', () => {
+    const days = makeWindow(12); // Feb 1 – Feb 12
+    days[6] = makeDay('2026-02-07', {
+      dayEvents: [makeEvent({ pet_name: 'Pixel', event_type: 'death' })],
+    });
+    days[7] = makeDay('2026-02-08', {
+      dayEvents: [makeEvent({ pet_name: 'Pixel', event_type: 'death' })],
+    });
+    days[8] = makeDay('2026-02-09', {
+      slots: {
+        AM: makeSlot({
+          events: [makeEvent({ pet_name: 'Pixel', event_type: 'death' })],
+        }),
+        PM: makeSlot(),
+      },
+    });
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const cols = daysIn(getByTestId('care-calendar'));
+    expect(labelsIn(cols[6]).length).toBe(1); // Feb 7 — Pixel's first death
+    expect(labelsIn(cols[7]).length).toBe(0); // Feb 8 — repeat, NO label
+    expect(labelsIn(cols[8]).length).toBe(0); // Feb 9 — repeat, NO label
+    // first day + Feb 7 + last day = 3 labels total
+    expect(labelsIn(getByTestId('care-calendar')).length).toBe(3);
+    // DOTS are not deduped — repeat death events still render as dots
+    expect(deathDotsIn(cols[7]).length).toBe(1);
+    expect(deathDotsIn(cols[8]).length).toBe(1);
+  });
+
+  it('two DIFFERENT pets dying on different middle days BOTH earn labels (dedup is per-pet, not global)', () => {
+    // Window Jan 30 – Feb 10 so BOTH death days are middle days.
+    const days = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(Date.UTC(2026, 0, 30) + i * 86400000);
+      days.push(makeDay(d.toISOString().slice(0, 10)));
+    }
+    days[2] = makeDay('2026-02-01', {
+      dayEvents: [makeEvent({ pet_name: 'Pixel', event_type: 'death' })],
+    });
+    days[8] = makeDay('2026-02-07', {
+      dayEvents: [makeEvent({ pet_name: 'Echo', event_type: 'death' })],
+    });
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const cols = daysIn(getByTestId('care-calendar'));
+    expect(labelsIn(cols[2]).length).toBe(1); // Pixel's first death — labeled
+    expect(labelsIn(cols[8]).length).toBe(1); // Echo's first death — labeled
+    // first day + Feb 1 + Feb 7 + last day = 4 labels total
+    expect(labelsIn(getByTestId('care-calendar')).length).toBe(4);
+  });
+
+  it('same pet: SLOT-level death on an earlier day, DAY-level death later → only the earlier day labeled', () => {
+    const days = makeWindow(8); // Feb 1 – Feb 8
+    days[2] = makeDay('2026-02-03', {
+      slots: {
+        AM: makeSlot({
+          events: [makeEvent({ pet_name: 'Moss', event_type: 'death' })],
+        }),
+        PM: makeSlot(),
+      },
+    });
+    days[5] = makeDay('2026-02-06', {
+      dayEvents: [makeEvent({ pet_name: 'Moss', event_type: 'death' })],
+    });
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const cols = daysIn(getByTestId('care-calendar'));
+    expect(labelsIn(cols[2]).length).toBe(1); // Feb 3 — slot-level first death
+    expect(labelsIn(cols[5]).length).toBe(0); // Feb 6 — repeat, NO label
+    // first day + Feb 3 + last day = 3 labels total
+    expect(labelsIn(getByTestId('care-calendar')).length).toBe(3);
+    // The Feb 6 dot survives — only the label is deduped
+    expect(deathDotsIn(cols[5]).length).toBe(1);
+  });
+
+  it('"first death" is first OCCURRENCE in input order, not chronological date order (input-order contract)', () => {
+    // Non-chronological input: Moss dies on Feb 9 (input index 1) and
+    // Feb 2 (input index 2). Feb 2 is chronologically earlier, but the
+    // component's contract is input order — the earlier-INDEXED day
+    // (Feb 9) wins the label; Feb 2 gets none.
+    const days = [
+      makeDay('2026-02-05'),
+      makeDay('2026-02-09', {
+        dayEvents: [makeEvent({ pet_name: 'Moss', event_type: 'death' })],
+      }),
+      makeDay('2026-02-02', {
+        dayEvents: [makeEvent({ pet_name: 'Moss', event_type: 'death' })],
+      }),
+      makeDay('2026-02-06'),
+      makeDay('2026-02-08'),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const cols = daysIn(getByTestId('care-calendar'));
+    expect(labelsIn(cols[1]).length).toBe(1); // Feb 9 — first occurrence in input
+    expect(labelsIn(cols[2]).length).toBe(0); // Feb 2 — later in input, NO label
+    // first day + Feb 9 + last day = 3 labels total
+    expect(labelsIn(getByTestId('care-calendar')).length).toBe(3);
+    // The unlabeled repeat day keeps its death dot
+    expect(deathDotsIn(cols[2]).length).toBe(1);
   });
 });
