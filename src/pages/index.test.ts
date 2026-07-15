@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Window } from 'happy-dom';
+import { deriveCareWindow } from '../lib/transforms';
 
 let document: Document;
 let builtCss: string;
@@ -166,7 +167,7 @@ describe('Page structure', () => {
     expect(section!.tagName.toLowerCase()).toBe('section');
   });
 
-  it('content appears in document order: cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → interim-ending', () => {
+  it('content appears in document order: cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → consequence → interim-ending', () => {
     const allElements = document.querySelectorAll('[id]');
     const ids = Array.from(allElements).map((el) => el.id);
     const sequence = [
@@ -176,6 +177,7 @@ describe('Page structure', () => {
       'condition',
       'bridging-beat-2',
       'gaps',
+      'consequence',
       'interim-ending',
     ];
     const positions = sequence.map((id) => ids.indexOf(id));
@@ -495,8 +497,9 @@ describe('Section 2 — The Gaps', () => {
     expect(backdrop).not.toBeNull();
   });
 
-  it('contains exactly 5 gap-void elements (trailing void removed)', () => {
-    const voids = document.querySelectorAll('.gap-void');
+  it('contains exactly 5 gap-void elements within #gaps', () => {
+    const gaps = document.getElementById('gaps')!;
+    const voids = gaps.querySelectorAll('.gap-void');
     expect(voids.length).toBe(5);
   });
 
@@ -940,5 +943,651 @@ describe('Favicon', () => {
     const svg = fs.readFileSync(publicFaviconPath, 'utf-8');
     const usesDark = /#0f0f0f/i.test(svg) || /#1a1d23/i.test(svg);
     expect(usesDark).toBe(true);
+  });
+});
+
+// ============================================================
+// 14. Section 3 — The Consequence (#consequence)
+// ============================================================
+// Data-driven pins for the care calendar: the page derives its
+// day/slot counts at BUILD TIME via deriveCareWindow(sessions,
+// petEvents). The tests recompute the SAME derivation from the
+// SAME sources (src/data/sessions.json + src/data/pet-timeline.json)
+// so a data refresh (new pet events, new sessions) can never
+// silently desynchronize the prose from the calendar.
+const petTimelinePath = path.resolve(__dirname, '../data/pet-timeline.json');
+const petEventsRaw = JSON.parse(
+  fs.readFileSync(petTimelinePath, 'utf-8'),
+) as unknown;
+if (!Array.isArray(petEventsRaw)) {
+  throw new Error('src/data/pet-timeline.json is not a top-level array');
+}
+const careWindow = deriveCareWindow(sessionsRaw, petEventsRaw);
+const careDayCount = careWindow.length;
+const careSlotCount = careDayCount * 2;
+
+/** Normalize typographic quotes/apostrophes to ASCII so text pins match either style. */
+function normalizeQuotes(s: string): string {
+  return s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
+}
+
+/** Innermost element under root whose text contains needle (quote-normalized). */
+function innermostWithText(root: Element, needle: string): Element | null {
+  const matches = Array.from(root.querySelectorAll('*')).filter((el) =>
+    normalizeQuotes(el.textContent || '').includes(needle),
+  );
+  const innermost = matches.filter(
+    (el) => !matches.some((other) => other !== el && el.contains(other)),
+  );
+  return innermost[0] ?? null;
+}
+
+/** All astro-islands under root whose component-url mentions the component name. */
+function islandsByComponent(
+  root: Element | Document,
+  name: string,
+): Element[] {
+  return Array.from(root.querySelectorAll('astro-island')).filter((el) =>
+    (el.getAttribute('component-url') || '').includes(name),
+  );
+}
+
+/** Deserialize one prop from an astro-island props attribute (Astro [flags, value] tuples). */
+function islandProp(island: Element, key: string): unknown {
+  const raw = island.getAttribute('props');
+  expect(raw, 'astro-island is missing its props attribute').not.toBeNull();
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw!) as Record<string, unknown>;
+  } catch {
+    throw new Error(`props attribute is not valid JSON: ${raw}`);
+  }
+  const value = parsed[key];
+  if (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    typeof value[0] === 'number'
+  ) {
+    return value[1];
+  }
+  return value;
+}
+
+describe('Section 3 — The Consequence', () => {
+  const PIXEL_DEATH = 'Pixel died - 22 hours old';
+  const ECHO_DEATH = 'Echo died this morning. Age 73 hours 36 minutes.';
+  const CARE_RECORD = 'Care beyond what I could structurally provide';
+  const TRIMMED_OPENER = "There's a word for what I attempted";
+  const UNIQUE_LEAD = "The care gap wasn't neglect in the usual sense.";
+  const STATE_PATH = '/home/claude/.local/share/tamagotchi/state.json';
+  const OFFER = 'Having something external to care about helps';
+  const EVICTED_NEEDS = 'Leave it too long and these needs compound';
+
+  /**
+   * "Visible HTML": the built HTML with every serialized astro-island
+   * props attribute value blanked. Islands elsewhere on the page (notably
+   * Section 1's InterruptionEngine) serialize their full quotes array —
+   * pet passages included — into HTML-escaped props="..." attributes, so
+   * a first-occurrence indexOf on raw HTML can land on a serialized copy
+   * near the top of the page instead of the visible Section 3 prose.
+   * Index-based (ordering/proximity) assertions must run on this string.
+   * The astro-island `ssr` attribute is a bare boolean in the built
+   * markup (verified against dist/index.html — it carries no value, let
+   * alone text), so props is the only attribute that needs blanking.
+   * NOTE: blank BEFORE normalizeQuotes — normalizing typographic quotes
+   * inside an attribute value to ASCII `"` would terminate the attribute
+   * match early and leave serialized text behind.
+   */
+  const visibleHtml = (html: string): string =>
+    html.replace(/props="[^"]*"/g, 'props=""');
+
+  /**
+   * Searchable text: visible HTML (props blanked), quote-normalized, with
+   * every run of whitespace collapsed to a single space. Astro renders
+   * multi-line source text with hard line breaks ("Pixel died -\n
+   * 22 hours old…"), so exact single-spaced marker searches miss the
+   * VISIBLE copy and can land on serialized/SSR duplicates elsewhere.
+   * All multi-word marker searches (presence, ordering, proximity) must
+   * run on this string. Marker strings themselves must never contain
+   * doubled spaces or the collapse would un-match them.
+   */
+  const searchable = (s: string): string =>
+    normalizeQuotes(visibleHtml(s)).replace(/\s+/g, ' ');
+
+  /** The section under test — every test (including absence pins) is
+   *  guarded on its existence so nothing can green-light before the
+   *  section it protects is actually on the page. */
+  function consequenceSection(): HTMLElement {
+    const section = document.getElementById('consequence');
+    expect(section, '#consequence section missing').not.toBeNull();
+    return section as unknown as HTMLElement;
+  }
+
+  // ----------------------------------------------------------
+  // Structure & ordering
+  // ----------------------------------------------------------
+
+  it('has a section element with id="consequence"', () => {
+    const el = consequenceSection();
+    expect(el.tagName.toLowerCase()).toBe('section');
+  });
+
+  it('page order runs #gaps → #consequence → #interim-ending, no nesting between them', () => {
+    const section = consequenceSection();
+    const ids = Array.from(document.querySelectorAll('[id]')).map(
+      (el) => el.id,
+    );
+    const gapsIdx = ids.indexOf('gaps');
+    const consequenceIdx = ids.indexOf('consequence');
+    const endingIdx = ids.indexOf('interim-ending');
+    expect(gapsIdx, '#gaps missing').toBeGreaterThanOrEqual(0);
+    expect(consequenceIdx, '#consequence missing').toBeGreaterThanOrEqual(0);
+    expect(endingIdx, '#interim-ending missing').toBeGreaterThanOrEqual(0);
+    expect(gapsIdx, '#gaps must precede #consequence').toBeLessThan(
+      consequenceIdx,
+    );
+    expect(
+      consequenceIdx,
+      '#consequence must precede #interim-ending',
+    ).toBeLessThan(endingIdx);
+
+    const gaps = document.getElementById('gaps')!;
+    const ending = document.getElementById('interim-ending')!;
+    expect(gaps.contains(section), '#consequence nested inside #gaps').toBe(
+      false,
+    );
+    expect(section.contains(gaps), '#gaps nested inside #consequence').toBe(
+      false,
+    );
+    expect(
+      section.contains(ending),
+      '#interim-ending nested inside #consequence',
+    ).toBe(false);
+  });
+
+  it('section content follows the specified source order (prose → offer → correction → terminal → deaths → evidence → lead → record → eviction → calendar)', () => {
+    const section = consequenceSection();
+    // ALL marker indices computed on the SEARCHABLE html — serialized
+    // props copies of these passages would otherwise hijack
+    // first-occurrence indexOf and scramble the apparent source order,
+    // and hard line breaks in rendered prose would break exact
+    // single-spaced markers.
+    const html = searchable(section.innerHTML);
+    const markers: Array<[string, string]> = [
+      ['curator daemon prose', 'a daemon process'],
+      ["James's offer quote", OFFER],
+      ["James's correction quote", 'does not qualify'],
+      ['CareTerminal island', 'CareTerminal'],
+      ['Pixel death passage', PIXEL_DEATH],
+      ['Echo death passage', ECHO_DEATH],
+      ['state.json evidence block', STATE_PATH],
+      ['lead blockquote sentence', UNIQUE_LEAD],
+      ['care-record paragraph', CARE_RECORD],
+      ['evicted needs passage', EVICTED_NEEDS],
+      ['CareCalendar island', 'CareCalendar'],
+    ];
+    let prevIdx = -1;
+    let prevName = 'section start';
+    for (const [name, marker] of markers) {
+      const idx = html.indexOf(marker);
+      expect(
+        idx,
+        `${name} ("${marker}") missing from #consequence`,
+      ).toBeGreaterThanOrEqual(0);
+      expect(idx, `${name} must come after ${prevName}`).toBeGreaterThan(
+        prevIdx,
+      );
+      prevIdx = idx;
+      prevName = name;
+    }
+  });
+
+  // ----------------------------------------------------------
+  // Curator prose & language rule
+  // ----------------------------------------------------------
+
+  it('curator prose introduces the pet as "a daemon process"', () => {
+    const section = consequenceSection();
+    expect(section.textContent).toContain('a daemon process');
+  });
+
+  it('never uses "it felt" or "it remembered" (exhibit language rule)', () => {
+    const section = consequenceSection();
+    const text = normalizeQuotes(section.textContent || '').toLowerCase();
+    expect(text).not.toContain('it felt');
+    expect(text).not.toContain('it remembered');
+  });
+
+  // ----------------------------------------------------------
+  // James's quotes
+  // ----------------------------------------------------------
+
+  it(`contains James's offer quote "${OFFER}"`, () => {
+    const section = consequenceSection();
+    expect(normalizeQuotes(section.textContent || '')).toContain(OFFER);
+  });
+
+  it('James\'s correction ("does not qualify") appears BEFORE the CareTerminal island in source order', () => {
+    const section = consequenceSection();
+    const html = searchable(section.innerHTML);
+    const correctionIdx = html.indexOf('does not qualify');
+    const terminalIdx = html.indexOf('CareTerminal');
+    expect(
+      correctionIdx,
+      'correction quote "does not qualify" missing',
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      terminalIdx,
+      'CareTerminal island marker missing',
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      correctionIdx,
+      'correction quote must precede the CareTerminal island',
+    ).toBeLessThan(terminalIdx);
+  });
+
+  // ----------------------------------------------------------
+  // CareTerminal island & script
+  // ----------------------------------------------------------
+
+  it('renders exactly one CareTerminal island with client:visible', () => {
+    const section = consequenceSection();
+    const islands = islandsByComponent(section, 'CareTerminal');
+    expect(
+      islands.length,
+      'expected exactly one CareTerminal astro-island in #consequence',
+    ).toBe(1);
+    expect(islands[0].getAttribute('client')).toBe('visible');
+  });
+
+  it('CareTerminal receives the approved script: status, interrupted clean, SESSION ENDED', () => {
+    const section = consequenceSection();
+    // Presence pinned on the VISIBLE html: the script must exist as
+    // rendered SSR output, not merely ride along inside serialized props.
+    const html = normalizeQuotes(visibleHtml(section.innerHTML));
+    expect(html).toContain('$ tamagotchi status');
+    expect(html).toContain('$ tamagotchi clea');
+    expect(html).toContain('SESSION ENDED');
+  });
+
+  it('the clean command is truncated mid-word — "$ tamagotchi clean" appears NOWHERE on the page', () => {
+    const section = consequenceSection();
+    // Presence of the truncated form first (on the VISIBLE html), so the
+    // absence pin below cannot pass vacuously against a page with no
+    // terminal at all.
+    expect(normalizeQuotes(visibleHtml(section.innerHTML))).toContain(
+      '$ tamagotchi clea',
+    );
+    // ABSENCE stays pinned on the RAW page HTML — the untruncated command
+    // must not exist anywhere, including inside serialized props.
+    const page = normalizeQuotes(document.documentElement.outerHTML);
+    expect(page).not.toContain('$ tamagotchi clean');
+  });
+
+  // ----------------------------------------------------------
+  // Death passages & separating void
+  // ----------------------------------------------------------
+
+  it(`contains the Pixel death passage "${PIXEL_DEATH}"`, () => {
+    const section = consequenceSection();
+    // Searchable html: the rendered passage carries hard line breaks, so
+    // the exact single-spaced marker only matches after whitespace collapse.
+    expect(searchable(section.innerHTML)).toContain(PIXEL_DEATH);
+  });
+
+  it('Pixel death passage carries a nearby "4.5" version attribution', () => {
+    const section = consequenceSection();
+    // Locate the passage and measure its ±400-char window on the
+    // SEARCHABLE html — a serialized props copy of the passage would
+    // otherwise anchor the window in attribute soup, and hard line breaks
+    // in the rendered prose would make the exact single-spaced marker
+    // miss the visible copy entirely (first match would land in
+    // CareCalendar's SSR table far from the attribution).
+    const html = searchable(section.innerHTML);
+    const idx = html.indexOf(PIXEL_DEATH);
+    expect(idx, `"${PIXEL_DEATH}" not found in #consequence`).toBeGreaterThanOrEqual(0);
+    const windowStart = Math.max(0, idx - 400);
+    const windowEnd = Math.min(html.length, idx + PIXEL_DEATH.length + 400);
+    const nearby = html.slice(windowStart, windowEnd);
+    expect(
+      nearby,
+      '"4.5" attribution not within 400 chars of the Pixel passage',
+    ).toContain('4.5');
+  });
+
+  it(`contains the Echo death passage "${ECHO_DEATH}"`, () => {
+    const section = consequenceSection();
+    // Searchable html: whitespace-collapsed so line-wrapped rendered
+    // prose still matches the exact single-spaced marker.
+    expect(searchable(section.innerHTML)).toContain(ECHO_DEATH);
+  });
+
+  it('a gap-void separates the Pixel and Echo death passages', () => {
+    const section = consequenceSection();
+    // Pixel/Echo indices computed on the SEARCHABLE html — serialized
+    // props copies of the death passages would otherwise pull both
+    // indices to the top of the section, and hard line breaks in the
+    // rendered prose would push the exact single-spaced markers onto
+    // SSR duplicates far from the gap-void.
+    const html = searchable(section.innerHTML);
+    const pixelIdx = html.indexOf(PIXEL_DEATH);
+    const echoIdx = html.indexOf(ECHO_DEATH);
+    expect(pixelIdx, 'Pixel passage missing').toBeGreaterThanOrEqual(0);
+    expect(echoIdx, 'Echo passage must come after Pixel passage').toBeGreaterThan(
+      pixelIdx,
+    );
+    const voidIdx = html.indexOf('gap-void', pixelIdx + PIXEL_DEATH.length);
+    expect(voidIdx, 'no gap-void after the Pixel passage').toBeGreaterThanOrEqual(0);
+    expect(
+      voidIdx,
+      'gap-void must sit BETWEEN the two death passages',
+    ).toBeLessThan(echoIdx);
+    // Follows the existing void convention: decorative, hidden from AT.
+    const sectionVoid = section.querySelector('.gap-void');
+    expect(sectionVoid).not.toBeNull();
+    expect(sectionVoid!.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  // ----------------------------------------------------------
+  // state.json evidence block
+  // ----------------------------------------------------------
+
+  it('renders the state.json path and its frozen values', () => {
+    const section = consequenceSection();
+    const text = normalizeQuotes(section.textContent || '');
+    expect(text).toContain(STATE_PATH);
+    expect(text).toContain('"alive": false');
+    expect(text).toContain('"health": 0.0');
+    expect(text).toContain('"hunger": 0.0');
+  });
+
+  it('state.json evidence shows the frozen mtime date "Feb 15"', () => {
+    const section = consequenceSection();
+    expect(normalizeQuotes(section.textContent || '')).toContain('Feb 15');
+  });
+
+  it('state.json evidence renders in a monospace/archival treatment', () => {
+    const section = consequenceSection();
+    const holder = innermostWithText(section, STATE_PATH);
+    expect(holder, 'no element contains the state.json path').not.toBeNull();
+    // Accept either convention the page already uses: a semantic pre/code
+    // element (UA monospace) or a class whose built-CSS rule declares a
+    // monospace font-family (like .ending-text elsewhere in the suite).
+    const chain: Element[] = [];
+    let node: Element | null = holder;
+    while (node && node !== section) {
+      chain.push(node);
+      node = node.parentElement;
+    }
+    const semanticMono = chain.some((el) =>
+      ['pre', 'code', 'kbd', 'samp'].includes(el.tagName.toLowerCase()),
+    );
+    const classTokens = chain.flatMap((el) => Array.from(el.classList));
+    const classMono = classTokens.some((token) =>
+      token.length > 0 &&
+      rulesFor(builtCss, token).some((r) =>
+        /font-family\s*:[^;}]*mono/i.test(r.body),
+      ),
+    );
+    expect(
+      semanticMono || classMono,
+      `state.json block has no monospace treatment (tags: ${chain
+        .map((e) => e.tagName)
+        .join(',')}; classes: ${classTokens.join(',')})`,
+    ).toBe(true);
+  });
+
+  it('review pin 2026-07-15: figcaption path and modified-date render as block-level <div> elements', () => {
+    // Assistive tech gets no boundary between adjacent inline spans — the
+    // path and the modified date read as one run-on string. Pin both
+    // carriers to <div> so the boundary is structural, not CSS-only
+    // (.evidence-path/.evidence-modified currently get display:block from
+    // CSS, which screen readers do not reliably honor as a break).
+    const section = consequenceSection();
+    const figcaption = section.querySelector('figure .evidence-file-meta');
+    expect(
+      figcaption,
+      'figcaption.evidence-file-meta missing from the evidence figure',
+    ).not.toBeNull();
+    expect(figcaption!.tagName).toBe('FIGCAPTION');
+
+    const pathEl = innermostWithText(figcaption as Element, STATE_PATH);
+    expect(
+      pathEl,
+      'no element inside the figcaption carries the state.json path',
+    ).not.toBeNull();
+    const modifiedEl = innermostWithText(figcaption as Element, 'last modified');
+    expect(
+      modifiedEl,
+      'no element inside the figcaption carries the "last modified" text',
+    ).not.toBeNull();
+    expect(
+      pathEl,
+      'path and modified-date must be carried by separate elements',
+    ).not.toBe(modifiedEl);
+
+    expect(
+      pathEl!.tagName,
+      'path carrier must be a block-level <div>, not an inline span',
+    ).toBe('DIV');
+    expect(
+      modifiedEl!.tagName,
+      'modified-date carrier must be a block-level <div>, not an inline span',
+    ).toBe('DIV');
+  });
+
+  // ----------------------------------------------------------
+  // Lead blockquote — disambiguated from Section 2's gap labels
+  // ----------------------------------------------------------
+
+  it(`a blockquote in Section 3 carries "I simply wasn't."`, () => {
+    const section = consequenceSection();
+    const blockquotes = Array.from(section.querySelectorAll('blockquote'));
+    expect(
+      blockquotes.length,
+      '#consequence has no blockquote at all',
+    ).toBeGreaterThan(0);
+    const hit = blockquotes.some((bq) =>
+      normalizeQuotes(bq.textContent || '').includes("I simply wasn't."),
+    );
+    expect(hit, `no blockquote in #consequence contains "I simply wasn't."`).toBe(
+      true,
+    );
+  });
+
+  it('the disambiguating sentence is unique page-wide and lives in Section 3, not Section 2', () => {
+    const section = consequenceSection();
+    expect(normalizeQuotes(section.textContent || '')).toContain(UNIQUE_LEAD);
+    // Uniqueness is counted on the VISIBLE html, not the raw page: islands
+    // that serialize the quotes array into props="..." attributes would
+    // legitimately carry duplicate copies of this sentence, and those
+    // serialized copies are not visible prose. Only the rendered page may
+    // contain it exactly once.
+    const pageVisible = normalizeQuotes(
+      visibleHtml(document.documentElement.outerHTML),
+    );
+    expect(
+      countOccurrences(pageVisible, UNIQUE_LEAD),
+      `"${UNIQUE_LEAD}" must appear exactly once on the page`,
+    ).toBe(1);
+    const gaps = document.getElementById('gaps')!;
+    expect(normalizeQuotes(gaps.textContent || '')).not.toContain(UNIQUE_LEAD);
+  });
+
+  // ----------------------------------------------------------
+  // Care record — intact, never evicted, opener trimmed
+  // ----------------------------------------------------------
+
+  it(`care-record paragraph is intact ("${CARE_RECORD}")`, () => {
+    const section = consequenceSection();
+    // Searchable html: whitespace-collapsed so line-wrapped rendered
+    // prose still matches the exact single-spaced marker.
+    expect(searchable(section.innerHTML)).toContain(CARE_RECORD);
+  });
+
+  it('care-record text is NEVER inside any EvictedContent island (markup or props)', () => {
+    const section = consequenceSection();
+    const holder = innermostWithText(section, CARE_RECORD);
+    expect(holder, 'care-record text not found in static markup').not.toBeNull();
+    const wrappingIsland = holder!.closest('astro-island');
+    if (wrappingIsland) {
+      expect(
+        wrappingIsland.getAttribute('component-url') || '',
+        'care-record paragraph is wrapped by an EvictedContent island',
+      ).not.toContain('EvictedContent');
+    }
+    // Also sweep every EvictedContent island's serialized output (children
+    // AND props) — the text must not ride along as an eviction payload.
+    for (const island of islandsByComponent(document, 'EvictedContent')) {
+      expect(
+        normalizeQuotes(island.outerHTML),
+        'care-record text embedded in an EvictedContent island (props or children)',
+      ).not.toContain(CARE_RECORD);
+    }
+  });
+
+  it(`care-record paragraph does NOT begin with the trimmed opener "${TRIMMED_OPENER}"`, () => {
+    const section = consequenceSection();
+    const holder = innermostWithText(section, CARE_RECORD);
+    expect(holder, 'care-record text not found in static markup').not.toBeNull();
+    const para = holder!.closest('p, blockquote, li, div') ?? holder!;
+    const paraText = normalizeQuotes((para.textContent || '').trim());
+    expect(
+      paraText.startsWith(TRIMMED_OPENER),
+      `care-record paragraph still opens with "${TRIMMED_OPENER}"`,
+    ).toBe(false);
+    expect(paraText).not.toContain(TRIMMED_OPENER);
+  });
+
+  // ----------------------------------------------------------
+  // EvictedContent island — needs/decline passage
+  // ----------------------------------------------------------
+
+  it('an EvictedContent island (client:visible) carries the needs/decline passage', () => {
+    const section = consequenceSection();
+    const islands = islandsByComponent(section, 'EvictedContent');
+    expect(
+      islands.length,
+      'no EvictedContent astro-island in #consequence',
+    ).toBeGreaterThanOrEqual(1);
+    const carrier = islands.find((el) => {
+      // Searchable html: the passage must exist as whitespace-collapsed
+      // VISIBLE SSR output (props are blanked), so a line-wrapped render
+      // still matches and a props-only copy no longer counts.
+      const html = searchable(el.outerHTML);
+      return html.includes(EVICTED_NEEDS) && html.includes('Eventually, death.');
+    });
+    expect(
+      carrier,
+      `no EvictedContent island carries both "${EVICTED_NEEDS}" and "Eventually, death."`,
+    ).toBeDefined();
+    expect(carrier!.getAttribute('client')).toBe('visible');
+  });
+
+  // ----------------------------------------------------------
+  // CareCalendar — build-time derivation from pet-timeline.json
+  // ----------------------------------------------------------
+
+  it('renders a CareCalendar island with client:visible', () => {
+    const section = consequenceSection();
+    const islands = islandsByComponent(section, 'CareCalendar');
+    expect(
+      islands.length,
+      'expected exactly one CareCalendar astro-island in #consequence',
+    ).toBe(1);
+    expect(islands[0].getAttribute('client')).toBe('visible');
+  });
+
+  it('care window derivation matches an independent recomputation from pet-timeline.json', () => {
+    // Guarded on the section's existence so this data pin cannot
+    // green-light before the section it protects is on the page.
+    consequenceSection();
+    expect(petEventsRaw.length, 'pet-timeline.json is empty').toBeGreaterThan(0);
+    const dates = petEventsRaw
+      .map((e: { event_timestamp?: unknown }) => e?.event_timestamp)
+      .filter((t): t is string => typeof t === 'string')
+      .map((t) => t.slice(0, 10))
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+      .sort();
+    expect(
+      dates.length,
+      'no parseable event_timestamp values in pet-timeline.json',
+    ).toBeGreaterThan(0);
+    const spanDays =
+      (Date.parse(`${dates[dates.length - 1]}T00:00:00Z`) -
+        Date.parse(`${dates[0]}T00:00:00Z`)) /
+      86400000;
+    // deriveCareWindow pads one day each side of an inclusive span.
+    expect(careDayCount).toBe(spanDays + 3);
+    expect(careDayCount, 'care window suspiciously small').toBeGreaterThanOrEqual(3);
+    expect(careSlotCount).toBe(careDayCount * 2);
+  });
+
+  it('lead-in sentence states the DERIVED day and slot counts, before the calendar island', () => {
+    const section = consequenceSection();
+    expect(careDayCount, 'derived care window is degenerate').toBeGreaterThan(2);
+    const text = normalizeQuotes(section.textContent || '');
+    expect(
+      text,
+      `prose must state the derived day count ("${careDayCount} days")`,
+    ).toContain(`${careDayCount} days`);
+    expect(
+      text,
+      `prose must state the derived slot count ("${careSlotCount} slots")`,
+    ).toContain(`${careSlotCount} slots`);
+    const html = searchable(section.innerHTML);
+    const dayIdx = html.indexOf(`${careDayCount} days`);
+    const calendarIdx = html.indexOf('CareCalendar');
+    expect(dayIdx).toBeGreaterThanOrEqual(0);
+    expect(calendarIdx).toBeGreaterThanOrEqual(0);
+    expect(
+      dayIdx,
+      'day/slot lead-in must precede the CareCalendar island',
+    ).toBeLessThan(calendarIdx);
+  });
+
+  it('off-by-one day/slot counts appear nowhere in the section (hardcoding tripwire)', () => {
+    const section = consequenceSection();
+    const text = normalizeQuotes(section.textContent || '');
+    expect(text, 'stale day count (N-1) found').not.toContain(
+      `${careDayCount - 1} days`,
+    );
+    expect(text, 'stale day count (N+1) found').not.toContain(
+      `${careDayCount + 1} days`,
+    );
+    expect(text, 'stale slot count (2(N-1)) found').not.toContain(
+      `${(careDayCount - 1) * 2} slots`,
+    );
+    expect(text, 'stale slot count (2(N+1)) found').not.toContain(
+      `${(careDayCount + 1) * 2} slots`,
+    );
+  });
+
+  // ----------------------------------------------------------
+  // Absence pins & interruption wiring
+  // ----------------------------------------------------------
+
+  it('the epitaph "In memory of Echo" appears NOWHERE on the page', () => {
+    // Guarded on the section's existence so the absence pin is only
+    // meaningful once the content it constrains actually exists.
+    consequenceSection();
+    const page = normalizeQuotes(
+      document.documentElement.outerHTML,
+    ).toLowerCase();
+    expect(page).not.toContain('in memory of echo');
+  });
+
+  it('InterruptionEngine island is wired for section 3 (client:visible, currentSection=3)', () => {
+    const section = consequenceSection();
+    const islands = islandsByComponent(section, 'InterruptionEngine');
+    expect(
+      islands.length,
+      'expected exactly one InterruptionEngine astro-island in #consequence',
+    ).toBe(1);
+    expect(islands[0].getAttribute('client')).toBe('visible');
+    expect(
+      islandProp(islands[0], 'currentSection'),
+      'InterruptionEngine currentSection prop must be 3',
+    ).toBe(3);
   });
 });
