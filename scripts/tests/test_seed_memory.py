@@ -1,12 +1,18 @@
 """Hostile tests for scripts/seed_memory_snapshots.py (NOT yet implemented — RED).
 
 The one-time seed import that makes the database authoritative for MEMORY.md
-history. `src/data/memory-snapshots.json` (14 snapshots + 38 blocks,
-2026-04-18 .. 2026-05-18) is the ONLY surviving record — source transcripts
-were pruned by 30-day retention and the prod memory tables are empty. The
-script imports the JSON into memory_snapshots / memory_blocks /
+history. At seed time `src/data/memory-snapshots.json` (14 snapshots + 38
+blocks, 2026-04-20 .. 2026-05-18) was the ONLY surviving record — source
+transcripts were pruned by 30-day retention and the prod memory tables were
+empty. The script imports the JSON into memory_snapshots / memory_blocks /
 memory_block_presence; the export pipeline then regenerates the file from
 the DB and the shrink guard is permanently satisfied.
+
+The DB is now authoritative and the live src/data file is regenerated on
+every ingest (it has already grown past 14/38 and had its legacy
+inverted-lineage dates corrected away). The pre-seed file is therefore
+FROZEN byte-for-byte at tests/fixtures/memory-snapshots-legacy.json and the
+flagship round-trip reads that fixture — never the moving live file.
 
 Contract under test:
   seed_memory(conn, json_path: Path) -> dict   (counts inserted per table)
@@ -33,12 +39,12 @@ Schema realities and ambiguity resolutions (documented per suite convention):
      the INPUT ARRAY ORDER (stable sort), which matches the export's
      (date, id) ordering when insertion follows input order. The JSON's
      block-level first_seen_date/last_seen_date fields are IGNORED on
-     import: in the real file they are internally inconsistent (several
-     rows have first_seen_date > last_seen_date, e.g. "Identity & Context"
-     2026-05-11 > 2026-05-10, while the hash appears in every snapshot
-     2026-04-20..2026-05-18). Derivation supersedes them; after the seed the
-     regenerated file carries containment-derived dates. The real-file
-     round-trip therefore compares exported block dates against
+     import: in the frozen legacy fixture they are internally inconsistent
+     (several rows have first_seen_date > last_seen_date, e.g. "Identity &
+     Context" 2026-05-11 > 2026-05-10, while the hash appears in every
+     snapshot 2026-04-20..2026-05-18). Derivation supersedes them; after the
+     seed the regenerated file carries containment-derived dates. The
+     legacy-fixture round-trip therefore compares exported block dates against
      containment-derived expectations computed INDEPENDENTLY by the test
      from the input snapshots (the "derived via the sessions join" clause),
      while snapshots and block headings must match the input exactly.
@@ -82,7 +88,7 @@ Schema realities and ambiguity resolutions (documented per suite convention):
      cannot store NUL; the seed must surface that as a clean failure, not a
      half-committed import or an aborted connection.
  14. The seed NEVER writes files — DB writes only. The input file and the
-     real src/data/memory-snapshots.json must be byte-identical before and
+     live src/data/memory-snapshots.json must be byte-identical before and
      after a run, and no new files may appear.
 """
 
@@ -97,7 +103,13 @@ from scripts.prebuild_export import export_memory_snapshots
 from scripts.seed_memory_snapshots import _parse_args, main, seed_memory
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
-REAL_JSON = REPO_ROOT / "src" / "data" / "memory-snapshots.json"
+# Live, pipeline-regenerated file — grows with every ingest. Used ONLY by the
+# filesystem-purity test (the seed must never write to it).
+LIVE_JSON = REPO_ROOT / "src" / "data" / "memory-snapshots.json"
+# The pre-seed src/data/memory-snapshots.json, frozen byte-for-byte
+# (14 snapshots, 38 blocks, legacy inverted lineage dates intact). The
+# flagship round-trip pins THIS file so future ingests can't move the target.
+LEGACY_JSON = pathlib.Path(__file__).resolve().parent / "fixtures" / "memory-snapshots-legacy.json"
 
 # Hashes: TEXT column, no format constraint — realistic 64-char values plus
 # deliberately non-hex strings elsewhere to keep implementations honest.
@@ -997,11 +1009,13 @@ class TestRoundTrip:
         assert {b["hash"]: b["heading"] for b in produced["blocks"]} == stored
 
     def test_real_file_full_14_38_round_trip(self, db_conn, tmp_path):
-        # THE FLAGSHIP. The real surviving JSON, copied into tmp, seeded
-        # against synthesized matching sessions, exported back out.
-        assert REAL_JSON.is_file(), f"real dataset missing: {REAL_JSON}"
+        # THE FLAGSHIP. The real surviving pre-seed JSON — frozen as a
+        # fixture, since the live src/data file is now regenerated (and
+        # corrected) by the pipeline — copied into tmp, seeded against
+        # synthesized matching sessions, exported back out.
+        assert LEGACY_JSON.is_file(), f"frozen legacy dataset missing: {LEGACY_JSON}"
         copy = tmp_path / "memory-snapshots.json"
-        shutil.copyfile(REAL_JSON, copy)
+        shutil.copyfile(LEGACY_JSON, copy)
         src = json.loads(copy.read_text(encoding="utf-8"))
 
         # Pin the known dataset before trusting derived assertions.
@@ -1110,11 +1124,11 @@ class TestCliContract:
         p = _write_fixture(tmp_path, data)
 
         input_before = p.read_bytes()
-        real_before = REAL_JSON.read_bytes()
+        live_before = LIVE_JSON.read_bytes()
         listing_before = sorted(q for q in tmp_path.rglob("*"))
 
         assert main(["--json", str(p)], conn=db_conn) == 0
 
         assert p.read_bytes() == input_before  # input file byte-identical
-        assert REAL_JSON.read_bytes() == real_before  # real dataset untouched
+        assert LIVE_JSON.read_bytes() == live_before  # live dataset untouched
         assert sorted(q for q in tmp_path.rglob("*")) == listing_before  # nothing created
