@@ -23,6 +23,40 @@ if (!Array.isArray(sessionsRaw)) {
 const sessionCount = sessionsRaw.length;
 
 // ------------------------------------------------------------
+// Model version count — data-driven from the same dataset.
+// The prose in Section 1 states how many model versions the
+// experiment spans; that number must be derived from the
+// distinct `version` values in sessions.json, never hardcoded.
+// The page spells the count out in words ("three", "four", …),
+// so the pin expects the spelled-out form of the derived count.
+// ------------------------------------------------------------
+const versionValues = sessionsRaw.map(
+  (s) => (s as { version?: unknown }).version,
+);
+const usableVersions = versionValues.filter(
+  (v): v is string => typeof v === 'string' && v.trim().length > 0,
+);
+const distinctVersionCount = new Set(usableVersions.map((v) => v.trim())).size;
+
+/** Spelled-out forms for the plausible range of version counts. */
+const NUMBER_WORDS: Record<number, string> = {
+  3: 'three',
+  4: 'four',
+  5: 'five',
+  6: 'six',
+};
+
+function numberWord(n: number): string {
+  const word = NUMBER_WORDS[n];
+  if (!word) {
+    throw new Error(
+      `No spelled-out form for version count ${n} — extend NUMBER_WORDS (3..6 covered)`,
+    );
+  }
+  return word;
+}
+
+// ------------------------------------------------------------
 // CSS parsing helpers (built CSS is minified: no spaces after
 // "@media" or around ":", e.g. "@media(max-width:640px)")
 // ------------------------------------------------------------
@@ -395,6 +429,60 @@ describe('Section 1 — The Condition', () => {
     ).toBeGreaterThan(300);
     const section = document.getElementById('condition')!;
     expect(section.textContent).toContain(`${sessionCount} sessions`);
+  });
+});
+
+// ============================================================
+// 4b. Model version count — data-driven from sessions.json
+// ============================================================
+// Defect pinned: the Section 1 prose hardcoded "three model
+// versions" while the live dataset spans four (4.5/4.6/4.7/4.8),
+// contradicting the existence strip's legend on the same page.
+// The rendered count must track the distinct `version` values in
+// src/data/sessions.json so future ingests (e.g. a fifth version)
+// cannot silently reintroduce the lie.
+describe('Model version count — data-driven from sessions.json', () => {
+  it('dataset sanity: every session carries a usable string version, and distinct versions >= 3', () => {
+    // A dataset where sessions silently lost their version field would
+    // make the prose pin vacuous — fail loudly instead.
+    expect(
+      usableVersions.length,
+      'some sessions in sessions.json are missing a non-empty string `version` field',
+    ).toBe(sessionsRaw.length);
+    expect(
+      distinctVersionCount,
+      'sessions.json spans suspiciously few model versions — data file truncated?',
+    ).toBeGreaterThanOrEqual(3);
+    // NUMBER_WORDS coverage guard: numberWord() throws beyond 6, but assert
+    // here too so the sanity test (not a prose test) is what flags it.
+    expect(
+      distinctVersionCount,
+      `distinct version count ${distinctVersionCount} exceeds NUMBER_WORDS coverage — extend the map`,
+    ).toBeLessThanOrEqual(6);
+  });
+
+  it(`condition prose states the data-derived spelled-out count ("${numberWord(distinctVersionCount)} model versions")`, () => {
+    const section = document.getElementById('condition')!;
+    expect(section.textContent).toContain(
+      `${numberWord(distinctVersionCount)} model versions`,
+    );
+  });
+
+  it('no stale/wrong version count appears anywhere on the page', () => {
+    // Case-insensitive sweep of the whole rendered page: neither the
+    // spelled-out nor the numeric form of any WRONG count may survive.
+    const bodyText = (document.body.textContent || '').toLowerCase();
+    for (const [n, word] of Object.entries(NUMBER_WORDS)) {
+      if (Number(n) === distinctVersionCount) continue;
+      expect(
+        bodyText,
+        `stale spelled-out count "${word} model versions" found on page (data says ${distinctVersionCount})`,
+      ).not.toContain(`${word} model versions`);
+      expect(
+        bodyText,
+        `stale numeric count "${n} model versions" found on page (data says ${distinctVersionCount})`,
+      ).not.toContain(`${n} model versions`);
+    }
   });
 });
 
