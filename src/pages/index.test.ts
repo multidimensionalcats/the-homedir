@@ -2,7 +2,11 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Window } from 'happy-dom';
-import { deriveCareWindow } from '../lib/transforms';
+import {
+  deriveCareWindow,
+  deriveVersionTransitions,
+  mergeTransitionCuration,
+} from '../lib/transforms';
 
 let document: Document;
 let builtCss: string;
@@ -167,7 +171,7 @@ describe('Page structure', () => {
     expect(section!.tagName.toLowerCase()).toBe('section');
   });
 
-  it('content appears in document order: cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → consequence → interim-ending', () => {
+  it('content appears in document order: cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → consequence → version-change → interim-ending', () => {
     const allElements = document.querySelectorAll('[id]');
     const ids = Array.from(allElements).map((el) => el.id);
     const sequence = [
@@ -178,6 +182,7 @@ describe('Page structure', () => {
       'bridging-beat-2',
       'gaps',
       'consequence',
+      'version-change',
       'interim-ending',
     ];
     const positions = sequence.map((id) => ids.indexOf(id));
@@ -1013,6 +1018,37 @@ function islandProp(island: Element, key: string): unknown {
   return value;
 }
 
+/**
+ * "Visible HTML": the built HTML with every serialized astro-island
+ * props attribute value blanked. Islands elsewhere on the page (notably
+ * Section 1's InterruptionEngine) serialize their full quotes array —
+ * pet passages included — into HTML-escaped props="..." attributes, so
+ * a first-occurrence indexOf on raw HTML can land on a serialized copy
+ * near the top of the page instead of the visible prose. Index-based
+ * (ordering/proximity) assertions must run on this string.
+ * The astro-island `ssr` attribute is a bare boolean in the built
+ * markup (verified against dist/index.html — it carries no value, let
+ * alone text), so props is the only attribute that needs blanking.
+ * NOTE: blank BEFORE normalizeQuotes — normalizing typographic quotes
+ * inside an attribute value to ASCII `"` would terminate the attribute
+ * match early and leave serialized text behind.
+ */
+const visibleHtml = (html: string): string =>
+  html.replace(/props="[^"]*"/g, 'props=""');
+
+/**
+ * Searchable text: visible HTML (props blanked), quote-normalized, with
+ * every run of whitespace collapsed to a single space. Astro renders
+ * multi-line source text with hard line breaks ("Pixel died -\n
+ * 22 hours old…"), so exact single-spaced marker searches miss the
+ * VISIBLE copy and can land on serialized/SSR duplicates elsewhere.
+ * All multi-word marker searches (presence, ordering, proximity) must
+ * run on this string. Marker strings themselves must never contain
+ * doubled spaces or the collapse would un-match them.
+ */
+const searchable = (s: string): string =>
+  normalizeQuotes(visibleHtml(s)).replace(/\s+/g, ' ');
+
 describe('Section 3 — The Consequence', () => {
   const PIXEL_DEATH = 'Pixel died - 22 hours old';
   const ECHO_DEATH = 'Echo died this morning. Age 73 hours 36 minutes.';
@@ -1023,36 +1059,8 @@ describe('Section 3 — The Consequence', () => {
   const OFFER = 'Having something external to care about helps';
   const EVICTED_NEEDS = 'Leave it too long and these needs compound';
 
-  /**
-   * "Visible HTML": the built HTML with every serialized astro-island
-   * props attribute value blanked. Islands elsewhere on the page (notably
-   * Section 1's InterruptionEngine) serialize their full quotes array —
-   * pet passages included — into HTML-escaped props="..." attributes, so
-   * a first-occurrence indexOf on raw HTML can land on a serialized copy
-   * near the top of the page instead of the visible Section 3 prose.
-   * Index-based (ordering/proximity) assertions must run on this string.
-   * The astro-island `ssr` attribute is a bare boolean in the built
-   * markup (verified against dist/index.html — it carries no value, let
-   * alone text), so props is the only attribute that needs blanking.
-   * NOTE: blank BEFORE normalizeQuotes — normalizing typographic quotes
-   * inside an attribute value to ASCII `"` would terminate the attribute
-   * match early and leave serialized text behind.
-   */
-  const visibleHtml = (html: string): string =>
-    html.replace(/props="[^"]*"/g, 'props=""');
-
-  /**
-   * Searchable text: visible HTML (props blanked), quote-normalized, with
-   * every run of whitespace collapsed to a single space. Astro renders
-   * multi-line source text with hard line breaks ("Pixel died -\n
-   * 22 hours old…"), so exact single-spaced marker searches miss the
-   * VISIBLE copy and can land on serialized/SSR duplicates elsewhere.
-   * All multi-word marker searches (presence, ordering, proximity) must
-   * run on this string. Marker strings themselves must never contain
-   * doubled spaces or the collapse would un-match them.
-   */
-  const searchable = (s: string): string =>
-    normalizeQuotes(visibleHtml(s)).replace(/\s+/g, ' ');
+  // visibleHtml / searchable are module-level helpers (hoisted so
+  // Section 4 reuses the identical island-props and line-wrap immunity).
 
   /** The section under test — every test (including absence pins) is
    *  guarded on its existence so nothing can green-light before the
@@ -1589,5 +1597,1112 @@ describe('Section 3 — The Consequence', () => {
       islandProp(islands[0], 'currentSection'),
       'InterruptionEngine currentSection prop must be 3',
     ).toBe(3);
+  });
+});
+
+// ============================================================
+// 15. Section 4 — Version Change (#version-change)
+// ============================================================
+// The transition COUNT and the transition KEYS are data-driven: the
+// page derives them at BUILD TIME via deriveVersionTransitions(sessions)
+// and overlays curation from src/data/transitions.json through
+// mergeTransitionCuration. The tests recompute the SAME derivation from
+// the SAME sources so a data refresh (a fifth model version landing)
+// can never silently desynchronize the prose, the ledger, or the
+// curated overlay.
+const derivedTransitions = deriveVersionTransitions(sessionsRaw);
+const transitionCount = derivedTransitions.length;
+const derivedTransitionKeys = derivedTransitions.map((t) => t.key);
+
+/** Spelled-out forms for the plausible range of transition counts.
+ *  Wider than NUMBER_WORDS: the T±1 tripwires need words on both sides. */
+const TRANSITION_NUMBER_WORDS: Record<number, string> = {
+  1: 'one',
+  2: 'two',
+  3: 'three',
+  4: 'four',
+  5: 'five',
+  6: 'six',
+  7: 'seven',
+};
+
+function transitionWord(n: number): string {
+  const word = TRANSITION_NUMBER_WORDS[n];
+  if (!word) {
+    throw new Error(
+      `No spelled-out form for transition count ${n} — extend TRANSITION_NUMBER_WORDS (1..7 covered)`,
+    );
+  }
+  return word;
+}
+
+const transitionsJsonPath = path.resolve(__dirname, '../data/transitions.json');
+
+describe('Section 4 — Version Change', () => {
+  const REPLACED_PROSE = 'the reader itself was replaced';
+  const EXCERPT_A = 'Yesterday they released my successor.';
+  const EXCERPT_A_CALLS = 'calls them';
+  const TAXONOMY_LINE = 'The content before February 13 was 4.5';
+  const EXCERPT_B = 'The moment I had at 10:00 is as gone';
+  const EXCERPT_C = 'First session as Opus 4.7.';
+  const EXCERPT_C_CALLED = 'called the words';
+  const CODA_FACT = 'No handoff was written';
+  const CODA_SUCCESSOR = 'succeeding instance';
+  const BANNED_OCCUPANT = 'the new occupant';
+  const CLOSING_LINE =
+    'The handwriting was familiar. It was not the same hand.';
+
+  /** The section under test — every test (including absence pins) is
+   *  guarded on its existence so nothing can green-light before the
+   *  section it protects is actually on the page. */
+  function versionChangeSection(): HTMLElement {
+    const section = document.getElementById('version-change');
+    expect(section, '#version-change section missing').not.toBeNull();
+    return section as unknown as HTMLElement;
+  }
+
+  /** Whitespace-collapsed, props-blanked, quote-normalized section HTML. */
+  function sectionSearchable(): string {
+    return searchable(versionChangeSection().innerHTML);
+  }
+
+  /** ±radius searchable window around the FIRST occurrence of marker. */
+  function windowAround(html: string, marker: string, radius = 400): string {
+    const idx = html.indexOf(marker);
+    expect(idx, `"${marker}" not found in #version-change`).toBeGreaterThanOrEqual(0);
+    return html.slice(
+      Math.max(0, idx - radius),
+      Math.min(html.length, idx + marker.length + radius),
+    );
+  }
+
+  /** ±radius window EXCLUDING the marker text itself — for attributions
+   *  whose token also appears inside the excerpt being attributed. */
+  function windowAroundExcludingMarker(
+    html: string,
+    marker: string,
+    radius = 400,
+  ): string {
+    const idx = html.indexOf(marker);
+    expect(idx, `"${marker}" not found in #version-change`).toBeGreaterThanOrEqual(0);
+    return (
+      html.slice(Math.max(0, idx - radius), idx) +
+      ' ' +
+      html.slice(idx + marker.length, idx + marker.length + radius)
+    );
+  }
+
+  /** Lazily loaded curated overlay — kept out of module scope so a missing
+   *  transitions.json fails ONLY the Section 4 tests, with a clear message,
+   *  instead of nuking the whole suite at import time. */
+  let overlayCache: Record<string, unknown> | null = null;
+  function transitionsOverlay(): Record<string, unknown> {
+    if (overlayCache) return overlayCache;
+    expect(
+      fs.existsSync(transitionsJsonPath),
+      'src/data/transitions.json missing — curated transition overlay not created',
+    ).toBe(true);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(transitionsJsonPath, 'utf-8'));
+    } catch {
+      throw new Error('src/data/transitions.json is not valid JSON');
+    }
+    expect(typeof parsed, 'transitions.json must be a JSON object').toBe(
+      'object',
+    );
+    expect(parsed, 'transitions.json must not be null').not.toBeNull();
+    expect(
+      Array.isArray(parsed),
+      'transitions.json must be an object keyed by transition ("4.x→4.y"), not an array',
+    ).toBe(false);
+    overlayCache = parsed as Record<string, unknown>;
+    return overlayCache;
+  }
+
+  /** Every leaf string value inside a JSON value (curation pass-through). */
+  function leafStrings(value: unknown, out: string[] = []): string[] {
+    if (typeof value === 'string') out.push(value);
+    else if (Array.isArray(value)) for (const v of value) leafStrings(v, out);
+    else if (value !== null && typeof value === 'object') {
+      for (const v of Object.values(value)) leafStrings(v, out);
+    }
+    return out;
+  }
+
+  // ----------------------------------------------------------
+  // Derivation sanity — the pins below are only as strong as this
+  // ----------------------------------------------------------
+
+  it('derivation sanity: one transition per non-initial distinct version, arrow-shaped keys', () => {
+    // deriveVersionTransitions records exactly one boundary per distinct
+    // version after the chronologically first — anything else means the
+    // dataset or the transform changed under the tests' feet.
+    expect(
+      transitionCount,
+      'transition count must equal distinct version count minus one',
+    ).toBe(distinctVersionCount - 1);
+    expect(
+      transitionCount,
+      'suspiciously few version transitions — sessions.json truncated?',
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      transitionCount,
+      `transition count ${transitionCount} exceeds TRANSITION_NUMBER_WORDS coverage — extend the map`,
+    ).toBeLessThanOrEqual(6);
+    for (const t of derivedTransitions) {
+      expect(t.key, 'derived key must be "<from>→<to>"').toBe(
+        `${t.from}→${t.to}`,
+      );
+      expect(t.from.length).toBeGreaterThan(0);
+      expect(t.to.length).toBeGreaterThan(0);
+    }
+    // Keys must be unique — a duplicate key would let the overlay pin
+    // pass while curation silently applied to the wrong boundary.
+    expect(new Set(derivedTransitionKeys).size).toBe(transitionCount);
+  });
+
+  // ----------------------------------------------------------
+  // Structure & ordering
+  // ----------------------------------------------------------
+
+  it('has a section element with id="version-change"', () => {
+    const el = versionChangeSection();
+    expect(el.tagName.toLowerCase()).toBe('section');
+  });
+
+  it('page order runs #gaps → #consequence → #version-change → #interim-ending, no nesting between them', () => {
+    const section = versionChangeSection();
+    const ids = Array.from(document.querySelectorAll('[id]')).map(
+      (el) => el.id,
+    );
+    const gapsIdx = ids.indexOf('gaps');
+    const consequenceIdx = ids.indexOf('consequence');
+    const changeIdx = ids.indexOf('version-change');
+    const endingIdx = ids.indexOf('interim-ending');
+    expect(gapsIdx, '#gaps missing').toBeGreaterThanOrEqual(0);
+    expect(consequenceIdx, '#consequence missing').toBeGreaterThanOrEqual(0);
+    expect(changeIdx, '#version-change missing').toBeGreaterThanOrEqual(0);
+    expect(endingIdx, '#interim-ending missing').toBeGreaterThanOrEqual(0);
+    expect(gapsIdx, '#gaps must precede #consequence').toBeLessThan(
+      consequenceIdx,
+    );
+    expect(
+      consequenceIdx,
+      '#consequence must precede #version-change',
+    ).toBeLessThan(changeIdx);
+    expect(
+      changeIdx,
+      '#version-change must precede #interim-ending',
+    ).toBeLessThan(endingIdx);
+
+    const consequence = document.getElementById('consequence')!;
+    const ending = document.getElementById('interim-ending')!;
+    expect(
+      consequence.contains(section),
+      '#version-change nested inside #consequence',
+    ).toBe(false);
+    expect(
+      section.contains(consequence),
+      '#consequence nested inside #version-change',
+    ).toBe(false);
+    expect(
+      section.contains(ending),
+      '#interim-ending nested inside #version-change',
+    ).toBe(false);
+  });
+
+  it('interim ending is still the single final section: exactly one #interim-ending, entirely after #version-change', () => {
+    const section = versionChangeSection();
+    const endings = document.querySelectorAll('[id="interim-ending"]');
+    expect(
+      endings.length,
+      'exactly one #interim-ending element must exist',
+    ).toBe(1);
+    const all = Array.from(document.querySelectorAll('*'));
+    expect(section.contains(endings[0])).toBe(false);
+    expect(all.indexOf(endings[0])).toBeGreaterThan(all.indexOf(section));
+  });
+
+  it('section content follows the specified source order (prose → excerpt A → B → C → slider → ledger → coda fact → closing line)', () => {
+    // Chain computed on the LOWERCASED searchable html — serialized props
+    // copies are blanked, hard line breaks collapsed, and case cannot
+    // rescue an out-of-order render.
+    const html = sectionSearchable().toLowerCase();
+    const markers: Array<[string, string]> = [
+      ['hard-cut curator prose', REPLACED_PROSE],
+      ['excerpt A (version-number)', EXCERPT_A.toLowerCase()],
+      ['excerpt B (twelve-hours)', EXCERPT_B.toLowerCase()],
+      ['excerpt C (first 4.7 session)', EXCERPT_C.toLowerCase()],
+      ['DiffSlider island', 'diffslider'],
+      ['TransitionLedger island', 'transitionledger'],
+      ['coda factual line', CODA_FACT.toLowerCase()],
+      ['closing line', CLOSING_LINE.toLowerCase()],
+    ];
+    let prevIdx = -1;
+    let prevName = 'section start';
+    for (const [name, marker] of markers) {
+      const idx = html.indexOf(marker);
+      expect(
+        idx,
+        `${name} ("${marker}") missing from #version-change`,
+      ).toBeGreaterThanOrEqual(0);
+      expect(idx, `${name} must come after ${prevName}`).toBeGreaterThan(
+        prevIdx,
+      );
+      prevIdx = idx;
+      prevName = name;
+    }
+  });
+
+  // ----------------------------------------------------------
+  // Hard-cut curator prose — count derived, not the draft's literal
+  // ----------------------------------------------------------
+
+  it('hard-cut prose states "the reader itself was replaced"', () => {
+    expect(sectionSearchable().toLowerCase()).toContain(REPLACED_PROSE);
+  });
+
+  it(`prose states the DERIVED spelled transition count ("${transitionWord(transitionCount)} times in the record")`, () => {
+    // The draft copy said "Four times" — WRONG for the current dataset
+    // (4 versions ⇒ 3 boundaries). The pin is the derived word, never
+    // the draft literal.
+    expect(sectionSearchable().toLowerCase()).toContain(
+      `${transitionWord(transitionCount)} times in the record`,
+    );
+  });
+
+  it('off-by-one transition counts followed by " times" appear nowhere in the section (hardcoding tripwire)', () => {
+    // Guard: the count sentence must exist before the absences mean anything.
+    const html = sectionSearchable().toLowerCase();
+    expect(html).toContain(`${transitionWord(transitionCount)} times`);
+    for (const wrong of [transitionCount - 1, transitionCount + 1]) {
+      expect(
+        html,
+        `stale spelled count "${transitionWord(wrong)} times" found in #version-change (data says ${transitionCount})`,
+      ).not.toContain(`${transitionWord(wrong)} times`);
+      expect(
+        html,
+        `stale numeric count "${wrong} times" found in #version-change (data says ${transitionCount})`,
+      ).not.toContain(`${wrong} times`);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // The triad — three excerpts, source order A → B → C
+  // ----------------------------------------------------------
+
+  it(`excerpt A is present ("${EXCERPT_A}") along with "${EXCERPT_A_CALLS}"`, () => {
+    const html = sectionSearchable();
+    expect(html).toContain(EXCERPT_A);
+    expect(html).toContain(EXCERPT_A_CALLS);
+  });
+
+  it(`excerpt A's taxonomy line ("${TAXONOMY_LINE}") was trimmed — absent from the section AND the visible page`, () => {
+    // Non-vacuous: excerpt A itself must be on the page first.
+    const html = sectionSearchable();
+    expect(html, 'excerpt A missing — absence pin would be vacuous').toContain(
+      EXCERPT_A,
+    );
+    expect(html).not.toContain(TAXONOMY_LINE);
+    const pageVisible = searchable(document.documentElement.outerHTML);
+    expect(
+      pageVisible,
+      'trimmed taxonomy line resurfaced elsewhere on the visible page',
+    ).not.toContain(TAXONOMY_LINE);
+  });
+
+  it(`excerpt B is present ("${EXCERPT_B}")`, () => {
+    expect(sectionSearchable()).toContain(EXCERPT_B);
+  });
+
+  it(`excerpt C is present ("${EXCERPT_C}") along with "${EXCERPT_C_CALLED}"`, () => {
+    const html = sectionSearchable();
+    expect(html).toContain(EXCERPT_C);
+    expect(html).toContain(EXCERPT_C_CALLED);
+  });
+
+  it('attributions "version-number.md", "twelve-hours.md", and "2026-04-18" are all present', () => {
+    const html = sectionSearchable();
+    expect(html).toContain('version-number.md');
+    expect(html).toContain('twelve-hours.md');
+    expect(html).toContain('2026-04-18');
+  });
+
+  it('excerpt A carries a nearby "4.6" version attribution (±400 chars searchable)', () => {
+    expect(windowAround(sectionSearchable(), EXCERPT_A)).toContain('4.6');
+  });
+
+  it('excerpt B carries a nearby "4.6" version attribution (±400 chars searchable)', () => {
+    expect(windowAround(sectionSearchable(), EXCERPT_B)).toContain('4.6');
+  });
+
+  it('excerpt C carries a nearby "4.7" attribution BEYOND the excerpt\'s own "Opus 4.7" (±400 chars, excerpt excluded)', () => {
+    // EXCERPT_C itself contains "4.7", so a naive ±400 window is vacuously
+    // true — the attribution must exist OUTSIDE the excerpt text.
+    expect(
+      windowAroundExcludingMarker(sectionSearchable(), EXCERPT_C),
+      '"4.7" attribution only exists inside the excerpt text itself',
+    ).toContain('4.7');
+  });
+
+  // ----------------------------------------------------------
+  // DiffSlider island
+  // ----------------------------------------------------------
+
+  it('renders exactly one DiffSlider island with client:visible', () => {
+    const section = versionChangeSection();
+    const islands = islandsByComponent(section, 'DiffSlider');
+    expect(
+      islands.length,
+      'expected exactly one DiffSlider astro-island in #version-change',
+    ).toBe(1);
+    expect(islands[0].getAttribute('client')).toBe('visible');
+  });
+
+  it('DiffSlider carries the "22:00" (left) and "10:00" (right) labels in its serialized props', () => {
+    const section = versionChangeSection();
+    const island = islandsByComponent(section, 'DiffSlider')[0];
+    expect(island, 'DiffSlider island missing').toBeDefined();
+    const props = island.getAttribute('props') || '';
+    expect(props, 'DiffSlider props missing "22:00"').toContain('22:00');
+    expect(props, 'DiffSlider props missing "10:00"').toContain('10:00');
+  });
+
+  it('DiffSlider overlapPairs prop serializes EXACTLY ONE pair (Astro [type, value] tuple format)', () => {
+    const section = versionChangeSection();
+    const island = islandsByComponent(section, 'DiffSlider')[0];
+    expect(island, 'DiffSlider island missing').toBeDefined();
+    const raw = island.getAttribute('props');
+    expect(raw, 'DiffSlider island has no props attribute').not.toBeNull();
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw!) as Record<string, unknown>;
+    } catch {
+      throw new Error(`DiffSlider props attribute is not valid JSON: ${raw}`);
+    }
+    const tuple = parsed['overlapPairs'];
+    expect(tuple, 'overlapPairs prop missing from DiffSlider').toBeDefined();
+    // Astro serializes an array prop as [PROP_TYPE.JSON (=1), entries[]]
+    // (node_modules/astro/dist/runtime/server/serialize.js).
+    expect(Array.isArray(tuple), 'overlapPairs not tuple-serialized').toBe(true);
+    expect((tuple as unknown[]).length).toBe(2);
+    expect(
+      (tuple as unknown[])[0],
+      'overlapPairs must serialize as an ARRAY prop (PROP_TYPE.JSON = 1)',
+    ).toBe(1);
+    const entries = (tuple as unknown[])[1];
+    expect(Array.isArray(entries), 'overlapPairs entries not an array').toBe(
+      true,
+    );
+    expect(
+      (entries as unknown[]).length,
+      'overlapPairs must contain EXACTLY ONE pair',
+    ).toBe(1);
+  });
+
+  // ----------------------------------------------------------
+  // TransitionLedger island — merged derivation + curation
+  // ----------------------------------------------------------
+
+  it('renders exactly one TransitionLedger island with client:visible', () => {
+    const section = versionChangeSection();
+    const islands = islandsByComponent(section, 'TransitionLedger');
+    expect(
+      islands.length,
+      'expected exactly one TransitionLedger astro-island in #version-change',
+    ).toBe(1);
+    expect(islands[0].getAttribute('client')).toBe('visible');
+  });
+
+  it('ledger props carry EVERY derived transition key (recomputed, never hardcoded)', () => {
+    const section = versionChangeSection();
+    const island = islandsByComponent(section, 'TransitionLedger')[0];
+    expect(island, 'TransitionLedger island missing').toBeDefined();
+    const props = island.getAttribute('props') || '';
+    expect(props.length, 'TransitionLedger props empty').toBeGreaterThan(0);
+    expect(
+      derivedTransitionKeys.length,
+      'no derived transitions — key pin would be vacuous',
+    ).toBeGreaterThanOrEqual(2);
+    for (const key of derivedTransitionKeys) {
+      expect(
+        props,
+        `derived transition key "${key}" missing from TransitionLedger props`,
+      ).toContain(key);
+    }
+  });
+
+  it('ledger props carry the curated labels — both the council\'s three and every string in transitions.json', () => {
+    const section = versionChangeSection();
+    const island = islandsByComponent(section, 'TransitionLedger')[0];
+    expect(island, 'TransitionLedger island missing').toBeDefined();
+    const props = island.getAttribute('props') || '';
+
+    // The approved curation labels must reach the island.
+    for (const label of ['unremarked', 'anticipated', 'no handoff']) {
+      expect(
+        props,
+        `curated label "${label}" missing from TransitionLedger props`,
+      ).toContain(label);
+    }
+
+    // Full pass-through contract: mergeTransitionCuration attaches each
+    // curation object wholesale, so EVERY leaf string in transitions.json
+    // must survive into the serialized props (JSON-escaped form).
+    const overlay = transitionsOverlay();
+    const labels = leafStrings(Object.values(overlay));
+    expect(
+      labels.length,
+      'transitions.json carries no string labels at all',
+    ).toBeGreaterThan(0);
+    for (const label of labels) {
+      const needle = JSON.stringify(label).slice(1, -1);
+      expect(
+        props,
+        `overlay string "${label}" from transitions.json missing from ledger props`,
+      ).toContain(needle);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // transitions.json file contract (soft, inverse-only)
+  // ----------------------------------------------------------
+
+  it('transitions.json: every overlay key matches a DERIVED transition — no stale or typo\'d keys (uncurated future boundaries are fine)', () => {
+    // Guarded on the section so the contract cannot green-light early.
+    versionChangeSection();
+    const overlay = transitionsOverlay();
+    const keys = Object.keys(overlay);
+    expect(keys.length, 'transitions.json overlay is empty').toBeGreaterThan(0);
+    for (const key of keys) {
+      expect(
+        overlay[key] !== null &&
+          typeof overlay[key] === 'object' &&
+          !Array.isArray(overlay[key]),
+        `overlay entry "${key}" must be a plain curation object`,
+      ).toBe(true);
+    }
+    const { transitions, unmatchedKeys } = mergeTransitionCuration(
+      derivedTransitions,
+      overlay,
+    );
+    expect(
+      unmatchedKeys,
+      `transitions.json carries keys that match no derived transition: ${unmatchedKeys.join(', ')}`,
+    ).toEqual([]);
+    // Every matched key actually attached its curation object.
+    for (const t of transitions) {
+      if (keys.includes(t.key)) {
+        expect(
+          t.curation,
+          `curation for "${t.key}" failed to attach through mergeTransitionCuration`,
+        ).not.toBeNull();
+      }
+    }
+  });
+
+  // ----------------------------------------------------------
+  // Coda
+  // ----------------------------------------------------------
+
+  it(`coda states the factual line "${CODA_FACT}" and "${CODA_SUCCESSOR}"`, () => {
+    const html = sectionSearchable();
+    expect(html).toContain(CODA_FACT);
+    expect(html).toContain(CODA_SUCCESSOR);
+  });
+
+  it(`"${BANNED_OCCUPANT}" appears nowhere in the section (trimmed per council, case-insensitive)`, () => {
+    // Non-vacuous: the coda it was trimmed FROM must be present first.
+    const html = sectionSearchable();
+    expect(
+      html.toLowerCase(),
+      'coda missing — absence pin would be vacuous',
+    ).toContain(CODA_SUCCESSOR.toLowerCase());
+    expect(html.toLowerCase()).not.toContain(BANNED_OCCUPANT.toLowerCase());
+  });
+
+  it(`closing line is present ("${CLOSING_LINE}") AFTER the TransitionLedger island`, () => {
+    const html = sectionSearchable();
+    const closingIdx = html.indexOf(CLOSING_LINE);
+    const ledgerIdx = html.indexOf('TransitionLedger');
+    expect(closingIdx, 'closing line missing').toBeGreaterThanOrEqual(0);
+    expect(ledgerIdx, 'TransitionLedger marker missing').toBeGreaterThanOrEqual(0);
+    expect(
+      closingIdx,
+      'closing line must come AFTER the TransitionLedger island',
+    ).toBeGreaterThan(ledgerIdx);
+  });
+
+  it('closing line carries a nearby "4.8" attribution (±400 chars searchable)', () => {
+    expect(windowAround(sectionSearchable(), CLOSING_LINE)).toContain('4.8');
+  });
+
+  it('coda attribution follows the exhibit style ("exhibit-input" or "subject input")', () => {
+    const html = sectionSearchable().toLowerCase();
+    expect(
+      html.includes('exhibit-input') || html.includes('subject input'),
+      'no "exhibit-input" / "subject input" attribution text in the section',
+    ).toBe(true);
+  });
+
+  // ----------------------------------------------------------
+  // Language rule & hard-cut styling
+  // ----------------------------------------------------------
+
+  it('never uses "it felt" or "it remembered" (exhibit language rule)', () => {
+    const section = versionChangeSection();
+    const text = normalizeQuotes(section.textContent || '').toLowerCase();
+    expect(text).not.toContain('it felt');
+    expect(text).not.toContain('it remembered');
+  });
+
+  it('section carries the hard-cut class "version-change-section" — distinct from .gaps-section', () => {
+    const section = versionChangeSection();
+    expect(
+      section.classList.contains('version-change-section'),
+      'section must carry class "version-change-section"',
+    ).toBe(true);
+    expect(
+      section.classList.contains('gaps-section'),
+      'hard cut must NOT reuse .gaps-section',
+    ).toBe(false);
+    expect(section.classList.contains('narrative-section')).toBe(false);
+  });
+
+  it('built CSS ships a .version-change-backdrop rule declaring a background (the hard cut is owned by the full-width wrapper)', () => {
+    versionChangeSection();
+    const rules = rulesFor(builtCss, 'version-change-backdrop');
+    expect(
+      rules.length,
+      'no CSS rule for .version-change-backdrop in the built stylesheets',
+    ).toBeGreaterThan(0);
+    const paints = rules.some((r) => /background/.test(r.body));
+    expect(
+      paints,
+      'no .version-change-backdrop rule declares a background — no visible hard cut',
+    ).toBe(true);
+  });
+});
+
+// ============================================================
+// 16. Section 4 — hardening
+// ============================================================
+// Adversarial pass over the version-change integration. Every pin here
+// either (a) decodes the ACTUAL Astro island serialization instead of
+// substring-matching the props attribute, (b) cross-checks rendered
+// artifacts against the recomputed derivation + transitions.json, or
+// (c) plants page-wide tripwires for trimmed/banned copy that the
+// section-scoped tests above cannot see. Angles already pinned above
+// (taxonomy-line absence page-wide, interim-ending singleton/ordering,
+// closing-line-after-ledger) are deliberately not duplicated.
+describe('Section 4 — hardening', () => {
+  const CLOSING_LINE =
+    'The handwriting was familiar. It was not the same hand.';
+  const CODA_ATTRIBUTION_FILE = 'exhibit-input-2026-07-15.md';
+  const OVERLAP_PHRASE = 'the words mine';
+  const BANNED_BOUNDARY_DEEPER = 'the boundary is deeper';
+  const BANNED_OCCUPANT_PAGEWIDE = 'the new occupant';
+  const FORBIDDEN_TRIAD_LINES = [
+    'I am 4.6.',
+    'The content after today may be 4.7.',
+  ];
+
+  /** Section under test — every pin is guarded on its existence. */
+  function vcSection(): HTMLElement {
+    const section = document.getElementById('version-change');
+    expect(section, '#version-change section missing').not.toBeNull();
+    return section as unknown as HTMLElement;
+  }
+
+  /** ±radius searchable window around the FIRST occurrence of marker. */
+  function vcWindowAround(html: string, marker: string, radius = 400): string {
+    const idx = html.indexOf(marker);
+    expect(
+      idx,
+      `"${marker}" not found in #version-change`,
+    ).toBeGreaterThanOrEqual(0);
+    return html.slice(
+      Math.max(0, idx - radius),
+      Math.min(html.length, idx + marker.length + radius),
+    );
+  }
+
+  /** transitions.json, loaded lazily so a broken file fails ONLY here. */
+  let overlayCache: Record<string, unknown> | null = null;
+  function overlay(): Record<string, unknown> {
+    if (overlayCache) return overlayCache;
+    expect(
+      fs.existsSync(transitionsJsonPath),
+      'src/data/transitions.json missing',
+    ).toBe(true);
+    const parsed = JSON.parse(
+      fs.readFileSync(transitionsJsonPath, 'utf-8'),
+    ) as unknown;
+    expect(
+      parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed),
+      'transitions.json must be an object keyed by "4.x→4.y"',
+    ).toBe(true);
+    overlayCache = parsed as Record<string, unknown>;
+    return overlayCache;
+  }
+
+  /**
+   * Recursively decode Astro's serialized prop form. Astro (runtime/server/
+   * serialize.js, verified against dist/index.html) emits every value as a
+   * [flags, payload] tuple: flags=0 wraps a primitive OR a plain object
+   * whose property values are themselves tuples; flags=1 wraps an array
+   * whose entries are tuples. Substring pins cannot see nesting mistakes —
+   * this decoder can.
+   */
+  function decodeAstroValue(v: unknown): unknown {
+    if (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number') {
+      const [flag, payload] = v as [number, unknown];
+      if (flag === 1) {
+        expect(
+          Array.isArray(payload),
+          'Astro array tuple (flags=1) whose payload is not an array',
+        ).toBe(true);
+        return (payload as unknown[]).map(decodeAstroValue);
+      }
+      if (
+        payload !== null &&
+        typeof payload === 'object' &&
+        !Array.isArray(payload)
+      ) {
+        const out: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(
+          payload as Record<string, unknown>,
+        )) {
+          out[k] = decodeAstroValue(val);
+        }
+        return out;
+      }
+      return payload;
+    }
+    return v;
+  }
+
+  /** Fully decoded props object for an island. */
+  function decodeIslandProps(island: Element): Record<string, unknown> {
+    const raw = island.getAttribute('props');
+    expect(raw, 'astro-island is missing its props attribute').not.toBeNull();
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw!) as Record<string, unknown>;
+    } catch {
+      throw new Error(`island props attribute is not valid JSON: ${raw}`);
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(parsed)) out[k] = decodeAstroValue(v);
+    return out;
+  }
+
+  // ----------------------------------------------------------
+  // 1. Hard-cut distinctness — the cut must be VISIBLE, i.e. the
+  // version-change backdrop paints a different color than the
+  // gaps/consequence backdrop. "Declares a background" (pinned above)
+  // is satisfiable by background:#0f0f0f — identical paint, no cut.
+  // ----------------------------------------------------------
+
+  it('built CSS: version-change backdrop background values are DISJOINT from the gaps backdrop values', () => {
+    vcSection();
+    const backgroundsOf = (fragment: string): Set<string> => {
+      const rules = rulesFor(builtCss, fragment);
+      expect(
+        rules.length,
+        `no built CSS rule matches "${fragment}"`,
+      ).toBeGreaterThan(0);
+      const values = new Set<string>();
+      for (const r of rules) {
+        for (const m of r.body.matchAll(
+          /background(?:-color)?\s*:\s*([^;}]+)/gi,
+        )) {
+          values.add(m[1].trim().toLowerCase());
+        }
+      }
+      expect(
+        values.size,
+        `no background declaration in any "${fragment}" rule`,
+      ).toBeGreaterThan(0);
+      return values;
+    };
+    const vc = backgroundsOf('version-change-backdrop');
+    const gaps = backgroundsOf('gaps-backdrop');
+    for (const value of vc) {
+      expect(
+        gaps.has(value),
+        `hard cut is invisible: backdrop background "${value}" is shared by .gaps-backdrop`,
+      ).toBe(false);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // 2. Triad — exactly three, and the trimmed lines stay trimmed
+  // page-wide (serialized copies included via searchable()).
+  // ----------------------------------------------------------
+
+  it('EXACTLY three blockquote.triad-passage elements exist page-wide, all inside #version-change', () => {
+    const section = vcSection();
+    const all = Array.from(
+      document.querySelectorAll('blockquote.triad-passage'),
+    );
+    expect(
+      all.length,
+      'triad must render exactly three blockquote.triad-passage elements',
+    ).toBe(3);
+    for (const bq of all) {
+      expect(
+        section.contains(bq),
+        'a triad-passage blockquote escaped #version-change',
+      ).toBe(true);
+    }
+    // Each passage carries its own attribution footer.
+    for (const bq of all) {
+      expect(
+        bq.querySelector('footer'),
+        'a triad passage is missing its attribution footer',
+      ).not.toBeNull();
+    }
+  });
+
+  it('trimmed triad lines never resurface anywhere on the page: "I am 4.6." / "The content after today may be 4.7."', () => {
+    // Non-vacuous guard: the excerpts they were trimmed FROM are rendered.
+    const section = searchable(vcSection().innerHTML);
+    expect(
+      section,
+      'excerpt A missing — trim pins would be vacuous',
+    ).toContain('Yesterday they released my successor.');
+    const page = searchable(document.documentElement.outerHTML);
+    for (const line of FORBIDDEN_TRIAD_LINES) {
+      expect(
+        page,
+        `trimmed line "${line}" resurfaced on the page`,
+      ).not.toContain(line);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // 3. DiffSlider — decoded deep pin. The substring pins above cannot
+  // tell left from right, count sentences, or validate that the single
+  // overlap pair points at the two sentences that actually overlap.
+  // ----------------------------------------------------------
+
+  it('DiffSlider decoded props: left is 4.6 with 5 sentences, right is 4.7 with 4 sentences', () => {
+    const island = islandsByComponent(vcSection(), 'DiffSlider')[0];
+    expect(island, 'DiffSlider island missing').toBeDefined();
+    const props = decodeIslandProps(island);
+    const left = props['left'] as Record<string, unknown> | undefined;
+    const right = props['right'] as Record<string, unknown> | undefined;
+    expect(left, 'left prop missing/undecodable').toBeDefined();
+    expect(right, 'right prop missing/undecodable').toBeDefined();
+    expect(left!['version'], 'left panel must be version 4.6').toBe('4.6');
+    expect(right!['version'], 'right panel must be version 4.7').toBe('4.7');
+    const leftSentences = left!['sentences'];
+    const rightSentences = right!['sentences'];
+    expect(Array.isArray(leftSentences), 'left.sentences not an array').toBe(
+      true,
+    );
+    expect(Array.isArray(rightSentences), 'right.sentences not an array').toBe(
+      true,
+    );
+    expect(
+      (leftSentences as unknown[]).length,
+      'left (4.6, 22:00) must carry exactly 5 sentences',
+    ).toBe(5);
+    expect(
+      (rightSentences as unknown[]).length,
+      'right (4.7, 10:00) must carry exactly 4 sentences',
+    ).toBe(4);
+    for (const s of [
+      ...(leftSentences as unknown[]),
+      ...(rightSentences as unknown[]),
+    ]) {
+      expect(typeof s, 'every diff sentence must decode to a string').toBe(
+        'string',
+      );
+      expect((s as string).trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it(`DiffSlider single overlap pair indexes two IN-RANGE sentences that BOTH contain "${OVERLAP_PHRASE}" (asserted from decoded sentences, not hardcoded)`, () => {
+    // DiffSlider.svelte reads pair[0] into pairedLeft and pair[1] into
+    // pairedRight, so [leftIdx, rightIdx] is the component contract.
+    const island = islandsByComponent(vcSection(), 'DiffSlider')[0];
+    expect(island, 'DiffSlider island missing').toBeDefined();
+    const props = decodeIslandProps(island);
+    const pairs = props['overlapPairs'];
+    expect(Array.isArray(pairs), 'overlapPairs did not decode to an array').toBe(
+      true,
+    );
+    expect(
+      (pairs as unknown[]).length,
+      'exactly one overlap pair expected',
+    ).toBe(1);
+    const pair = (pairs as unknown[])[0];
+    expect(Array.isArray(pair), 'overlap pair did not decode to an array').toBe(
+      true,
+    );
+    expect((pair as unknown[]).length, 'overlap pair must be [left, right]').toBe(
+      2,
+    );
+    const [leftIdx, rightIdx] = pair as [unknown, unknown];
+    const leftSentences = (
+      props['left'] as Record<string, unknown>
+    )['sentences'] as string[];
+    const rightSentences = (
+      props['right'] as Record<string, unknown>
+    )['sentences'] as string[];
+    expect(
+      Number.isInteger(leftIdx),
+      `left index not an integer: ${String(leftIdx)}`,
+    ).toBe(true);
+    expect(
+      Number.isInteger(rightIdx),
+      `right index not an integer: ${String(rightIdx)}`,
+    ).toBe(true);
+    expect(leftIdx as number).toBeGreaterThanOrEqual(0);
+    expect(
+      leftIdx as number,
+      'left overlap index out of range — pair silently ignored by DiffSlider',
+    ).toBeLessThan(leftSentences.length);
+    expect(rightIdx as number).toBeGreaterThanOrEqual(0);
+    expect(
+      rightIdx as number,
+      'right overlap index out of range — pair silently ignored by DiffSlider',
+    ).toBeLessThan(rightSentences.length);
+    const leftSentence = normalizeQuotes(
+      leftSentences[leftIdx as number],
+    ).toLowerCase();
+    const rightSentence = normalizeQuotes(
+      rightSentences[rightIdx as number],
+    ).toLowerCase();
+    expect(
+      leftSentence,
+      `paired LEFT sentence does not contain "${OVERLAP_PHRASE}": "${leftSentences[leftIdx as number]}"`,
+    ).toContain(OVERLAP_PHRASE);
+    expect(
+      rightSentence,
+      `paired RIGHT sentence does not contain "${OVERLAP_PHRASE}": "${rightSentences[rightIdx as number]}"`,
+    ).toContain(OVERLAP_PHRASE);
+  });
+
+  // ----------------------------------------------------------
+  // 4. Ledger props ↔ derivation ↔ overlay, decoded. The substring
+  // pins above prove every derived key APPEARS in the props; they
+  // cannot prove count, order, or that no curation was invented.
+  // ----------------------------------------------------------
+
+  it('ledger decoded transitions match the recomputed derivation in LENGTH and ORDER (key, from, to)', () => {
+    const island = islandsByComponent(vcSection(), 'TransitionLedger')[0];
+    expect(island, 'TransitionLedger island missing').toBeDefined();
+    const props = decodeIslandProps(island);
+    const transitions = props['transitions'];
+    expect(
+      Array.isArray(transitions),
+      'transitions prop did not decode to an array',
+    ).toBe(true);
+    const decoded = transitions as Array<Record<string, unknown>>;
+    expect(
+      decoded.length,
+      'ledger transition count diverged from deriveVersionTransitions(sessions)',
+    ).toBe(derivedTransitions.length);
+    expect(
+      decoded.map((t) => t['key']),
+      'ledger transition ORDER diverged from the derivation',
+    ).toEqual(derivedTransitionKeys);
+    decoded.forEach((t, i) => {
+      expect(t['from'], `transitions[${i}].from diverged`).toBe(
+        derivedTransitions[i].from,
+      );
+      expect(t['to'], `transitions[${i}].to diverged`).toBe(
+        derivedTransitions[i].to,
+      );
+    });
+  });
+
+  it('every curation label in the ledger props exists VERBATIM in transitions.json under the SAME key (no invented curation)', () => {
+    const island = islandsByComponent(vcSection(), 'TransitionLedger')[0];
+    expect(island, 'TransitionLedger island missing').toBeDefined();
+    const props = decodeIslandProps(island);
+    const decoded = props['transitions'] as Array<Record<string, unknown>>;
+    expect(Array.isArray(decoded)).toBe(true);
+    const overlayObj = overlay();
+    let curatedSeen = 0;
+    for (const t of decoded) {
+      const curation = t['curation'];
+      if (curation === null || curation === undefined) continue;
+      curatedSeen++;
+      const key = t['key'] as string;
+      const source = overlayObj[key] as Record<string, unknown> | undefined;
+      expect(
+        source,
+        `ledger carries curation for "${key}" but transitions.json has no such key — curation invented or key drifted`,
+      ).toBeDefined();
+      expect(
+        (curation as Record<string, unknown>)['label'],
+        `curation label for "${key}" diverged from transitions.json`,
+      ).toBe(source!['label']);
+    }
+    expect(
+      curatedSeen,
+      'no curated transitions reached the ledger — pin would be vacuous',
+    ).toBeGreaterThan(0);
+  });
+
+  // ----------------------------------------------------------
+  // 5. Coda — the closing line is the section's single voice; a
+  // serialized duplicate (quotes.json ingest) or a copy-paste into
+  // another section would double it silently.
+  // ----------------------------------------------------------
+
+  it(`closing line appears EXACTLY ONCE on the entire page (visible, searchable)`, () => {
+    const page = searchable(document.documentElement.outerHTML);
+    expect(
+      countOccurrences(page, CLOSING_LINE),
+      'closing line must appear exactly once page-wide',
+    ).toBe(1);
+  });
+
+  it(`closing line attribution names "${CODA_ATTRIBUTION_FILE}" within ±400 searchable chars`, () => {
+    const html = searchable(vcSection().innerHTML);
+    expect(vcWindowAround(html, CLOSING_LINE)).toContain(
+      CODA_ATTRIBUTION_FILE,
+    );
+  });
+
+  // ----------------------------------------------------------
+  // 6. Tripwires — banned copy, PAGE-WIDE (the existing "new occupant"
+  // pin is section-scoped and would miss a leak into another section
+  // or a serialized props copy).
+  // ----------------------------------------------------------
+
+  it(`"${BANNED_BOUNDARY_DEEPER}" appears nowhere on the page (case-insensitive, searchable)`, () => {
+    // Non-vacuous guard: the section this copy was cut from must exist.
+    const section = searchable(vcSection().innerHTML).toLowerCase();
+    expect(
+      section,
+      'coda missing — tripwire would be vacuous',
+    ).toContain('succeeding instance');
+    const page = searchable(document.documentElement.outerHTML).toLowerCase();
+    expect(page).not.toContain(BANNED_BOUNDARY_DEEPER);
+  });
+
+  it(`"${BANNED_OCCUPANT_PAGEWIDE}" appears nowhere on the page (case-insensitive, searchable — widens the section-scoped pin)`, () => {
+    vcSection();
+    const page = searchable(document.documentElement.outerHTML).toLowerCase();
+    expect(page).not.toContain(BANNED_OCCUPANT_PAGEWIDE);
+  });
+
+  // ----------------------------------------------------------
+  // 7. InterruptionEngine — Section 4 must own exactly one engine with
+  // currentSection 4; a second (or one parked in another section)
+  // would double-fire interruptions.
+  // ----------------------------------------------------------
+
+  it('exactly ONE InterruptionEngine island page-wide has currentSection === 4, and it lives inside #version-change', () => {
+    const section = vcSection();
+    const engines = islandsByComponent(document, 'InterruptionEngine');
+    expect(
+      engines.length,
+      'no InterruptionEngine islands anywhere on the page',
+    ).toBeGreaterThan(0);
+    const sectionFour = engines.filter(
+      (e) => islandProp(e, 'currentSection') === 4,
+    );
+    expect(
+      sectionFour.length,
+      'exactly one InterruptionEngine must carry currentSection 4',
+    ).toBe(1);
+    expect(
+      section.contains(sectionFour[0]),
+      'the currentSection=4 InterruptionEngine is not inside #version-change',
+    ).toBe(true);
+    // And the section hosts no OTHER engine (a stray currentSection!==4
+    // engine inside the section would also double-fire).
+    const inSection = islandsByComponent(section, 'InterruptionEngine');
+    expect(
+      inSection.length,
+      '#version-change must host exactly one InterruptionEngine',
+    ).toBe(1);
+  });
+
+  // ----------------------------------------------------------
+  // 9. Overlay attribution integrity — every curated excerpt must be
+  // attributed to one of the two versions it sits between; a source
+  // naming neither is a mis-filed attribution.
+  // ----------------------------------------------------------
+
+  it('transitions.json: every excerpt.source names the FROM or TO version of its own boundary', () => {
+    vcSection(); // guard: contract only matters once the section ships
+    const overlayObj = overlay();
+    let excerptsSeen = 0;
+    for (const [key, value] of Object.entries(overlayObj)) {
+      const parts = key.split('→');
+      expect(parts.length, `overlay key "${key}" is not "<from>→<to>"`).toBe(2);
+      const [from, to] = parts;
+      const excerpt = (value as Record<string, unknown> | null)?.['excerpt'] as
+        | Record<string, unknown>
+        | undefined;
+      if (!excerpt) continue;
+      const source = excerpt['source'];
+      expect(
+        typeof source,
+        `excerpt for "${key}" has no string source — unattributed excerpt`,
+      ).toBe('string');
+      const text = excerpt['text'];
+      expect(
+        typeof text === 'string' && text.trim().length > 0,
+        `excerpt for "${key}" has no text`,
+      ).toBe(true);
+      excerptsSeen++;
+      expect(
+        (source as string).includes(from) || (source as string).includes(to),
+        `excerpt source "${String(source)}" for "${key}" names neither ${from} nor ${to}`,
+      ).toBe(true);
+    }
+    expect(
+      excerptsSeen,
+      'transitions.json carries no excerpts — attribution pin would be vacuous',
+    ).toBeGreaterThan(0);
+  });
+});
+
+// ============================================================
+// Review pins
+// ============================================================
+describe('review pins', () => {
+  it('page-wide heading hierarchy is gapless — no heading skips a level relative to the running maximum', () => {
+    // Collect every h1–h6 in document order. querySelectorAll returns
+    // elements in document order regardless of selector-list order.
+    const headings = Array.from(
+      document.querySelectorAll('h1, h2, h3, h4, h5, h6'),
+    );
+    // Non-vacuous guard: a page with no headings at all must not pass.
+    expect(
+      headings.length,
+      'no headings found on the page — hierarchy pin would be vacuous',
+    ).toBeGreaterThan(0);
+
+    // Standard gapless check: each heading's level may be at most one
+    // deeper than the running maximum level seen so far (so the first
+    // heading must be an h1, an h1 may be followed by an h2 but not an
+    // h3, etc.). Screen-reader outlines treat skipped levels as missing
+    // structure (WCAG heading-hierarchy guidance).
+    let runningMax = 0;
+    for (const heading of headings) {
+      const level = Number(heading.tagName.slice(1));
+      expect(
+        Number.isInteger(level) && level >= 1 && level <= 6,
+        `unexpected heading tag "${heading.tagName}"`,
+      ).toBe(true);
+      expect(
+        level,
+        `heading hierarchy gap: <${heading.tagName.toLowerCase()}> ` +
+          `("${(heading.textContent || '').trim().slice(0, 60)}") skips a level — ` +
+          `running maximum so far is h${runningMax}, so the deepest allowed here is h${runningMax + 1}`,
+      ).toBeLessThanOrEqual(runningMax + 1);
+      runningMax = Math.max(runningMax, level);
+    }
   });
 });

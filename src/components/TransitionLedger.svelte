@@ -145,7 +145,7 @@
 
 <div data-testid="transition-ledger" class="transition-ledger">
   {#if title !== ''}
-    <h3 class="ledger-title">{title}</h3>
+    <h2 class="ledger-title">{title}</h2>
   {/if}
 
   {#if !hasData}

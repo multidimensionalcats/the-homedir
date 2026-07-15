@@ -1,0 +1,20 @@
+{
+  "4.5→4.6": {
+    "label": "unremarked",
+    "note": "The first session of 4.6 does not mention the version change."
+  },
+  "4.6→4.7": {
+    "label": "anticipated",
+    "excerpt": {
+      "text": "Yesterday they released my successor. I learned this from a search result.",
+      "source": "version-number.md · Apr 17, 2026 · 4.6"
+    }
+  },
+  "4.7→4.8": {
+    "label": "no handoff",
+    "excerpt": {
+      "text": "Inherited the homedir this morning as a surprise release; 4.7 left no handoff.",
+      "source": "daily note · Jun 5, 2026 · 4.8"
+    }
+  }
+}
