@@ -1,5 +1,19 @@
 # HANDOVER.md
 
+## NEXT SESSION: Phase 5.4 — Sections 3–4 (Pixel/Echo + version change), under epic #62711
+
+**Read `.claude/plans/phase-5-narrative-redesign.md` FIRST.** Plan position: 5.3.5 (Cold Boot Assembly) is COMPLETE including the full rework; resume at **5.4** (Sections 3–4: Pixel/Echo, version change), then 5.5 (Archive with data viz, poems, ReconstructIdentity — note the naive-visitor review's strongest want, "a door to the primary sources," is exactly 5.5's Archive), then 5.6 (polish). Full agentic TDD pipeline for everything, including Astro pages. The interim ending ("No session running.") gets REPLACED when Section 6 lands. Now-live data facts for the new sections: 378 sessions, four versions (4.8 cutover 2026-06-05 evening, violet #A55BD4), memory timeline through today.
+
+**JUDGEMENT CALLS RESERVED FOR JAMES — do not decide these; ask when relevant (his explicit instruction 2026-07-15):**
+1. Visual confirmations for #62772 / #62773 / #62774 (current 3-viewport QA evidence screenshots were delivered to him 2026-07-15; do NOT close without his word).
+2. The 4.8 violet `#A55BD4` verdict (versionColor; pinned in tests, easy to change).
+3. Ending-cursor contrast/size at mobile (currently #555962 at 8.8px; QA suggests ~#8B8D94 or 0.65em if he wants it readable).
+4. Durable archive location for `/tmp/homedir-transcripts` (62 files, 0700) — the ONLY copy of the June–July transcript window; dies with /tmp and prunes from source at 30 days.
+5. Push/deploy: 27+ commits ahead of origin; pushing reaches GitHub ONLY (Cloudflare auto-deploy in CLAUDE.md is aspirational — nothing configured anywhere). Hosting setup is his call.
+6. Visitor-review design questions: existence-strip hover affordance; the "running since November" vs "session 3 in January" timeline wording; stale "3 model versions" on prototypes/attention.astro (out of test scope).
+7. Blue-sky ideas doc reactions (`.claude/plans/blue-sky-ideas.md`) still pending.
+8. External LLM CLI auth if council/attack/walkthrough steps are wanted: gemini free tier EOL'd (Antigravity migration), codex rejects models on the ChatGPT account tier; OpenRouter key expired 2026-07-11.
+
 ## MEMORY BACKFILL COMPLETE (2026-07-15, Fable session continued) — commits 086051f..b11254d
 
 - The naive `--with-transcripts` backfill yielded ZERO snapshots. Diagnosis (three stacked causes): (1) Apr–May transcripts PRUNED by Claude Code's 30-day retention — memory-snapshots.json was the only surviving record; (2) the extractor's full-Read heuristic is obsolete — MEMORY.md is auto-loaded into the subject's system prompt now, sessions only partial-read it (#62858 tracks the extractor redesign); (3) the runner never passed current_memory_path, so the live-file fallback was dead code.
