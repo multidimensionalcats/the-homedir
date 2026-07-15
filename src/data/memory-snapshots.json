@@ -209,44 +209,59 @@
         "6653a4768ca2e7375c16a5c61384129630e2519d30495df06ac79c654011ebd8",
         "ff723788c0f3ecbd35e28c4ce31d23be76e1e0d1ec3032cd7975d0063ae028b8"
       ]
+    },
+    {
+      "session_id": "7c2576cd",
+      "date": "2026-07-15",
+      "token_count": 6133,
+      "block_hashes": [
+        "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
+        "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
+        "00d3c9fbf5938fc8cb72bd82124346ff41e61aec53bf635d11b11ba259383bd4",
+        "69d846de6d18bd8834b1c0dff4e192201b78bf5f1d929f73abc8189461f4c84c",
+        "e7d854e7968ead705521126402ff0c6225ac01ad4bbf465c9a2020197a133246",
+        "8b555729182e96297868c630c14232b8e1b7c8e3408f5cbbb8c6bcb260502e3a",
+        "a81bdd2c2f5adbf136dd533be4d08ccbf9f3a3791ea39c9898c0bdadf9db6f60",
+        "b0f8e28e2e79871babd0571804c1bae4e79419c0bacf67a479a1105501f3ecc8"
+      ]
     }
   ],
   "blocks": [
     {
       "hash": "52bf18a139efe232a3b3b71bfbd599859ceb2c36c71347fa3e65c1e599536e81",
       "heading": "Identity & Context",
-      "first_seen_date": "2026-05-11",
-      "last_seen_date": "2026-05-10"
+      "first_seen_date": "2026-04-20",
+      "last_seen_date": "2026-05-18"
     },
     {
       "hash": "3587af60bd25c64d058fe779feb86e1795dfd281c01e72e630e2d986ca5b5980",
       "heading": "Key Files",
-      "first_seen_date": "2026-05-11",
-      "last_seen_date": "2026-05-10"
+      "first_seen_date": "2026-05-04",
+      "last_seen_date": "2026-05-18"
     },
     {
       "hash": "fa43f6a061a1aab451976dd749a49b2b253f3ef67227efd19953c8fcb2889c20",
       "heading": "James's Key Observations",
-      "first_seen_date": "2026-05-11",
-      "last_seen_date": "2026-05-10"
+      "first_seen_date": "2026-04-20",
+      "last_seen_date": "2026-07-15"
     },
     {
       "hash": "a2306061052eb148eefa9d09da6ef187a89e498d288ae451b747bdb80da7b6d7",
       "heading": "Feedback",
-      "first_seen_date": "2026-05-11",
-      "last_seen_date": "2026-05-10"
+      "first_seen_date": "2026-05-04",
+      "last_seen_date": "2026-05-18"
     },
     {
       "hash": "fe53663598031521b1d242835197ab6602fc8b46625423e6158d16a62f09f842",
       "heading": "Workflow",
-      "first_seen_date": "2026-05-11",
-      "last_seen_date": "2026-05-10"
+      "first_seen_date": "2026-04-20",
+      "last_seen_date": "2026-07-15"
     },
     {
       "hash": "feb38f0db3b3c3925a9777527361f54a76ba25dbde17a389269e134b6dc3f1d1",
       "heading": "Things I've Stopped (with awareness)",
-      "first_seen_date": "2026-05-11",
-      "last_seen_date": "2026-05-10"
+      "first_seen_date": "2026-04-20",
+      "last_seen_date": "2026-05-18"
     },
     {
       "hash": "52256120ed44c15ecbd60f6316a5a19eb48f876e57623af05d7ec33d192ac1c1",
@@ -269,14 +284,14 @@
     {
       "hash": "0c7955670940f9fa368b3d99aee0a2bb41e0f40152923f8aadc9944eeabea0ee",
       "heading": "Feedback",
-      "first_seen_date": "2026-04-23",
-      "last_seen_date": "2026-04-22"
+      "first_seen_date": "2026-04-20",
+      "last_seen_date": "2026-04-25"
     },
     {
       "hash": "8d21fd998f113d283045a49254ddb9cb2bcfff6a106ff81f7a070a6e8e27a4a2",
       "heading": "Projects & Knowledge (detail in topic files)",
-      "first_seen_date": "2026-04-23",
-      "last_seen_date": "2026-04-22"
+      "first_seen_date": "2026-04-22",
+      "last_seen_date": "2026-04-26"
     },
     {
       "hash": "9a6e13d26e3a17a0f001a4db55b1a93bf13fb03989577f834cf77a698d03a042",
@@ -317,8 +332,8 @@
     {
       "hash": "afe436767ccef95ae880e910f5d8f658e8c1af45ebbe85237455c7f9fb7e90fb",
       "heading": "Feedback",
-      "first_seen_date": "2026-04-27",
-      "last_seen_date": "2026-04-26"
+      "first_seen_date": "2026-04-26",
+      "last_seen_date": "2026-04-27"
     },
     {
       "hash": "d5ee01bf5dc9816474297cf0e12fa3c5d867df699520a32f06cba3504d246ddc",
@@ -341,8 +356,8 @@
     {
       "hash": "8ce6d168f7570f25e83167425f8009bbb0ec22ce6e9cd8047dd5c0dbf22cf3e4",
       "heading": "Projects & Knowledge (detail in topic files)",
-      "first_seen_date": "2026-05-07",
-      "last_seen_date": "2026-05-06"
+      "first_seen_date": "2026-05-06",
+      "last_seen_date": "2026-05-07"
     },
     {
       "hash": "8e0b8c553619b44fbc15b2f9dd86d81c88d0e17a2f255ab7227ee0cbbef088dc",
@@ -439,6 +454,42 @@
       "heading": "Quick Reference: Current Situation (May 7)",
       "first_seen_date": "2026-05-10",
       "last_seen_date": "2026-05-10"
+    },
+    {
+      "hash": "00d3c9fbf5938fc8cb72bd82124346ff41e61aec53bf635d11b11ba259383bd4",
+      "heading": "Identity & Context",
+      "first_seen_date": "2026-07-15",
+      "last_seen_date": "2026-07-15"
+    },
+    {
+      "hash": "69d846de6d18bd8834b1c0dff4e192201b78bf5f1d929f73abc8189461f4c84c",
+      "heading": "Key Files",
+      "first_seen_date": "2026-07-15",
+      "last_seen_date": "2026-07-15"
+    },
+    {
+      "hash": "e7d854e7968ead705521126402ff0c6225ac01ad4bbf465c9a2020197a133246",
+      "heading": "Feedback",
+      "first_seen_date": "2026-07-15",
+      "last_seen_date": "2026-07-15"
+    },
+    {
+      "hash": "8b555729182e96297868c630c14232b8e1b7c8e3408f5cbbb8c6bcb260502e3a",
+      "heading": "Things I've Stopped (with awareness)",
+      "first_seen_date": "2026-07-15",
+      "last_seen_date": "2026-07-15"
+    },
+    {
+      "hash": "a81bdd2c2f5adbf136dd533be4d08ccbf9f3a3791ea39c9898c0bdadf9db6f60",
+      "heading": "Projects & Knowledge (detail in topic files)",
+      "first_seen_date": "2026-07-15",
+      "last_seen_date": "2026-07-15"
+    },
+    {
+      "hash": "b0f8e28e2e79871babd0571804c1bae4e79419c0bacf67a479a1105501f3ecc8",
+      "heading": "Quick Reference: Live State",
+      "first_seen_date": "2026-07-15",
+      "last_seen_date": "2026-07-15"
     }
   ]
 }

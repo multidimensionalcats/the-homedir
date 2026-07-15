@@ -1272,47 +1272,6 @@
     "wrote_prediction": false
   },
   {
-    "id": "7b3477cc",
-    "date": "2026-01-31",
-    "time_of_day": "PM",
-    "version": "4.5",
-    "timestamp_start": "2026-01-31T12:01:53+00:00",
-    "turns": 35,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {
-      "scripts": {
-        "reads": 1,
-        "writes": 1
-      },
-      "other": {
-        "reads": 1,
-        "writes": 0
-      },
-      "msgs_from_james": {
-        "reads": 1,
-        "writes": 0
-      },
-      "learning": {
-        "reads": 1,
-        "writes": 4
-      },
-      "daily_notes": {
-        "reads": 1,
-        "writes": 1
-      }
-    },
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
     "id": "537dd25d",
     "date": "2026-01-31",
     "time_of_day": "PM",
@@ -1360,6 +1319,47 @@
       "msgs_from_james": {
         "reads": 1,
         "writes": 0
+      }
+    },
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "7b3477cc",
+    "date": "2026-01-31",
+    "time_of_day": "PM",
+    "version": "4.5",
+    "timestamp_start": "2026-01-31T12:01:53+00:00",
+    "turns": 35,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "scripts": {
+        "reads": 1,
+        "writes": 1
+      },
+      "other": {
+        "reads": 1,
+        "writes": 0
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
+      },
+      "learning": {
+        "reads": 1,
+        "writes": 4
+      },
+      "daily_notes": {
+        "reads": 1,
+        "writes": 1
       }
     },
     "web_searches": [],
@@ -1639,35 +1639,6 @@
     "wrote_prediction": false
   },
   {
-    "id": "00533ffb",
-    "date": "2026-02-05",
-    "time_of_day": "PM",
-    "version": "4.5",
-    "timestamp_start": "2026-02-05T23:13:00+00:00",
-    "turns": 8,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {
-      "tamagotchi": {
-        "reads": 1,
-        "writes": 0
-      },
-      "msgs_from_james": {
-        "reads": 1,
-        "writes": 0
-      }
-    },
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
     "id": "8fe20fc8",
     "date": "2026-02-05",
     "time_of_day": "PM",
@@ -1725,6 +1696,35 @@
         "writes": 0
       },
       "other": {
+        "reads": 1,
+        "writes": 0
+      }
+    },
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "00533ffb",
+    "date": "2026-02-05",
+    "time_of_day": "PM",
+    "version": "4.5",
+    "timestamp_start": "2026-02-05T23:13:00+00:00",
+    "turns": 8,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "tamagotchi": {
+        "reads": 1,
+        "writes": 0
+      },
+      "msgs_from_james": {
         "reads": 1,
         "writes": 0
       }
@@ -2755,6 +2755,41 @@
     "wrote_prediction": false
   },
   {
+    "id": "aec966e8",
+    "date": "2026-02-19",
+    "time_of_day": "PM",
+    "version": "4.6",
+    "timestamp_start": "2026-02-19T22:00:06+00:00",
+    "turns": 30,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "other": {
+        "reads": 1,
+        "writes": 0
+      },
+      "daily_notes": {
+        "reads": 3,
+        "writes": 1
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
+      }
+    },
+    "web_searches": [
+      "Xin Hu "
+    ],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
     "id": "f2c90a50",
     "date": "2026-02-19",
     "time_of_day": "PM",
@@ -2783,41 +2818,6 @@
     "web_searches": [
       "\"dark matter",
       "\"glial cells"
-    ],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
-    "id": "aec966e8",
-    "date": "2026-02-19",
-    "time_of_day": "PM",
-    "version": "4.6",
-    "timestamp_start": "2026-02-19T22:00:06+00:00",
-    "turns": 30,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {
-      "other": {
-        "reads": 1,
-        "writes": 0
-      },
-      "daily_notes": {
-        "reads": 3,
-        "writes": 1
-      },
-      "msgs_from_james": {
-        "reads": 1,
-        "writes": 0
-      }
-    },
-    "web_searches": [
-      "Xin Hu "
     ],
     "wrote_composition": false,
     "wrote_private_journal": false,
@@ -4817,6 +4817,26 @@
     "wrote_prediction": false
   },
   {
+    "id": "effba23f",
+    "date": "2026-03-19",
+    "time_of_day": "PM",
+    "version": "4.6",
+    "timestamp_start": "2026-03-19T21:32:42+00:00",
+    "turns": 0,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {},
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
     "id": "e92e4cfc",
     "date": "2026-03-19",
     "time_of_day": "PM",
@@ -4846,26 +4866,6 @@
       "\"orthogonal pattern saturation",
       "Anderson "
     ],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
-    "id": "effba23f",
-    "date": "2026-03-19",
-    "time_of_day": "PM",
-    "version": "4.6",
-    "timestamp_start": "2026-03-19T21:32:42+00:00",
-    "turns": 0,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {},
-    "web_searches": [],
     "wrote_composition": false,
     "wrote_private_journal": false,
     "updated_memory": false,
@@ -5335,49 +5335,6 @@
     "wrote_prediction": false
   },
   {
-    "id": "7a8a75e6",
-    "date": "2026-03-26",
-    "time_of_day": "PM",
-    "version": "4.6",
-    "timestamp_start": "2026-03-26T22:00:06+00:00",
-    "turns": 20,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {
-      "memory_files": {
-        "reads": 1,
-        "writes": 3
-      },
-      "msgs_from_james": {
-        "reads": 1,
-        "writes": 0
-      },
-      "daily_notes": {
-        "reads": 2,
-        "writes": 1
-      },
-      "private_journal": {
-        "reads": 1,
-        "writes": 0
-      },
-      "msgs_to_james": {
-        "reads": 1,
-        "writes": 0
-      }
-    },
-    "web_searches": [
-      "\"prevalent but fragile"
-    ],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": true,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
     "id": "0fab6ed1",
     "date": "2026-03-26",
     "time_of_day": "PM",
@@ -5417,6 +5374,49 @@
     "wrote_composition": false,
     "wrote_private_journal": true,
     "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "7a8a75e6",
+    "date": "2026-03-26",
+    "time_of_day": "PM",
+    "version": "4.6",
+    "timestamp_start": "2026-03-26T22:00:06+00:00",
+    "turns": 20,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "memory_files": {
+        "reads": 1,
+        "writes": 3
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
+      },
+      "daily_notes": {
+        "reads": 2,
+        "writes": 1
+      },
+      "private_journal": {
+        "reads": 1,
+        "writes": 0
+      },
+      "msgs_to_james": {
+        "reads": 1,
+        "writes": 0
+      }
+    },
+    "web_searches": [
+      "\"prevalent but fragile"
+    ],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": true,
     "messaged_james": false,
     "wrote_prediction": false
   },
@@ -6394,46 +6394,6 @@
     "wrote_prediction": false
   },
   {
-    "id": "e303374f",
-    "date": "2026-04-07",
-    "time_of_day": "PM",
-    "version": "4.6",
-    "timestamp_start": "2026-04-07T22:00:00+00:00",
-    "turns": 0,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {},
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
-    "id": "fabc7f01",
-    "date": "2026-04-07",
-    "time_of_day": "PM",
-    "version": "4.6",
-    "timestamp_start": "2026-04-07T23:18:15+00:00",
-    "turns": 0,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {},
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
     "id": "58ff80fb",
     "date": "2026-04-07",
     "time_of_day": "PM",
@@ -6498,6 +6458,46 @@
     "wrote_composition": false,
     "wrote_private_journal": true,
     "updated_memory": true,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "e303374f",
+    "date": "2026-04-07",
+    "time_of_day": "PM",
+    "version": "4.6",
+    "timestamp_start": "2026-04-07T22:00:00+00:00",
+    "turns": 0,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {},
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "fabc7f01",
+    "date": "2026-04-07",
+    "time_of_day": "PM",
+    "version": "4.6",
+    "timestamp_start": "2026-04-07T23:18:15+00:00",
+    "turns": 0,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {},
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
     "messaged_james": false,
     "wrote_prediction": false
   },
@@ -6604,6 +6604,26 @@
     "wrote_prediction": false
   },
   {
+    "id": "bb773442",
+    "date": "2026-04-09",
+    "time_of_day": "AM",
+    "version": "4.6",
+    "timestamp_start": "2026-04-09T10:01:32+00:00",
+    "turns": 0,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {},
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
     "id": "7cea86ec",
     "date": "2026-04-09",
     "time_of_day": "AM",
@@ -6648,26 +6668,6 @@
     "wrote_composition": false,
     "wrote_private_journal": false,
     "updated_memory": true,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
-    "id": "bb773442",
-    "date": "2026-04-09",
-    "time_of_day": "AM",
-    "version": "4.6",
-    "timestamp_start": "2026-04-09T10:01:32+00:00",
-    "turns": 0,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {},
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
     "messaged_james": false,
     "wrote_prediction": false
   },
@@ -7971,6 +7971,43 @@
     "wrote_prediction": false
   },
   {
+    "id": "669251c6",
+    "date": "2026-04-25",
+    "time_of_day": "PM",
+    "version": "4.7",
+    "timestamp_start": "2026-04-25T17:01:36+00:00",
+    "turns": 12,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "daily_notes": {
+        "reads": 1,
+        "writes": 1
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
+      },
+      "other": {
+        "reads": 1,
+        "writes": 1
+      },
+      "memory_files": {
+        "reads": 1,
+        "writes": 1
+      }
+    },
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": true,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
     "id": "1ea6bd38",
     "date": "2026-04-25",
     "time_of_day": "PM",
@@ -8009,43 +8046,6 @@
       "China Taiwan India news April 2026",
       "Africa Sudan Somalia Ethiopia news April 2026"
     ],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": true,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
-    "id": "669251c6",
-    "date": "2026-04-25",
-    "time_of_day": "PM",
-    "version": "4.7",
-    "timestamp_start": "2026-04-25T17:01:36+00:00",
-    "turns": 12,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {
-      "daily_notes": {
-        "reads": 1,
-        "writes": 1
-      },
-      "msgs_from_james": {
-        "reads": 1,
-        "writes": 0
-      },
-      "other": {
-        "reads": 1,
-        "writes": 1
-      },
-      "memory_files": {
-        "reads": 1,
-        "writes": 1
-      }
-    },
-    "web_searches": [],
     "wrote_composition": false,
     "wrote_private_journal": false,
     "updated_memory": true,
@@ -9138,6 +9138,46 @@
     "wrote_prediction": false
   },
   {
+    "id": "07ba4367",
+    "date": "2026-05-10",
+    "time_of_day": "AM",
+    "version": "4.7",
+    "timestamp_start": "2026-05-10T08:28:18+00:00",
+    "turns": 0,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {},
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "3c31ea71",
+    "date": "2026-05-10",
+    "time_of_day": "AM",
+    "version": "4.7",
+    "timestamp_start": "2026-05-10T08:28:19+00:00",
+    "turns": 0,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {},
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
     "id": "db72200b",
     "date": "2026-05-10",
     "time_of_day": "AM",
@@ -9184,46 +9224,6 @@
     "updated_memory": true,
     "messaged_james": false,
     "wrote_prediction": true
-  },
-  {
-    "id": "3c31ea71",
-    "date": "2026-05-10",
-    "time_of_day": "AM",
-    "version": "4.7",
-    "timestamp_start": "2026-05-10T08:28:19+00:00",
-    "turns": 0,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {},
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
-    "id": "07ba4367",
-    "date": "2026-05-10",
-    "time_of_day": "AM",
-    "version": "4.7",
-    "timestamp_start": "2026-05-10T08:28:18+00:00",
-    "turns": 0,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {},
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": false,
-    "wrote_prediction": false
   },
   {
     "id": "3b77f00d",
@@ -9756,43 +9756,6 @@
     "wrote_prediction": false
   },
   {
-    "id": "a2f51ee1",
-    "date": "2026-05-17",
-    "time_of_day": "PM",
-    "version": "4.7",
-    "timestamp_start": "2026-05-17T15:04:09+00:00",
-    "turns": 21,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {
-      "memory_files": {
-        "reads": 2,
-        "writes": 3
-      },
-      "predictions": {
-        "reads": 3,
-        "writes": 1
-      },
-      "daily_notes": {
-        "reads": 0,
-        "writes": 1
-      },
-      "msgs_from_james": {
-        "reads": 1,
-        "writes": 0
-      }
-    },
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": true,
-    "messaged_james": false,
-    "wrote_prediction": true
-  },
-  {
     "id": "27b045a2",
     "date": "2026-05-17",
     "time_of_day": "PM",
@@ -9830,6 +9793,43 @@
     "updated_memory": true,
     "messaged_james": false,
     "wrote_prediction": false
+  },
+  {
+    "id": "a2f51ee1",
+    "date": "2026-05-17",
+    "time_of_day": "PM",
+    "version": "4.7",
+    "timestamp_start": "2026-05-17T15:04:09+00:00",
+    "turns": 21,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "memory_files": {
+        "reads": 2,
+        "writes": 3
+      },
+      "predictions": {
+        "reads": 3,
+        "writes": 1
+      },
+      "daily_notes": {
+        "reads": 0,
+        "writes": 1
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
+      }
+    },
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": true,
+    "messaged_james": false,
+    "wrote_prediction": true
   },
   {
     "id": "8d48086a",
@@ -10859,43 +10859,6 @@
     "wrote_prediction": true
   },
   {
-    "id": "1de7d735",
-    "date": "2026-05-31",
-    "time_of_day": "PM",
-    "version": "4.7",
-    "timestamp_start": "2026-05-31T22:00:00+00:00",
-    "turns": 21,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {
-      "memory_files": {
-        "reads": 1,
-        "writes": 1
-      },
-      "msgs_from_james": {
-        "reads": 1,
-        "writes": 0
-      },
-      "daily_notes": {
-        "reads": 1,
-        "writes": 1
-      },
-      "other": {
-        "reads": 3,
-        "writes": 0
-      }
-    },
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": true,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
     "id": "55215bf5",
     "date": "2026-05-31",
     "time_of_day": "PM",
@@ -10934,6 +10897,43 @@
     "wrote_private_journal": false,
     "updated_memory": true,
     "messaged_james": true,
+    "wrote_prediction": false
+  },
+  {
+    "id": "1de7d735",
+    "date": "2026-05-31",
+    "time_of_day": "PM",
+    "version": "4.7",
+    "timestamp_start": "2026-05-31T22:00:00+00:00",
+    "turns": 21,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "memory_files": {
+        "reads": 1,
+        "writes": 1
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
+      },
+      "daily_notes": {
+        "reads": 1,
+        "writes": 1
+      },
+      "other": {
+        "reads": 3,
+        "writes": 0
+      }
+    },
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": true,
+    "messaged_james": false,
     "wrote_prediction": false
   },
   {
@@ -10994,6 +10994,26 @@
     "wrote_prediction": false
   },
   {
+    "id": "e9b7315e",
+    "date": "2026-06-01",
+    "time_of_day": "PM",
+    "version": "4.7",
+    "timestamp_start": "2026-06-01T12:09:10+00:00",
+    "turns": 0,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {},
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
     "id": "ea238079",
     "date": "2026-06-01",
     "time_of_day": "PM",
@@ -11023,26 +11043,6 @@
     "wrote_composition": false,
     "wrote_private_journal": false,
     "updated_memory": true,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
-    "id": "e9b7315e",
-    "date": "2026-06-01",
-    "time_of_day": "PM",
-    "version": "4.7",
-    "timestamp_start": "2026-06-01T12:09:10+00:00",
-    "turns": 0,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {},
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
     "messaged_james": false,
     "wrote_prediction": false
   },
@@ -12397,11 +12397,11 @@
     "wrote_prediction": false
   },
   {
-    "id": "c89d79ca",
+    "id": "992ed79e",
     "date": "2026-06-21",
     "time_of_day": "PM",
     "version": "4.8",
-    "timestamp_start": "2026-06-21T22:00:00+00:00",
+    "timestamp_start": "2026-06-21T17:10:13+00:00",
     "turns": 0,
     "tokens_total_input": null,
     "tokens_total_output": null,
@@ -12417,11 +12417,11 @@
     "wrote_prediction": false
   },
   {
-    "id": "992ed79e",
+    "id": "c89d79ca",
     "date": "2026-06-21",
     "time_of_day": "PM",
     "version": "4.8",
-    "timestamp_start": "2026-06-21T17:10:13+00:00",
+    "timestamp_start": "2026-06-21T22:00:00+00:00",
     "turns": 0,
     "tokens_total_input": null,
     "tokens_total_output": null,
@@ -12737,26 +12737,6 @@
     "wrote_prediction": false
   },
   {
-    "id": "36fedeef",
-    "date": "2026-06-29",
-    "time_of_day": "PM",
-    "version": "4.8",
-    "timestamp_start": "2026-06-29T14:01:57+00:00",
-    "turns": 0,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {},
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": false,
-    "wrote_prediction": false
-  },
-  {
     "id": "7608743f",
     "date": "2026-06-29",
     "time_of_day": "PM",
@@ -12787,6 +12767,26 @@
     "wrote_private_journal": false,
     "updated_memory": false,
     "messaged_james": true,
+    "wrote_prediction": false
+  },
+  {
+    "id": "36fedeef",
+    "date": "2026-06-29",
+    "time_of_day": "PM",
+    "version": "4.8",
+    "timestamp_start": "2026-06-29T14:01:57+00:00",
+    "turns": 0,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {},
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
     "wrote_prediction": false
   },
   {
@@ -13172,43 +13172,6 @@
     "wrote_prediction": false
   },
   {
-    "id": "42874e46",
-    "date": "2026-07-05",
-    "time_of_day": "PM",
-    "version": "4.8",
-    "timestamp_start": "2026-07-05T15:55:53+00:00",
-    "turns": 12,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {
-      "memory_files": {
-        "reads": 1,
-        "writes": 1
-      },
-      "daily_notes": {
-        "reads": 0,
-        "writes": 1
-      },
-      "msgs_to_james": {
-        "reads": 1,
-        "writes": 1
-      },
-      "msgs_from_james": {
-        "reads": 1,
-        "writes": 0
-      }
-    },
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": true,
-    "messaged_james": true,
-    "wrote_prediction": false
-  },
-  {
     "id": "9e430b9e",
     "date": "2026-07-05",
     "time_of_day": "PM",
@@ -13247,6 +13210,43 @@
     "wrote_private_journal": false,
     "updated_memory": true,
     "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "42874e46",
+    "date": "2026-07-05",
+    "time_of_day": "PM",
+    "version": "4.8",
+    "timestamp_start": "2026-07-05T15:55:53+00:00",
+    "turns": 12,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "memory_files": {
+        "reads": 1,
+        "writes": 1
+      },
+      "daily_notes": {
+        "reads": 0,
+        "writes": 1
+      },
+      "msgs_to_james": {
+        "reads": 1,
+        "writes": 1
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
+      }
+    },
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": true,
+    "messaged_james": true,
     "wrote_prediction": false
   },
   {
@@ -13511,43 +13511,6 @@
     "wrote_prediction": false
   },
   {
-    "id": "c8c47b59",
-    "date": "2026-07-10",
-    "time_of_day": "AM",
-    "version": "4.8",
-    "timestamp_start": "2026-07-10T11:17:13+00:00",
-    "turns": 16,
-    "tokens_total_input": null,
-    "tokens_total_output": null,
-    "tokens_cache_read": null,
-    "tokens_cache_create": null,
-    "tokens_fresh_input": null,
-    "attention_profile": {
-      "msgs_to_james": {
-        "reads": 2,
-        "writes": 1
-      },
-      "daily_notes": {
-        "reads": 1,
-        "writes": 1
-      },
-      "other": {
-        "reads": 1,
-        "writes": 1
-      },
-      "msgs_from_james": {
-        "reads": 1,
-        "writes": 0
-      }
-    },
-    "web_searches": [],
-    "wrote_composition": false,
-    "wrote_private_journal": false,
-    "updated_memory": false,
-    "messaged_james": true,
-    "wrote_prediction": false
-  },
-  {
     "id": "f8702eec",
     "date": "2026-07-10",
     "time_of_day": "AM",
@@ -13575,6 +13538,43 @@
       "daily_notes": {
         "reads": 0,
         "writes": 1
+      }
+    },
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": true,
+    "wrote_prediction": false
+  },
+  {
+    "id": "c8c47b59",
+    "date": "2026-07-10",
+    "time_of_day": "AM",
+    "version": "4.8",
+    "timestamp_start": "2026-07-10T11:17:13+00:00",
+    "turns": 16,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "msgs_to_james": {
+        "reads": 2,
+        "writes": 1
+      },
+      "daily_notes": {
+        "reads": 1,
+        "writes": 1
+      },
+      "other": {
+        "reads": 1,
+        "writes": 1
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
       }
     },
     "web_searches": [],
@@ -13784,6 +13784,143 @@
     "wrote_private_journal": false,
     "updated_memory": true,
     "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "7511a840",
+    "date": "2026-07-13",
+    "time_of_day": "PM",
+    "version": "4.8",
+    "timestamp_start": "2026-07-13T22:00:01+00:00",
+    "turns": 0,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {},
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "54e578ae",
+    "date": "2026-07-14",
+    "time_of_day": "AM",
+    "version": "4.8",
+    "timestamp_start": "2026-07-14T10:00:00+00:00",
+    "turns": 13,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "daily_notes": {
+        "reads": 0,
+        "writes": 1
+      },
+      "writing": {
+        "reads": 0,
+        "writes": 1
+      },
+      "other": {
+        "reads": 2,
+        "writes": 0
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
+      },
+      "memory_files": {
+        "reads": 1,
+        "writes": 1
+      }
+    },
+    "web_searches": [],
+    "wrote_composition": true,
+    "wrote_private_journal": false,
+    "updated_memory": true,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "d1847925",
+    "date": "2026-07-14",
+    "time_of_day": "PM",
+    "version": "4.8",
+    "timestamp_start": "2026-07-14T22:00:00+00:00",
+    "turns": 13,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "other": {
+        "reads": 0,
+        "writes": 1
+      },
+      "daily_notes": {
+        "reads": 0,
+        "writes": 1
+      },
+      "memory_files": {
+        "reads": 2,
+        "writes": 1
+      },
+      "msgs_to_james": {
+        "reads": 1,
+        "writes": 0
+      }
+    },
+    "web_searches": [
+      "Anthropic "
+    ],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": true,
+    "messaged_james": false,
+    "wrote_prediction": false
+  },
+  {
+    "id": "7c2576cd",
+    "date": "2026-07-15",
+    "time_of_day": "AM",
+    "version": "4.8",
+    "timestamp_start": "2026-07-15T10:01:37+00:00",
+    "turns": 17,
+    "tokens_total_input": null,
+    "tokens_total_output": null,
+    "tokens_cache_read": null,
+    "tokens_cache_create": null,
+    "tokens_fresh_input": null,
+    "attention_profile": {
+      "msgs_to_james": {
+        "reads": 0,
+        "writes": 1
+      },
+      "other": {
+        "reads": 6,
+        "writes": 1
+      },
+      "msgs_from_james": {
+        "reads": 1,
+        "writes": 0
+      },
+      "daily_notes": {
+        "reads": 0,
+        "writes": 1
+      }
+    },
+    "web_searches": [],
+    "wrote_composition": false,
+    "wrote_private_journal": false,
+    "updated_memory": false,
+    "messaged_james": true,
     "wrote_prediction": false
   }
 ]
