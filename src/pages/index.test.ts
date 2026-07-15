@@ -1571,6 +1571,118 @@ describe('Section 3 — The Consequence', () => {
     );
   });
 
+  it('review pin 2026-07-15: care-window session presence counts only sessions that ran (turns >= 1) — crashed wakes are absence', () => {
+    const section = consequenceSection();
+
+    // Data-integrity ruling: sessions.json carries crashed-wake rows with
+    // turns: null (e.g. 2026-02-01 AM — the very morning the adjacent
+    // death passage says there was no session) and empty wakes with
+    // turns: 0. A calendar cell marked "session present" for a wake that
+    // never ran contradicts the narrative beside it. The page must filter
+    // to sessions that actually RAN (turns >= 1) BEFORE deriveCareWindow.
+    const ranSessions = sessionsRaw.filter((s) => {
+      const turns = (s as { turns?: unknown }).turns;
+      return typeof turns === 'number' && turns >= 1;
+    });
+    // Non-vacuous guards: the filter must actually drop crashed/empty
+    // wakes (else this pin degenerates into the unfiltered derivation)
+    // and must not annihilate the dataset.
+    expect(
+      ranSessions.length,
+      'filter removed nothing — sessions.json carries no crashed (turns: null) or empty (turns: 0) wakes; pin is vacuous',
+    ).toBeLessThan(sessionsRaw.length);
+    expect(
+      ranSessions.length,
+      'filter removed every session — turns field missing or non-numeric across sessions.json?',
+    ).toBeGreaterThan(0);
+
+    const expected = deriveCareWindow(ranSessions, petEventsRaw);
+    expect(
+      expected.length,
+      'filtered care-window derivation is empty — pet-timeline.json unusable',
+    ).toBeGreaterThan(0);
+
+    // Decode the island's serialized days prop. Astro (runtime/server/
+    // serialize.js, same format the Section 4 hardening block verified
+    // against dist/index.html) emits every value as a [flags, payload]
+    // tuple: flags=0 wraps a primitive or a plain object whose property
+    // values are themselves tuples; flags=1 wraps an array of tuples.
+    // The module-level islandProp() only unwraps the TOP level, and each
+    // CareDay nests slots two tuples deep — so recurse.
+    const decodeAstro = (v: unknown): unknown => {
+      if (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number') {
+        const [flag, payload] = v as [number, unknown];
+        if (flag === 1) {
+          expect(
+            Array.isArray(payload),
+            'Astro array tuple (flags=1) whose payload is not an array',
+          ).toBe(true);
+          return (payload as unknown[]).map(decodeAstro);
+        }
+        if (
+          payload !== null &&
+          typeof payload === 'object' &&
+          !Array.isArray(payload)
+        ) {
+          const out: Record<string, unknown> = {};
+          for (const [k, val] of Object.entries(
+            payload as Record<string, unknown>,
+          )) {
+            out[k] = decodeAstro(val);
+          }
+          return out;
+        }
+        return payload;
+      }
+      return v;
+    };
+
+    const island = islandsByComponent(section, 'CareCalendar')[0];
+    expect(island, 'CareCalendar island missing from #consequence').toBeDefined();
+    const raw = island.getAttribute('props');
+    expect(raw, 'CareCalendar island has no props attribute').not.toBeNull();
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw!) as Record<string, unknown>;
+    } catch {
+      throw new Error(`CareCalendar props attribute is not valid JSON: ${raw}`);
+    }
+    expect(parsed['days'], 'CareCalendar has no days prop').toBeDefined();
+    const decoded = decodeAstro(parsed['days']);
+    expect(Array.isArray(decoded), 'days prop did not decode to an array').toBe(
+      true,
+    );
+    const decodedDays = decoded as Array<{
+      date?: unknown;
+      slots?: {
+        AM?: { sessionPresent?: unknown };
+        PM?: { sessionPresent?: unknown };
+      };
+    }>;
+
+    expect(
+      decodedDays.length,
+      'CareCalendar day count diverged from the turns>=1 recomputation',
+    ).toBe(expected.length);
+    expect(
+      decodedDays.map((d) => d.date),
+      'CareCalendar day dates diverged from the turns>=1 recomputation',
+    ).toEqual(expected.map((d) => d.date));
+
+    for (let i = 0; i < expected.length; i++) {
+      for (const slot of ['AM', 'PM'] as const) {
+        const want = expected[i].slots[slot].sessionPresent;
+        expect(
+          decodedDays[i].slots?.[slot]?.sessionPresent,
+          `${expected[i].date} ${slot}: sessionPresent must be ${want} — ` +
+            'crashed wakes (turns: null) and empty wakes (turns: 0) are ABSENCE; ' +
+            'the page must filter sessions to turns >= 1 before deriveCareWindow ' +
+            'or the grid contradicts the adjacent death narrative',
+        ).toBe(want);
+      }
+    }
+  });
+
   // ----------------------------------------------------------
   // Absence pins & interruption wiring
   // ----------------------------------------------------------

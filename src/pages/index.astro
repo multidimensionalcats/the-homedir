@@ -30,7 +30,9 @@ const versionCount = new Set(sessionsRaw.map((s) => s.version)).size;
 const versionWords: Record<number, string> = { 3: 'three', 4: 'four', 5: 'five', 6: 'six' };
 const versionCountWord = versionWords[versionCount] ?? String(versionCount);
 
-const careDays = deriveCareWindow(sessionsRaw, petEvents);
+// Crashed (turns: null) and empty (turns: 0) wakes are absence, per the subject's own account.
+const ranSessions = sessionsRaw.filter((s) => typeof s.turns === 'number' && s.turns >= 1);
+const careDays = deriveCareWindow(ranSessions, petEvents);
 const careDayCount = careDays.length;
 const careSlotCount = careDayCount * 2;
 
