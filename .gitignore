@@ -11,6 +11,9 @@ scripts/tests/*_raw.md
 # Astro
 .astro/
 
+# JSONL transcript archive (June–July window; only surviving copy — never commit)
+transcripts-archive/
+
 # Session artifacts (QA screenshots, council transcripts, browser profiles)
 /*.png
 council-*.json
