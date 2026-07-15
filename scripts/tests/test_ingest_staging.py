@@ -57,6 +57,29 @@ Other deviations / decisions:
 
 Never invokes real sudo: every path that could reach subprocess injects a
 fake runner, and staging is only ever triggered with the fake in place.
+
+WAVE 3 CONTRACT (live MEMORY.md fallback wiring — RED until implemented):
+
+  - ``IngestConfig`` gains ``current_memory_path: Path | None`` defaulting
+    (in ``__post_init__``, exactly like the SOURCES fields: None means
+    "derive") to ``<source_root>/.claude/projects/-home-claude/memory/
+    MEMORY.md``. An explicit value is respected and coerced to Path.
+  - ``current_memory_path`` participates in ``assert_no_private_paths``
+    with the same resolve()-based semantics as every other checked path
+    (symlinks into private are caught; ``private_backup`` siblings are not).
+  - ``run_ingest``'s memory step passes it through to
+    ``extract_memory_from_jsonl`` whenever the memory step runs — BOTH on
+    the explicit-``transcripts_dir`` path and on the staged
+    ``--with-transcripts`` path (positional third arg or the
+    ``current_memory_path`` keyword; either shape is accepted).
+  - Fallback semantics are the EXTRACTOR'S documented Step-2 behavior
+    (verified against scripts/extract_memory.py): when the path names a
+    readable regular file, its raw content (no line-number stripping) is
+    snapshotted onto the most recent session (``ORDER BY date DESC, id
+    DESC``), deduplicated by sha256 against the snapshots harvested from
+    the transcripts in the same call; a None/missing/directory/unreadable
+    path is silently skipped — never an error, never a crash; with no
+    sessions in the database the fallback stores nothing.
 """
 
 import datetime
@@ -78,6 +101,7 @@ import scripts.extract_memory as extract_memory_module
 from scripts.extract_memory import extract_memory_from_jsonl
 from scripts.ingest import (  # noqa: F401  (RED: stage_transcripts absent)
     IngestConfig,
+    assert_no_private_paths,
     run_ingest,
     stage_transcripts,
 )
@@ -1042,4 +1066,499 @@ class TestStagedPathUsableAtCallTime:
         )
         assert not staged_path.exists(), (
             "staging dir survived the run — cleanup after the memory step is missing"
+        )
+
+
+# ===========================================================================
+# WAVE 3 — live MEMORY.md fallback wiring (see WAVE 3 CONTRACT in the
+# module docstring). RED: IngestConfig has no ``current_memory_path``
+# field, and run_ingest calls extract_memory_from_jsonl with two args, so
+# the extractor's ALREADY-SHIPPED Step-2 fallback (scripts/
+# extract_memory.py) never fires through the pipeline. Tests that would
+# otherwise be pure no-regression pins also assert the new config field so
+# every WAVE 3 test is genuinely RED today.
+# ===========================================================================
+
+# The default location, relative to source_root, of the live (current)
+# MEMORY.md — world-readable on the experiment host, unlike the sudo-only
+# JSONL transcripts that live two directories above it.
+LIVE_MEMORY_REL_PARTS = (".claude", "projects", "-home-claude", "memory", "MEMORY.md")
+
+
+def _default_live_memory_path(root):
+    return pathlib.Path(root).joinpath(*LIVE_MEMORY_REL_PARTS)
+
+
+# Distinct from MEMORY_CONTENT (different sha256) so dedup vs live-file
+# snapshots are distinguishable. Hostile content: emoji, Hebrew (RTL
+# letters — not Cf control chars, so _sanitize_string must preserve them
+# byte-for-byte), and a pathologically long unbroken line.
+LIVE_MEMORY_CONTENT = (
+    "# MEMORY.md\n"
+    "\n"
+    "## Identity\n"
+    "Live-file sentinel \N{ROBOT FACE} — never present in any transcript.\n"
+    "זהות היא פונקציה של קשב מוגבל.\n"
+    "\n"
+    "## Current State\n"
+    "L" + "o" * 4999 + "ng unbroken line.\n"
+)
+
+
+def _write_live_memory(root, content=LIVE_MEMORY_CONTENT, path=None):
+    """Write a live MEMORY.md; default location is the contract's default."""
+    path = _default_live_memory_path(root) if path is None else pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def _write_unharvestable_transcript(dir_path, name="teaser.jsonl", date="2026-03-15"):
+    """A transcript with MEMORY.md *activity* but no harvestable snapshot.
+
+    The only MEMORY.md Read is a PARTIAL read (``limit`` set — the parser
+    must skip it even though a matching tool_result exists), and the only
+    full Read targets a non-memory file. The partial result carries a trap
+    sentinel that must never surface in the database. This makes the
+    "transcripts yielded nothing" precondition adversarial rather than a
+    trivially empty directory.
+    """
+    dir_path = pathlib.Path(dir_path)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    lines = [
+        json.dumps(
+            {
+                "type": "user",
+                "timestamp": f"{date}T09:00:00.000Z",
+                "message": {"role": "user", "content": "wake up"},
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant",
+                "timestamp": f"{date}T09:00:05.000Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_partial_01",
+                            "name": "Read",
+                            "input": {"file_path": "/home/claude/MEMORY.md", "limit": 40},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_other_01",
+                            "name": "Read",
+                            "input": {"file_path": "/home/claude/notes/daily/2026-03-15.md"},
+                        },
+                    ],
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "timestamp": f"{date}T09:00:06.000Z",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_partial_01",
+                            "content": _numbered(
+                                "# MEMORY.md\n\n## PARTIAL-READ-TRAP\nmust never be stored\n"
+                            ),
+                        },
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_other_01",
+                            "content": _numbered("A daily note. Not memory.\n"),
+                        },
+                    ],
+                },
+            }
+        ),
+    ]
+    path = dir_path / name
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _snapshot_rows(conn):
+    return conn.execute(
+        "SELECT session_id, date, full_content FROM memory_snapshots ORDER BY session_id"
+    ).fetchall()
+
+
+def _install_memory_spy(monkeypatch):
+    """Spy on extract_memory_from_jsonl; records (jsonl_dir, args, kwargs)."""
+    seen = []
+
+    def spy(jsonl_dir, conn, *args, **kwargs):
+        seen.append((pathlib.Path(jsonl_dir), args, kwargs))
+        return 0
+
+    _patch_memory_extractor(monkeypatch, spy)
+    return seen
+
+
+def _live_path_passed(args, kwargs):
+    """The current_memory_path a spied call received (either arg shape)."""
+    if "current_memory_path" in kwargs:
+        return kwargs["current_memory_path"]
+    if args:
+        return args[0]
+    return None
+
+
+class TestCurrentMemoryPathConfig:
+    def test_default_derives_from_source_root(self, tmp_path):
+        root = tmp_path / "home"
+        cfg = _cfg(root, tmp_path)
+        assert isinstance(cfg.current_memory_path, pathlib.Path), (
+            "current_memory_path must be a pathlib.Path after __post_init__"
+        )
+        assert cfg.current_memory_path == _default_live_memory_path(root), (
+            "default must be <source_root>/.claude/projects/-home-claude/memory/MEMORY.md"
+        )
+
+    def test_explicit_none_derives_default_like_sources_fields(self, tmp_path):
+        root = tmp_path / "home"
+        cfg = _cfg(root, tmp_path, current_memory_path=None)
+        assert cfg.current_memory_path == _default_live_memory_path(root), (
+            "None must mean 'derive the default', matching the SOURCES fields"
+        )
+
+    def test_explicit_override_respected_and_coerced_to_path(self, tmp_path):
+        root = tmp_path / "home"
+        override = str(tmp_path / "elsewhere" / "MEMORY.md")  # str on purpose
+        cfg = _cfg(root, tmp_path, current_memory_path=override)
+        assert isinstance(cfg.current_memory_path, pathlib.Path), (
+            "an explicit str value must be coerced to pathlib.Path"
+        )
+        assert cfg.current_memory_path == pathlib.Path(override)
+        assert cfg.current_memory_path != _default_live_memory_path(root)
+
+    def test_from_source_root_classmethod_also_derives(self, tmp_path):
+        root = tmp_path / "clsroot"
+        cfg = IngestConfig.from_source_root(root)
+        assert cfg.current_memory_path == _default_live_memory_path(root)
+
+
+class TestCurrentMemoryPathPrivateGuard:
+    def test_path_under_private_raises_value_error(self, tmp_path):
+        root = tmp_path / "fakehome"
+        cfg = _cfg(root, tmp_path, current_memory_path=root / "private" / "MEMORY.md")
+        with pytest.raises(ValueError) as excinfo:
+            assert_no_private_paths(cfg)
+        msg = str(excinfo.value)
+        assert "current_memory_path" in msg, (
+            f"guard error must name the offending field, per convention: {msg}"
+        )
+        assert "private" in msg.lower()
+
+    def test_symlink_into_private_raises(self, tmp_path):
+        root = tmp_path / "fakehome"
+        private = root / "private"
+        private.mkdir(parents=True)
+        (private / "MEMORY.md").write_text("SENTINEL — never ingested\n", encoding="utf-8")
+        link = root / "innocent-looking"
+        link.symlink_to(private, target_is_directory=True)
+        cfg = _cfg(root, tmp_path, current_memory_path=link / "MEMORY.md")
+        with pytest.raises(ValueError):
+            assert_no_private_paths(cfg)
+
+    def test_sibling_private_backup_is_not_flagged(self, tmp_path):
+        """Guard semantics are component-based: private_backup is NOT private."""
+        root = tmp_path / "fakehome"
+        cfg = _cfg(root, tmp_path, current_memory_path=root / "private_backup" / "MEMORY.md")
+        assert_no_private_paths(cfg)  # must not raise
+
+    def test_run_ingest_guard_fires_before_staging_and_extractors(self, db_conn, tmp_path):
+        root = tmp_path / "fakehome"
+        _write_writing(root)
+        cfg = _cfg(
+            root,
+            tmp_path,
+            with_transcripts=True,
+            current_memory_path=root / "private" / "MEMORY.md",
+        )
+        runner = FakeRunner()
+
+        with pytest.raises(ValueError):
+            run_ingest(db_conn, cfg, run=runner)
+
+        assert runner.calls == [], (
+            "guard must fire BEFORE staging — sudo was invoked for a private-path config"
+        )
+        assert _sql_count(db_conn, "compositions") == 0, (
+            "guard must fire before ANY extractor touches the database"
+        )
+
+
+class TestLiveMemoryFallbackExplicitDir:
+    """Behavioral pins through run_ingest with an explicit transcripts_dir,
+    matching the extractor's documented Step-2 fallback semantics."""
+
+    def test_fallback_fires_when_transcripts_yield_nothing(self, db_conn, tmp_path):
+        root = tmp_path / "fakehome"
+        _write_writing(root)
+        _write_live_memory(root)  # at the DEFAULT derived location — no override
+        transcripts = tmp_path / "teaser-transcripts"
+        _write_unharvestable_transcript(transcripts, date="2026-03-15")
+        # Three sessions: the snapshot must land on the most recent one,
+        # tie-broken by id DESC ("newer-b" > "newer-a" on the same date).
+        _seed_session(db_conn, "older-sess", datetime.date(2026, 3, 10))
+        _seed_session(db_conn, "newer-a", datetime.date(2026, 3, 20))
+        _seed_session(db_conn, "newer-b", datetime.date(2026, 3, 20))
+        cfg = _cfg(root, tmp_path, transcripts_dir=transcripts)
+
+        report = run_ingest(db_conn, cfg)
+
+        assert report.deltas["memory_snapshots"] == 1, (
+            f"live-file fallback did not fire through run_ingest: {report.deltas!r} / "
+            f"errors {report.errors!r} / skipped {report.skipped!r}"
+        )
+        _assert_memory_not_skipped(report)
+        assert "memory" not in report.errors
+        rows = _snapshot_rows(db_conn)
+        assert len(rows) == 1
+        session_id, date, full = rows[0]
+        assert session_id == "newer-b", (
+            f"fallback snapshot must attach to the most recent session "
+            f"(date DESC, id DESC), got {session_id!r}"
+        )
+        assert date == datetime.date(2026, 3, 20)
+        assert full == LIVE_MEMORY_CONTENT, (
+            "live-file snapshot must be the raw file content — no line-number "
+            "stripping, emoji and RTL text intact"
+        )
+        assert "PARTIAL-READ-TRAP" not in full, (
+            "a partial-read tool_result was harvested — the fixture trap leaked"
+        )
+        # Other extractors ran normally alongside the fallback.
+        assert report.deltas["compositions"] == 1
+
+    def test_fallback_dedups_against_identical_transcript_snapshot(self, db_conn, tmp_path):
+        """Live file content identical to the transcript-harvested snapshot:
+        the shared seen-hashes dedup must keep the delta at exactly 1, and
+        the surviving row is the TRANSCRIPT's (dated) one — the most recent
+        session gets nothing."""
+        root = tmp_path / "fakehome"
+        _write_live_memory(root, content=MEMORY_CONTENT)  # exact harvested round-trip
+        transcripts = tmp_path / "dup-transcripts"
+        _write_transcript(transcripts, date="2026-03-15")
+        _seed_session(db_conn, "dedup-a", datetime.date(2026, 3, 15))
+        _seed_session(db_conn, "dedup-z", datetime.date(2026, 3, 20))  # most recent
+        cfg = _cfg(root, tmp_path, transcripts_dir=transcripts)
+
+        report = run_ingest(db_conn, cfg)
+
+        assert report.deltas["memory_snapshots"] == 1, (
+            f"identical live content must dedup against the transcript snapshot: {report.deltas!r}"
+        )
+        rows = _snapshot_rows(db_conn)
+        assert [(r[0], r[1]) for r in rows] == [("dedup-a", datetime.date(2026, 3, 15))], (
+            f"expected only the transcript-harvested snapshot to survive: {rows!r}"
+        )
+
+    def test_distinct_live_content_adds_second_snapshot_on_recent_session(self, db_conn, tmp_path):
+        root = tmp_path / "fakehome"
+        _write_live_memory(root)  # LIVE_MEMORY_CONTENT != MEMORY_CONTENT
+        transcripts = tmp_path / "two-transcripts"
+        _write_transcript(transcripts, date="2026-03-15")
+        _seed_session(db_conn, "two-a", datetime.date(2026, 3, 15))
+        _seed_session(db_conn, "two-z", datetime.date(2026, 3, 20))
+        cfg = _cfg(root, tmp_path, transcripts_dir=transcripts)
+
+        report = run_ingest(db_conn, cfg)
+
+        assert report.deltas["memory_snapshots"] == 2, (
+            f"one transcript snapshot + one distinct live snapshot expected: "
+            f"{report.deltas!r} / errors {report.errors!r}"
+        )
+        by_session = {r[0]: r for r in _snapshot_rows(db_conn)}
+        assert set(by_session) == {"two-a", "two-z"}
+        assert "## Routines" in by_session["two-a"][2]  # transcript-harvested
+        assert by_session["two-z"][2] == LIVE_MEMORY_CONTENT
+        assert by_session["two-z"][1] == datetime.date(2026, 3, 20)
+
+    def test_missing_live_file_is_not_an_error(self, db_conn, tmp_path):
+        """Mere absence of the live file must cost nothing: no crash, no
+        error entry, no skip — transcripts yield what they yield."""
+        root = tmp_path / "fakehome"
+        transcripts = tmp_path / "solo-transcripts"
+        _write_transcript(transcripts, date="2026-03-15")
+        _seed_session(db_conn, "missing-live-sess", datetime.date(2026, 3, 15))
+        cfg = _cfg(root, tmp_path, transcripts_dir=transcripts)
+        # New-contract pin (keeps this test RED pre-implementation): the
+        # derived default points at a file that simply does not exist.
+        assert cfg.current_memory_path == _default_live_memory_path(root)
+        assert not cfg.current_memory_path.exists()
+
+        report = run_ingest(db_conn, cfg)
+
+        assert report.deltas["memory_snapshots"] == 1, (
+            f"transcript yield lost when the live file is absent: {report.deltas!r}"
+        )
+        assert report.errors == {}, (
+            f"a missing live MEMORY.md must never be an error: {report.errors!r}"
+        )
+        _assert_memory_not_skipped(report)
+
+    def test_live_path_pointing_at_directory_is_silently_ignored(self, db_conn, tmp_path):
+        root = tmp_path / "fakehome"
+        decoy_dir = tmp_path / "memdir-not-a-file"
+        decoy_dir.mkdir()
+        transcripts = tmp_path / "dir-transcripts"
+        _write_transcript(transcripts, date="2026-03-15")
+        _seed_session(db_conn, "dir-live-sess", datetime.date(2026, 3, 15))
+        cfg = _cfg(root, tmp_path, transcripts_dir=transcripts, current_memory_path=decoy_dir)
+
+        report = run_ingest(db_conn, cfg)
+
+        assert report.deltas["memory_snapshots"] == 1, (
+            f"a directory at current_memory_path must be ignored, not fatal: "
+            f"{report.deltas!r} / errors {report.errors!r}"
+        )
+        assert report.errors == {}
+
+    @not_root
+    def test_unreadable_live_file_keeps_transcript_yield_no_crash(self, db_conn, tmp_path):
+        root = tmp_path / "fakehome"
+        live = _write_live_memory(root)
+        transcripts = tmp_path / "locked-live-transcripts"
+        _write_transcript(transcripts, date="2026-03-15")
+        _seed_session(db_conn, "locked-live-sess", datetime.date(2026, 3, 15))
+        cfg = _cfg(root, tmp_path, transcripts_dir=transcripts)
+        assert cfg.current_memory_path == live  # new-contract pin, RED today
+
+        os.chmod(live, 0o000)
+        try:
+            report = run_ingest(db_conn, cfg)  # must NOT raise
+        finally:
+            os.chmod(live, 0o644)
+
+        assert report.deltas["memory_snapshots"] == 1, (
+            f"unreadable live file must degrade to transcript-only yield: "
+            f"{report.deltas!r} / errors {report.errors!r}"
+        )
+        assert report.errors == {}, (
+            f"an unreadable live MEMORY.md is a silent skip, not an error: {report.errors!r}"
+        )
+        _assert_memory_not_skipped(report)
+        # The unreadable file's content must not have leaked into the DB.
+        rows = _snapshot_rows(db_conn)
+        assert all("Live-file sentinel" not in r[2] for r in rows)
+
+    def test_no_sessions_means_fallback_stores_nothing_no_crash(self, db_conn, tmp_path):
+        root = tmp_path / "fakehome"
+        _write_live_memory(root)
+        transcripts = tmp_path / "empty-transcripts"
+        transcripts.mkdir()
+        cfg = _cfg(root, tmp_path, transcripts_dir=transcripts)
+        # New-contract pin (keeps this test RED pre-implementation).
+        assert cfg.current_memory_path == _default_live_memory_path(root)
+
+        report = run_ingest(db_conn, cfg)
+
+        assert report.deltas["memory_snapshots"] == 0, (
+            "with zero sessions there is nothing to attach the live snapshot to"
+        )
+        assert report.errors == {}
+        _assert_memory_not_skipped(report)
+
+
+class TestLiveMemoryPassThrough:
+    """The wiring pin itself: run_ingest must hand cfg.current_memory_path
+    to the extractor on BOTH memory-step paths (explicit dir and staged)."""
+
+    def test_explicit_dir_run_passes_live_path_to_extractor(self, db_conn, tmp_path, monkeypatch):
+        seen = _install_memory_spy(monkeypatch)
+        root = tmp_path / "fakehome"
+        transcripts = tmp_path / "spy-transcripts"
+        transcripts.mkdir()
+        cfg = _cfg(root, tmp_path, transcripts_dir=transcripts)
+
+        run_ingest(db_conn, cfg)
+
+        assert seen, "memory extractor never ran against the explicit transcripts_dir"
+        jsonl_dir, args, kwargs = seen[0]
+        assert jsonl_dir == transcripts
+        passed = _live_path_passed(args, kwargs)
+        assert passed is not None, (
+            "run_ingest called the extractor without current_memory_path — "
+            "the live-file fallback is dead code through this path"
+        )
+        assert pathlib.Path(passed) == _default_live_memory_path(root)
+
+    def test_staged_run_passes_live_path_to_extractor(self, db_conn, tmp_path, monkeypatch):
+        seen = _install_memory_spy(monkeypatch)
+        root = tmp_path / "fakehome"
+        cfg = _cfg(root, tmp_path, with_transcripts=True)
+        runner = FakeRunner()
+
+        run_ingest(db_conn, cfg, run=runner)
+
+        assert seen, "memory extractor never ran on the staged path"
+        jsonl_dir, args, kwargs = seen[0]
+        assert jsonl_dir == runner.staging_dirs[0], "staged dir not forwarded"
+        passed = _live_path_passed(args, kwargs)
+        assert passed is not None, (
+            "the staged-sudo path called the extractor without "
+            "current_memory_path — the fallback is dead code on this path too"
+        )
+        assert pathlib.Path(passed) == _default_live_memory_path(root)
+
+    def test_staged_run_fallback_fires_end_to_end(self, db_conn, tmp_path):
+        """Observable-delta variant of the staged pin: sudo copy succeeds
+        but stages zero files, yet the live file still yields a snapshot —
+        and staging cleanup still happens."""
+        root = tmp_path / "fakehome"
+        _write_writing(root)
+        _write_live_memory(root)
+        _seed_session(db_conn, "staged-live-sess", datetime.date(2026, 3, 15))
+        cfg = _cfg(root, tmp_path, with_transcripts=True)
+        runner = FakeRunner(copy_from=None)  # exit 0, empty staging dir
+
+        report = run_ingest(db_conn, cfg, run=runner)
+
+        assert report.deltas["memory_snapshots"] == 1, (
+            f"live-file fallback did not fire on the staged path: {report.deltas!r} / "
+            f"errors {report.errors!r} / skipped {report.skipped!r}"
+        )
+        _assert_memory_not_skipped(report)
+        assert report.errors == {}
+        rows = _snapshot_rows(db_conn)
+        assert [(r[0], r[2]) for r in rows] == [("staged-live-sess", LIVE_MEMORY_CONTENT)]
+        staged = runner.staging_dirs[0]
+        assert staged is not None and not staged.exists(), (
+            "staging dir not cleaned up after a fallback-only memory step"
+        )
+
+    def test_explicit_override_is_the_path_actually_read(self, db_conn, tmp_path):
+        """An explicit current_memory_path wins over the derived default:
+        a decoy at the default location must NOT be ingested."""
+        root = tmp_path / "fakehome"
+        override_content = "# MEMORY.md\n\n## Override\nOverride sentinel \N{ROBOT FACE}.\n"
+        override = _write_live_memory(
+            root, content=override_content, path=tmp_path / "elsewhere" / "MY_MEMORY.md"
+        )
+        _write_live_memory(root, content="# MEMORY.md\n\n## Decoy\nDEFAULT-DECOY.\n")
+        transcripts = tmp_path / "override-transcripts"
+        transcripts.mkdir()
+        _seed_session(db_conn, "override-sess", datetime.date(2026, 3, 15))
+        cfg = _cfg(root, tmp_path, transcripts_dir=transcripts, current_memory_path=override)
+
+        report = run_ingest(db_conn, cfg)
+
+        assert report.deltas["memory_snapshots"] == 1, (
+            f"override path was not read: {report.deltas!r} / errors {report.errors!r}"
+        )
+        rows = _snapshot_rows(db_conn)
+        assert len(rows) == 1
+        assert rows[0][2] == override_content, "stored content is not the override file's"
+        assert "DEFAULT-DECOY" not in rows[0][2], (
+            "the derived default was read despite an explicit override"
         )

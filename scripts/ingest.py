@@ -64,6 +64,10 @@ SOURCES: dict[str, str] = {
     "daily_notes_dir": "notes/daily",
 }
 
+# Live MEMORY.md the memory extractor snapshots as a fallback when the
+# JSONL transcripts contain no Read of it, relative to source_root.
+_CURRENT_MEMORY_REL = Path(".claude/projects/-home-claude/memory/MEMORY.md")
+
 # Tables whose row counts are tracked across an ingest run.
 _TRACKED_TABLES: tuple[str, ...] = (
     "sessions",
@@ -91,7 +95,11 @@ class IngestConfig:
     stage the JSONL transcripts itself via a sudo copy
     (:func:`stage_transcripts`); it only takes effect when
     ``transcripts_dir`` is unset — an explicit ``transcripts_dir`` is
-    used as-is and is never staged or deleted.
+    used as-is and is never staged or deleted. ``current_memory_path``
+    is the live MEMORY.md the memory extractor snapshots as a fallback;
+    it defaults relative to ``source_root``
+    (``.claude/projects/-home-claude/memory/MEMORY.md``), and a
+    nonexistent path simply yields nothing.
     """
 
     source_root: Path = DEFAULT_SOURCE_ROOT
@@ -104,12 +112,17 @@ class IngestConfig:
     output_dir: Path = Path("src/data")
     transcripts_dir: Path | None = None
     with_transcripts: bool = False
+    current_memory_path: Path | None = None
 
     def __post_init__(self) -> None:
         self.source_root = Path(self.source_root)
         self.output_dir = Path(self.output_dir)
         if self.transcripts_dir is not None:
             self.transcripts_dir = Path(self.transcripts_dir)
+        if self.current_memory_path is None:
+            self.current_memory_path = self.source_root / _CURRENT_MEMORY_REL
+        else:
+            self.current_memory_path = Path(self.current_memory_path)
         for name, rel in SOURCES.items():
             current = getattr(self, name)
             if current is None:
@@ -143,6 +156,7 @@ def assert_no_private_paths(cfg: IngestConfig) -> None:
 
     checked: dict[str, Path | None] = {name: getattr(cfg, name) for name in SOURCES}
     checked["transcripts_dir"] = cfg.transcripts_dir
+    checked["current_memory_path"] = cfg.current_memory_path
 
     for name, path in checked.items():
         if path is None:
@@ -325,7 +339,7 @@ def run_ingest(
 
             def _memory_step(memory_dir: Path = memory_dir) -> None:
                 try:
-                    extract_memory_from_jsonl(memory_dir, conn)
+                    extract_memory_from_jsonl(memory_dir, conn, cfg.current_memory_path)
                 finally:
                     # Only ever remove OUR staged copy — never a
                     # user-supplied transcripts_dir.
