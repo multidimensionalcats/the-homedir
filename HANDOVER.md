@@ -1,5 +1,14 @@
 # HANDOVER.md
 
+## MEMORY BACKFILL COMPLETE (2026-07-15, Fable session continued) — commits 086051f..b11254d
+
+- The naive `--with-transcripts` backfill yielded ZERO snapshots. Diagnosis (three stacked causes): (1) Apr–May transcripts PRUNED by Claude Code's 30-day retention — memory-snapshots.json was the only surviving record; (2) the extractor's full-Read heuristic is obsolete — MEMORY.md is auto-loaded into the subject's system prompt now, sessions only partial-read it (#62858 tracks the extractor redesign); (3) the runner never passed current_memory_path, so the live-file fallback was dead code.
+- Flow INVERTED via full pipeline: `scripts/seed_memory_snapshots.py` imports the JSON into the DB as the corrected authority (lineage re-derived — the legacy file had 10 inverted first>last_seen blocks; all-or-nothing transaction; conflict-refusing idempotence); `IngestConfig.current_memory_path` (private-guarded, world-readable — NO sudo) makes every ingest snapshot the live MEMORY.md.
+- Prod seeded (14 snapshots/38 blocks/112 links) + live fallback captured today's file → memory-snapshots.json regenerated FROM THE DB: 15 snapshots Apr 20→Jul 15, 44 blocks, zero inverted lineage, **pipeline exit 0 for the first time** (shrink guard satisfied by data, not bypassed). Legacy file frozen as `scripts/tests/fixtures/memory-snapshots-legacy.json` (fixture-reads-live-file coupling bit us once — never point tests at regenerating data files).
+- Visitor-review fix also landed: "three model versions" prose is now data-derived ("four", 086051f).
+- Fresh 3-viewport QA: ALL PASS, 0 console errors; evidence screenshots delivered to James (untracked *.png in repo root — do not commit).
+- STILL PENDING from James: visual confirmations (#62772/#62773/#62774), 4.8 violet #A55BD4 verdict, ending-cursor contrast/size decision, durable archive location for /tmp/homedir-transcripts (62 files, 0700 — the June–July window dies with /tmp and prunes from source at 30 days), push decision (NOTE: Cloudflare auto-deploy in CLAUDE.md is ASPIRATIONAL — nothing is configured; push only reaches GitHub). External LLM CLIs both auth-dead (gemini tier EOL → Antigravity; codex rejects models on ChatGPT account).
+
 ## PHASE 7 EXECUTED (2026-07-13, Fable session continued) — commits 028abdc..7c7c78f
 
 The runbook below was executed by the Fable coordinator with James's explicit authorization:
