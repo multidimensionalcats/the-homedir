@@ -97,10 +97,6 @@
   function isRevealed(i) {
     return !reducedMotion && i > 0 && i <= revealedThrough;
   }
-
-  function isDecaying(i) {
-    return isRevealed(i) && i % 2 === 0;
-  }
 </script>
 
 <div
@@ -111,9 +107,8 @@
     class="interruption-quote"
     class:pending={isPending(i)}
     class:revealed={isRevealed(i)}
-    class:decaying={isDecaying(i)}
     aria-hidden={isPending(i) ? 'true' : undefined}
-  >{#if i === 0}<DecayingQuote text={quote.text} decayDuration={12} />{:else}<span class="quote-text">{quote.text}</span>{/if}<div class="quote-attribution">{attribution(quote)}</div></div>{/each}</div>
+  >{#if i % 2 === 0}<DecayingQuote text={quote.text} decayDuration={12} />{:else}<span class="quote-text">{quote.text}</span>{/if}<div class="quote-attribution">{attribution(quote)}</div></div>{/each}</div>
 
 <style>
   .interruption-engine {
@@ -129,11 +124,6 @@
     right: -14rem;
     top: 0;
     width: 12rem;
-  }
-
-  @keyframes -global-decayFade {
-    from { opacity: 1; visibility: visible; }
-    to { opacity: 0; visibility: hidden; }
   }
 
   .interruption-engine :global(.interruption-quote) {
@@ -154,10 +144,6 @@
     opacity: 1;
     visibility: visible;
     transition: opacity 0.6s ease, visibility 0.6s ease;
-  }
-
-  .interruption-engine :global(.interruption-quote.decaying) {
-    animation: decayFade 12s ease-in forwards;
   }
 
   .interruption-engine :global(.interruption-quote .quote-text) {

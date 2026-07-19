@@ -143,18 +143,6 @@ function rmForcesPendingVisible(): boolean {
   );
 }
 
-/** Reduced-motion CSS sets `animation: none` on some class the element carries */
-function rmNeutralizesAnimation(el: Element): boolean {
-  const classes = Array.from(el.classList);
-  return reducedMotionBlocks().some((block) =>
-    cssRules(block).some(
-      ([sel, body]) =>
-        classes.some((c) => classSelectorRe(c).test(sel)) &&
-        /animation\s*:\s*none/.test(body),
-    ),
-  );
-}
-
 // ============================================================
 // Structural helpers (the CLS invariant)
 // ============================================================
@@ -417,18 +405,27 @@ describe('InterruptionEngine -- all quotes pre-rendered at mount', () => {
     expect(q0.textContent).toContain('Quote 0 for section 0');
   });
 
-  it('quotes 1 and 2 do NOT contain a mounted DecayingQuote — decay is CSS-only now', async () => {
+  it('EVEN indices render through DecayingQuote; ODD index 1 is a plain span with NO DecayingQuote — at t=0 and after 60s', async () => {
     const quotes = makeQuotesForSection(0, 3);
     const { getByTestId } = render(InterruptionEngine, {
       props: { quotes, currentSection: 0 },
     });
+    expect(
+      getByTestId('interruption-quote-0').querySelector('[data-testid="decaying-quote"]'),
+    ).not.toBeNull();
+    expect(
+      getByTestId('interruption-quote-2').querySelector('[data-testid="decaying-quote"]'),
+    ).not.toBeNull();
+    expect(
+      getByTestId('interruption-quote-1').querySelector('[data-testid="decaying-quote"]'),
+    ).toBeNull();
     await advance(PAST_END_MS);
     expect(
       getByTestId('interruption-quote-1').querySelector('[data-testid="decaying-quote"]'),
     ).toBeNull();
     expect(
       getByTestId('interruption-quote-2').querySelector('[data-testid="decaying-quote"]'),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 });
 
@@ -658,9 +655,10 @@ describe('InterruptionEngine -- structural invariant (zero CLS)', () => {
 });
 
 // ============================================================
-// 8. Decay treatment — quote 2 gets `decaying` class on reveal
+// 8. Engine decay REMOVED — no `.decaying` class, no engine decayFade.
+// Decay for even indices is owned entirely by DecayingQuote.
 // ============================================================
-describe('InterruptionEngine -- CSS decay treatment', () => {
+describe('InterruptionEngine -- engine-level decay machinery is removed', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -671,39 +669,142 @@ describe('InterruptionEngine -- CSS decay treatment', () => {
     });
   }
 
-  it('quote 2 does NOT have class "decaying" at 4999ms', async () => {
+  it('NO quote ever receives class "decaying" — not at 4999, 5000, 5001, or 60000ms', async () => {
     const { getByTestId } = renderThree();
+    const check = () => {
+      for (const idx of [0, 1, 2]) {
+        expect(
+          getByTestId(`interruption-quote-${idx}`).classList.contains('decaying'),
+        ).toBe(false);
+      }
+    };
     await advance(REVEAL_2_MS - 1);
-    expect(getByTestId('interruption-quote-2').classList.contains('decaying')).toBe(false);
+    check();
+    await advance(1); // exactly 5000 — the OLD decay moment
+    check();
+    await advance(1);
+    check();
+    await advance(PAST_END_MS);
+    check();
   });
 
-  it('quote 2 receives class "decaying" at exactly 5000ms (alongside revealed)', async () => {
+  it('injected CSS has NO rule for a bare .decaying class that applies an animation', () => {
+    renderThree();
+    const bodies = cssRuleBodiesFor('decaying');
+    // either the selector is gone entirely, or (transitionally) it must
+    // not apply any animation — both directions of the removal pinned
+    expect(bodies.join('\n')).not.toMatch(/animation[^;{}]*decayFade/i);
+  });
+
+  it('decayFade keyframes are owned solely by DecayingQuote; the engine declares and applies none', () => {
+    renderThree();
+    const css = getInjectedCss();
+    // DecayingQuote applies decayFade via inline style, so it OWNS one
+    // unscoped `@keyframes decayFade` (compiled from -global-decayFade).
+    // Exactly one such declaration may exist in the shared injected pool:
+    // zero means DecayingQuote's required global block is missing; two or
+    // more means the engine (or anything else) re-declared it.
+    const declarations = css.match(/@keyframes\s+decayFade(?![\w-])/g) ?? [];
+    expect(declarations).toHaveLength(1);
+    // And the engine never APPLIES the animation through its own CSS: no
+    // rule whose selector mentions the engine root or its quote wrappers
+    // may carry an `animation` property referencing decayFade.
+    const engineAnimationRules = cssRules(css).filter(
+      ([sel, body]) =>
+        (sel.includes('interruption-engine') || sel.includes('interruption-quote')) &&
+        /animation[^;{}]*decayFade/i.test(body),
+    );
+    expect(engineAnimationRules).toEqual([]);
+  });
+
+  it('quote 2 revealed at 5000ms carries a DecayingQuote with NO decay running at reveal (dwell has not elapsed)', async () => {
     const { getByTestId } = renderThree();
     await advance(REVEAL_2_MS);
     const q2 = getByTestId('interruption-quote-2');
-    expect(q2.classList.contains('decaying')).toBe(true);
     expect(q2.classList.contains('revealed')).toBe(true);
+    const dq = q2.querySelector('[data-testid="decaying-quote"]');
+    expect(dq).not.toBeNull();
+    expect((dq!.getAttribute('style') || '').toLowerCase()).not.toContain('decayfade');
+  });
+});
+
+// ============================================================
+// 8b. DecayingQuote slot mapping — even indices only, 1/2/3+ quotes
+// ============================================================
+describe('InterruptionEngine -- DecayingQuote slot mapping (even indices)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
   });
 
-  it('quote 1 (odd index) NEVER receives class "decaying", even after 60s', async () => {
-    const { getByTestId } = renderThree();
+  function dqIn(el: HTMLElement) {
+    return el.querySelector('[data-testid="decaying-quote"]');
+  }
+
+  it('1 matching quote: index 0 gets DecayingQuote', () => {
+    const { getByTestId } = render(InterruptionEngine, {
+      props: { quotes: makeQuotesForSection(0, 1), currentSection: 0 },
+    });
+    expect(dqIn(getByTestId('interruption-quote-0'))).not.toBeNull();
+  });
+
+  it('2 matching quotes: index 0 DecayingQuote, index 1 plain permanently-visible span', async () => {
+    const { getByTestId } = render(InterruptionEngine, {
+      props: { quotes: makeQuotesForSection(0, 2), currentSection: 0 },
+    });
+    expect(dqIn(getByTestId('interruption-quote-0'))).not.toBeNull();
+    expect(dqIn(getByTestId('interruption-quote-1'))).toBeNull();
     await advance(PAST_END_MS);
-    expect(getByTestId('interruption-quote-1').classList.contains('decaying')).toBe(false);
+    // odd quote is permanently visible once revealed: full text, no decay class
+    const q1 = getByTestId('interruption-quote-1');
+    expect(q1.textContent).toContain('Quote 1 for section 0');
+    expect(q1.classList.contains('decaying')).toBe(false);
+    expect(q1.classList.contains('revealed')).toBe(true);
   });
 
-  it('quote 0 never receives the engine "decaying" class (it decays via DecayingQuote)', async () => {
-    const { getByTestId } = renderThree();
+  it('5 matching quotes (capped at 3): indices 0 and 2 get DecayingQuote, index 1 does not', () => {
+    const { getByTestId, queryByTestId } = render(InterruptionEngine, {
+      props: { quotes: makeQuotesForSection(0, 5), currentSection: 0 },
+    });
+    expect(dqIn(getByTestId('interruption-quote-0'))).not.toBeNull();
+    expect(dqIn(getByTestId('interruption-quote-1'))).toBeNull();
+    expect(dqIn(getByTestId('interruption-quote-2'))).not.toBeNull();
+    expect(queryByTestId('interruption-quote-3')).toBeNull();
+  });
+
+  it('DecayingQuote slots receive the quote text; the wrapper aria/text contract holds', () => {
+    const { getByTestId } = render(InterruptionEngine, {
+      props: { quotes: makeQuotesForSection(0, 3), currentSection: 0 },
+    });
+    for (const idx of [0, 2]) {
+      const dq = dqIn(getByTestId(`interruption-quote-${idx}`))!;
+      expect(dq.textContent).toContain(`Quote ${idx} for section 0`);
+      expect(dq.getAttribute('aria-label')).toContain(`Quote ${idx} for section 0`);
+    }
+  });
+
+  it('attribution div sits OUTSIDE the DecayingQuote for even indices — it must survive a decay', async () => {
+    const { getByTestId } = render(InterruptionEngine, {
+      props: { quotes: makeQuotesForSection(0, 3), currentSection: 0 },
+    });
     await advance(PAST_END_MS);
-    expect(getByTestId('interruption-quote-0').classList.contains('decaying')).toBe(false);
+    for (const idx of [0, 2]) {
+      const wrapper = getByTestId(`interruption-quote-${idx}`);
+      const attr = wrapper.querySelector('.quote-attribution');
+      expect(attr).not.toBeNull();
+      const dq = dqIn(wrapper)!;
+      expect(dq.contains(attr)).toBe(false); // outside the decaying region
+      expect((attr!.textContent || '').trim().length).toBeGreaterThan(0);
+    }
   });
 
-  it('injected CSS for .decaying applies the decayFade animation over 12s', () => {
-    renderThree();
-    const bodies = cssRuleBodiesFor('decaying');
-    expect(bodies.length).toBeGreaterThan(0);
-    const combined = bodies.join('\n');
-    expect(combined).toMatch(/animation[^;{}]*decayFade/);
-    expect(combined).toMatch(/12s/);
+  it('engine mounts DecayingQuote WITHOUT starting its decay: even-slot inline styles carry no decayFade at t=0', () => {
+    const { getByTestId } = render(InterruptionEngine, {
+      props: { quotes: makeQuotesForSection(0, 3), currentSection: 0 },
+    });
+    for (const idx of [0, 2]) {
+      const dq = dqIn(getByTestId(`interruption-quote-${idx}`))!;
+      expect((dq.getAttribute('style') || '').toLowerCase()).not.toContain('decayfade');
+    }
   });
 });
 
@@ -740,15 +841,21 @@ describe('InterruptionEngine -- prefers-reduced-motion', () => {
     }
   });
 
-  it('no decay animation runs: quote 2 either never gets "decaying" or reduced-motion CSS neutralizes it', async () => {
+  it('no engine decay ever: no quote gains "decaying" and no decayFade lands on any inline style', async () => {
     const quotes = makeQuotesForSection(0, 3);
     const { getByTestId } = render(InterruptionEngine, {
       props: { quotes, currentSection: 0 },
     });
     await advance(PAST_END_MS);
-    const q2 = getByTestId('interruption-quote-2');
-    const noDecay = !q2.classList.contains('decaying') || rmNeutralizesAnimation(q2);
-    expect(noDecay).toBe(true);
+    for (const idx of [0, 1, 2]) {
+      const el = getByTestId(`interruption-quote-${idx}`);
+      expect(el.classList.contains('decaying')).toBe(false);
+      const dq = el.querySelector('[data-testid="decaying-quote"]');
+      if (dq) {
+        // reduced motion: DecayingQuote must never start its decay either
+        expect((dq.getAttribute('style') || '').toLowerCase()).not.toContain('decayfade');
+      }
+    }
   });
 });
 
@@ -804,7 +911,7 @@ describe('InterruptionEngine -- section change', () => {
     expect(getByTestId('interruption-quote-2').classList.contains('pending')).toBe(true);
     await advance(REVEAL_2_MS - REVEAL_1_MS);
     expect(getByTestId('interruption-quote-2').classList.contains('revealed')).toBe(true);
-    expect(getByTestId('interruption-quote-2').classList.contains('decaying')).toBe(true);
+    expect(getByTestId('interruption-quote-2').classList.contains('decaying')).toBe(false);
   });
 
   it('old timers are cleared: a stale 2500ms timer from the previous section must not reveal the new section early', async () => {
@@ -1288,7 +1395,7 @@ describe('InterruptionEngine -- HARDENING: quotes array identity vs in-place mut
     await advance(1499); // absolute 5000 — quote 2 on the ORIGINAL clock, not 6000
     const q2 = getByTestId('interruption-quote-2');
     expect(q2.classList.contains('revealed')).toBe(true);
-    expect(q2.classList.contains('decaying')).toBe(true);
+    expect(q2.classList.contains('decaying')).toBe(false);
     expect(isRevealedAria(q2)).toBe(true);
     // ghost swap-relative timer (swap + 5000 = absolute 6000) must change NOTHING
     await advance(999); // absolute 5999
@@ -1322,7 +1429,7 @@ describe('InterruptionEngine -- HARDENING: quotes array identity vs in-place mut
     await advance(1); // absolute 5000 — a resetting implementation would wait until 8000
     const q2r = getByTestId('interruption-quote-2');
     expect(q2r.classList.contains('revealed')).toBe(true);
-    expect(q2r.classList.contains('decaying')).toBe(true);
+    expect(q2r.classList.contains('decaying')).toBe(false);
     expect(isRevealedAria(q2r)).toBe(true);
     // ghost swap-relative timers (swap + 2500 = 5500, swap + 5000 = 8000) must change NOTHING
     await advance(499); // absolute 5499
@@ -1370,7 +1477,7 @@ describe('InterruptionEngine -- HARDENING: quotes array identity vs in-place mut
     await advance(2500); // absolute 6000 = change + 5000
     const q2r = getByTestId('interruption-quote-2');
     expect(q2r.classList.contains('revealed')).toBe(true);
-    expect(q2r.classList.contains('decaying')).toBe(true);
+    expect(q2r.classList.contains('decaying')).toBe(false);
     expect(getByTestId('interruption-engine').querySelectorAll('.pending').length).toBe(0);
   });
 });
@@ -1399,7 +1506,7 @@ describe('InterruptionEngine -- HARDENING: same-value currentSection re-assignme
     await advance(2500); // absolute 5000 — second reveal also on the ORIGINAL clock
     const q2 = getByTestId('interruption-quote-2');
     expect(q2.classList.contains('revealed')).toBe(true);
-    expect(q2.classList.contains('decaying')).toBe(true);
+    expect(q2.classList.contains('decaying')).toBe(false);
   });
 });
 
@@ -1432,7 +1539,7 @@ describe('InterruptionEngine -- HARDENING: position flip mid-cycle', () => {
     await advance(2500); // absolute 5000
     const q2 = getByTestId('interruption-quote-2');
     expect(q2.classList.contains('revealed')).toBe(true);
-    expect(q2.classList.contains('decaying')).toBe(true);
+    expect(q2.classList.contains('decaying')).toBe(false);
   });
 });
 
@@ -1483,7 +1590,7 @@ describe('InterruptionEngine -- HARDENING: matchMedia lifecycle hostility', () =
     expect(q2.classList.contains('pending')).toBe(true);
     await advance(REVEAL_2_MS - REVEAL_1_MS);
     expect(q2.classList.contains('revealed')).toBe(true);
-    expect(q2.classList.contains('decaying')).toBe(true);
+    expect(q2.classList.contains('decaying')).toBe(false);
     expect(isRevealedAria(q2)).toBe(true);
   });
 
@@ -1526,7 +1633,7 @@ describe('InterruptionEngine -- HARDENING: quote 0 / DecayingQuote interplay', (
     vi.useFakeTimers();
   });
 
-  it('quote 0 carries none of pending/revealed/decaying and no aria-hidden at t=0, 2500, 5000, 13000 — its decay lives entirely inside DecayingQuote (12s)', async () => {
+  it('quote 0 carries none of pending/revealed/decaying and no aria-hidden at t=0, 2500, 5000, 13000 — decay is owned by DecayingQuote and NEVER starts without visibility dwell', async () => {
     const { getByTestId } = render(InterruptionEngine, {
       props: { quotes: makeQuotesForSection(0, 3), currentSection: 0 },
     });
@@ -1538,15 +1645,17 @@ describe('InterruptionEngine -- HARDENING: quote 0 / DecayingQuote interplay', (
       expect(isAriaHidden(q0)).toBe(false);
       const dq = q0.querySelector('[data-testid="decaying-quote"]');
       expect(dq).not.toBeNull();
-      expect(dq!.getAttribute('style') || '').toMatch(/decayFade\s+12s/);
+      // no observer traffic in this harness → DecayingQuote's dwell clock
+      // never runs → the decay animation must never appear
+      expect((dq!.getAttribute('style') || '').toLowerCase()).not.toContain('decayfade');
     };
-    assertQuote0Invariant(); // t=0 — decay animation already running from mount
+    assertQuote0Invariant(); // t=0 — no decay at mount (the old bug pinned OUT)
     await advance(2500);
     assertQuote0Invariant(); // t=2500 — quote 1 reveal must not leak onto quote 0
     await advance(2500);
-    assertQuote0Invariant(); // t=5000 — quote 2 reveal+decay must not leak onto quote 0
+    assertQuote0Invariant(); // t=5000 — quote 2 reveal must not leak onto quote 0
     await advance(8000);
-    assertQuote0Invariant(); // t=13000 — past the 12s decay end
+    assertQuote0Invariant(); // t=13000 — deep timeline, still visibility-gated
   });
 });
 
