@@ -47,6 +47,18 @@ import DiffSlider from './DiffSlider.svelte';
 // pointerup ends it; moves without an active drag change nothing; a new
 // pointerdown re-enables.
 //
+// Selection suppression (2026-07-19 spec addition, points 1-4):
+// pointerdown on the divider calls event.preventDefault() and adds the
+// class "dragging" to the ROOT — both SYNCHRONOUSLY inside the handler.
+// Window pointerup AND window pointercancel remove "dragging"
+// SYNCHRONOUSLY. The injected CSS suppresses text selection on the
+// panels ONLY while the root carries "dragging": a dragging-scoped rule
+// contains BOTH `user-select: none` AND `-webkit-user-select: none`;
+// there is NO unconditional user-select:none anywhere — every
+// user-select:none rule's selector requires the dragging state. After
+// unmount the pointerdown handler is fully inert (no class, no
+// listeners; preventDefault not required).
+//
 // prefers-reduced-motion: reduce → transitions disabled via a
 // @media (prefers-reduced-motion: reduce) CSS block; the divider STAYS
 // keyboard-operable.
@@ -1772,5 +1784,633 @@ describe('review pins 2026-07-15', () => {
       bodies,
       `.divider:focus-visible must declare a real outline (got: ${bodies.trim()})`,
     ).toMatch(/outline\s*:\s*(?!none)\S/);
+  });
+});
+
+// ============================================================
+// SELECTION-SUPPRESSION PASS — 2026-07-19
+// Points 1-4 of the approved drag/selection spec: dragging the divider
+// must stop running native text selection across the panels.
+//   1. divider pointerdown calls event.preventDefault()
+//   2. root gains class "dragging" SYNCHRONOUSLY in the handler
+//   3. "dragging" removed SYNCHRONOUSLY on window pointerup AND
+//      window pointercancel
+//   4. injected CSS suppresses selection on the panels ONLY under the
+//      dragging state (user-select + -webkit-user-select, never
+//      unconditional)
+// Everything else about drag semantics is pinned UNCHANGED by the
+// suites above.
+// ============================================================
+
+// ---- helpers for this pass ---------------------------------
+
+function hasDraggingClass(container: Element): boolean {
+  return rootEl(container).classList.contains('dragging');
+}
+
+/** Exact token count of "dragging" in the root's class attribute —
+ *  catches raw string-concat accumulation that classList would mask. */
+function draggingTokenCount(container: Element): number {
+  const cls = rootEl(container).getAttribute('class') || '';
+  return cls.split(/\s+/).filter((c) => c === 'dragging').length;
+}
+
+function windowPointer(type: string, clientX: number) {
+  window.dispatchEvent(pointerEvent(type, clientX));
+}
+
+/** Dispatch pointerdown on the divider with a spied preventDefault. */
+function spiedPointerDown(container: Element, clientX: number) {
+  const ev = pointerEvent('pointerdown', clientX);
+  const spy = vi.spyOn(ev as any, 'preventDefault');
+  divider(container).dispatchEvent(ev);
+  return { ev, spy };
+}
+
+/** Every flat `selector { body }` rule in the injected CSS (rules
+ *  nested inside @media blocks surface individually — the selector
+ *  fragment cannot contain braces, so wrappers are skipped). */
+function flatCssRules(): Array<{ selector: string; body: string }> {
+  const rules: Array<{ selector: string; body: string }> = [];
+  // Strip /* ... */ comments first (non-greedy, spans lines) — braces
+  // inside a comment would otherwise corrupt the brace scan below.
+  const css = getInjectedCss().replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    rules.push({ selector: m[1].trim(), body: m[2] });
+  }
+  return rules;
+}
+
+const ANY_USER_SELECT_NONE = /user-select\s*:\s*none/; // matches prefixed too
+const PLAIN_USER_SELECT_NONE = /(?<![\w-])user-select\s*:\s*none/;
+const WEBKIT_USER_SELECT_NONE = /-webkit-user-select\s*:\s*none/;
+
+// ------------------------------------------------------------
+// S1. "dragging" class lifecycle on the root
+// ------------------------------------------------------------
+describe('selection suppression: "dragging" class lifecycle on the root', () => {
+  it('pointerdown adds "dragging" SYNCHRONOUSLY; direct window pointerup removes it SYNCHRONOUSLY', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    expect(hasDraggingClass(container)).toBe(false);
+    pointerDown(container, 200);
+    // no await, no tick — synchronous observability is the contract
+    expect(hasDraggingClass(container)).toBe(true);
+    windowPointer('pointerup', 200);
+    expect(hasDraggingClass(container)).toBe(false);
+  });
+
+  it('root-bubbled pointerup (the existing helper path) also clears the class', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    pointerDown(container, 200);
+    pointerMove(container, 100); // moving must NOT clear it
+    expect(hasDraggingClass(container)).toBe(true);
+    pointerUp(container, 100);
+    expect(hasDraggingClass(container)).toBe(false);
+  });
+
+  it('window pointercancel mid-drag clears the class; the drag is dead; a fresh down re-arms class AND drag', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    pointerDown(container, 200);
+    pointerMove(container, 100); // 25
+    expect(hasDraggingClass(container)).toBe(true);
+    windowPointer('pointercancel', 100);
+    expect(hasDraggingClass(container)).toBe(false);
+    pointerMove(container, 300); // dead — position pinned at 25
+    expect(valuenow(container)).toBe('25');
+    expect(hasDraggingClass(container)).toBe(false);
+    pointerDown(container, 100);
+    expect(hasDraggingClass(container)).toBe(true);
+    pointerMove(container, 200); // 50 — drag live again
+    expect(valuenow(container)).toBe('50');
+    windowPointer('pointerup', 200);
+    expect(hasDraggingClass(container)).toBe(false);
+  });
+
+  it('repeated pointerdown with NO intervening pointerup: class token present EXACTLY once; ONE up clears it fully', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    pointerDown(container, 100);
+    pointerDown(container, 200);
+    pointerDown(container, 300);
+    pointerDown(container, 300); // same coordinates twice — still no dupes
+    expect(hasDraggingClass(container)).toBe(true);
+    expect(draggingTokenCount(container)).toBe(1);
+    windowPointer('pointerup', 300);
+    expect(hasDraggingClass(container)).toBe(false);
+    expect(draggingTokenCount(container)).toBe(0);
+    pointerMove(container, 40); // no residual half-armed drag
+    expect(valuenow(container)).toBe('50');
+  });
+
+  it('pointerup and pointercancel with NO prior pointerdown: no throw, class stays absent, position untouched', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    expect(() => {
+      windowPointer('pointerup', 100);
+      windowPointer('pointercancel', 100);
+      pointerUp(container, 100);
+    }).not.toThrow();
+    expect(hasDraggingClass(container)).toBe(false);
+    expect(draggingTokenCount(container)).toBe(0);
+    expect(valuenow(container)).toBe('50');
+  });
+
+  it('keyboard interaction and bare pointermove NEVER add the class (pointer-drag only)', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    press(container, 'ArrowRight');
+    press(container, 'End');
+    press(container, 'PageDown');
+    pointerMove(container, 100); // no active drag
+    expect(hasDraggingClass(container)).toBe(false);
+    // keyboard mid-drag does not STRIP it either (drag stays live)
+    pointerDown(container, 200);
+    press(container, 'ArrowLeft');
+    expect(hasDraggingClass(container)).toBe(true);
+    windowPointer('pointerup', 200);
+    expect(hasDraggingClass(container)).toBe(false);
+  });
+
+  it('two instances: dragging A marks ONLY A; the shared window pointerup clears A while B stays clean throughout', () => {
+    const a = renderSlider();
+    const b = renderSlider();
+    mockRect(a.container, 0, 400);
+    mockRect(b.container, 0, 400);
+    pointerDown(a.container, 200);
+    expect(hasDraggingClass(a.container)).toBe(true);
+    expect(hasDraggingClass(b.container)).toBe(false);
+    windowPointer('pointerup', 200);
+    expect(hasDraggingClass(a.container)).toBe(false);
+    expect(hasDraggingClass(b.container)).toBe(false);
+  });
+
+  it('pointerdown → unmount → window pointerup/pointercancel/moves: no throw, no zombie mutation of the retained root', () => {
+    const { container, unmount } = renderSlider();
+    const root = mockRect(container, 0, 400);
+    const d = divider(container);
+    pointerDown(container, 200); // drag live at unmount time
+    expect(() => unmount()).not.toThrow();
+    const styleBefore = root.getAttribute('style');
+    const valueBefore = d.getAttribute('aria-valuenow');
+    expect(() => {
+      windowPointer('pointerup', 100);
+      windowPointer('pointercancel', 100);
+      windowPointer('pointermove', 300);
+      windowPointer('pointerup', 300);
+    }).not.toThrow();
+    expect(root.getAttribute('style')).toBe(styleBefore);
+    expect(d.getAttribute('aria-valuenow')).toBe(valueBefore);
+  });
+});
+
+// ------------------------------------------------------------
+// S2. preventDefault contract on divider pointerdown
+// ------------------------------------------------------------
+describe('selection suppression: pointerdown preventDefault contract', () => {
+  it('pointerdown on the divider calls preventDefault() — spy fires and defaultPrevented flips', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    const { ev, spy } = spiedPointerDown(container, 200);
+    expect(spy).toHaveBeenCalled();
+    expect((ev as Event).defaultPrevented).toBe(true);
+  });
+
+  it('preventDefault is STILL called when getBoundingClientRect is degenerate (zero-width); class arms; moves stay inert; up clears', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 0); // degenerate BEFORE the down
+    const { spy } = spiedPointerDown(container, 0);
+    expect(spy).toHaveBeenCalled();
+    expect(hasDraggingClass(container)).toBe(true);
+    pointerMove(container, 10); // width guard: position must not move
+    expect(valuenow(container)).toBe('50');
+    expectSplit(container, 50);
+    windowPointer('pointerup', 10);
+    expect(hasDraggingClass(container)).toBe(false);
+  });
+
+  it('pointerdown on the RETAINED divider after unmount is fully inert: no dragging class, no listeners armed (preventDefault NOT required)', () => {
+    const { container, unmount } = renderSlider();
+    const d = divider(container);
+    const root = mockRect(container, 0, 400);
+    unmount();
+    const styleBefore = root.getAttribute('style');
+    expect(() => {
+      d.dispatchEvent(pointerEvent('pointerdown', 200));
+    }).not.toThrow();
+    // inert: no class appears on the retained root...
+    expect(root.classList.contains('dragging')).toBe(false);
+    // ...and no window listeners were armed by the dead handler
+    expect(() => {
+      windowPointer('pointermove', 100);
+      windowPointer('pointerup', 100);
+    }).not.toThrow();
+    expect(root.getAttribute('style')).toBe(styleBefore);
+    expect(d.getAttribute('aria-valuenow')).toBe('50');
+    expect(root.classList.contains('dragging')).toBe(false);
+  });
+
+  it('a poisoned event whose preventDefault THROWS leaves bookkeeping consistent: pointerup clears any half-armed state and a fresh drag works end-to-end', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    const ev = pointerEvent('pointerdown', 200);
+    Object.defineProperty(ev, 'preventDefault', {
+      value: () => {
+        throw new Error('preventDefault poisoned');
+      },
+      configurable: true,
+    });
+    // Crash-free contract (pinned ruling): whether the handler guards the
+    // call or the environment swallows listener errors, the component must
+    // not end up broken. The dispatch itself is environment-dependent, so
+    // it is contained here — the assertions below are the contract.
+    try {
+      divider(container).dispatchEvent(ev);
+    } catch {
+      /* listener error propagation is environment-dependent */
+    }
+    try {
+      windowPointer('pointerup', 200); // clears any half-armed drag
+    } catch {
+      /* must not, but the state pins below are the real contract */
+    }
+    expect(hasDraggingClass(container)).toBe(false);
+    expect(draggingTokenCount(container)).toBe(0);
+    pointerMove(container, 40); // nothing half-armed may still listen
+    expect(valuenow(container)).toBe('50');
+    // fresh, healthy drag cycle works completely after the poison event
+    pointerDown(container, 200);
+    expect(hasDraggingClass(container)).toBe(true);
+    expect(draggingTokenCount(container)).toBe(1);
+    pointerMove(container, 100); // 25
+    expect(valuenow(container)).toBe('25');
+    expectSplit(container, 25);
+    windowPointer('pointerup', 100);
+    expect(hasDraggingClass(container)).toBe(false);
+    pointerMove(container, 300); // dead after up
+    expect(valuenow(container)).toBe('25');
+  });
+});
+
+// ------------------------------------------------------------
+// S3. CSS contract — dragging-scoped selection suppression
+// ------------------------------------------------------------
+describe('selection suppression: CSS contract (dragging-scoped, never unconditional)', () => {
+  it('ONE dragging-scoped rule targeting the panels carries BOTH user-select:none AND -webkit-user-select:none', () => {
+    renderSlider();
+    const candidates = flatCssRules().filter(
+      (r) => /dragging/.test(r.selector) && /panel/.test(r.selector),
+    );
+    expect(
+      candidates.length,
+      'no injected CSS rule scopes the panels under the dragging state',
+    ).toBeGreaterThan(0);
+    const complete = candidates.filter(
+      (r) =>
+        PLAIN_USER_SELECT_NONE.test(r.body) &&
+        WEBKIT_USER_SELECT_NONE.test(r.body),
+    );
+    // both declarations must live in the SAME rule (spec point 4)
+    expect(
+      complete.length,
+      `dragging-scoped panel rule(s) found but none carries BOTH ` +
+        `user-select:none and -webkit-user-select:none in one rule ` +
+        `(got: ${candidates.map((r) => `${r.selector}{${r.body.trim()}}`).join(' | ')})`,
+    ).toBeGreaterThan(0);
+  });
+
+  it('NO user-select:none rule exists whose selector lacks the dragging state — suppression is never unconditional', () => {
+    renderSlider();
+    const offenders = flatCssRules().filter(
+      (r) => ANY_USER_SELECT_NONE.test(r.body) && !/dragging/.test(r.selector),
+    );
+    expect(
+      offenders.map((r) => r.selector),
+      'unconditional user-select:none would break panel text selection at rest',
+    ).toEqual([]);
+  });
+
+  it('at rest (no dragging class) the root does not carry the class, so the scoped selector cannot match the panels', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    // at rest
+    expect(hasDraggingClass(container)).toBe(false);
+    // after a completed drag cycle the resting guarantee is restored
+    pointerDown(container, 200);
+    pointerMove(container, 100);
+    windowPointer('pointerup', 100);
+    expect(hasDraggingClass(container)).toBe(false);
+    expect(draggingTokenCount(container)).toBe(0);
+  });
+});
+
+// ============================================================
+// HARDENING PASS 2 — 2026-07-19, selection-suppression round.
+// The selection-suppression change passed the full 130-test suite on
+// the FIRST implementation attempt; per project rule that means the
+// suite was too weak. This pass attacks the drag-state machinery
+// where the S-suites did not: teardown symmetry (endDrag removes the
+// class — does unmount?), re-render token hygiene MID-DRAG, selector
+// APPLICABILITY via Element.matches (not mere regex presence),
+// cancelled-drag position continuity, and multi-pointer /
+// multi-instance interleavings.
+//   Historical note: this pass's predicted failure (P2-1, unmount
+//   mid-drag) was confirmed and fixed in the same changeset — the
+//   teardown now mirrors endDrag.
+// ============================================================
+
+// ---- helpers for this pass ---------------------------------
+
+/** pointerEvent with an explicit pointerId (the shared helper pins id 1). */
+function pointerEventWithId(
+  type: string,
+  clientX: number,
+  pointerId: number,
+): Event {
+  const Ctor: any = (globalThis as any).PointerEvent ?? MouseEvent;
+  return new Ctor(type, {
+    clientX,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    pointerId,
+  });
+}
+
+/** Every flat injected rule whose body suppresses selection. */
+function suppressionRules(): Array<{ selector: string; body: string }> {
+  return flatCssRules().filter((r) => ANY_USER_SELECT_NONE.test(r.body));
+}
+
+/**
+ * True if a suppression rule's compiled selector matches el or an
+ * ancestor of el within stop's subtree — i.e. user-select:none actually
+ * REACHES el via the cascade + inheritance, rather than merely existing
+ * somewhere in the stylesheet text. A selector that never matches a
+ * real element (wrong scope hash, typo'd class) passes the regex tests
+ * above but fails here. Applicability is resolved with querySelectorAll
+ * rooted at stop (so stop itself is never a candidate match; the rules
+ * under test match panels, which are strict descendants of stop).
+ */
+function suppressionReaches(el: Element, stop: Element): boolean {
+  for (const r of suppressionRules()) {
+    try {
+      // happy-dom caches Element.matches() per-element by selector string and
+      // does NOT invalidate on ancestor class mutations — a cached at-rest
+      // negative would survive pointerdown. querySelectorAll is invalidated
+      // correctly, so applicability is checked via containment instead.
+      const hits = Array.from(stop.querySelectorAll(r.selector));
+      if (hits.some((h) => h === el || h.contains(el))) return true;
+    } catch {
+      /* unparseable selector fragment cannot count as coverage */
+    }
+  }
+  return false;
+}
+
+// ------------------------------------------------------------
+// P2-1. Teardown symmetry: unmount mid-drag vs the dragging class
+// ------------------------------------------------------------
+describe('hardening 2: unmount mid-drag must strip the dragging class (teardown mirrors endDrag)', () => {
+  it('unmount MID-DRAG leaves NO "dragging" token on the retained root', () => {
+    const { container, unmount } = renderSlider();
+    const root = mockRect(container, 0, 400);
+    pointerDown(container, 200);
+    expect(root.classList.contains('dragging')).toBe(true);
+    unmount();
+    // The drag can never complete now — its window listeners are gone —
+    // so teardown itself is the ONLY place the class can be cleared.
+    // Invariant everywhere else in the component: dragging flag false ⇒
+    // class absent. Teardown sets the flag false; the class must follow.
+    expect(root.classList.contains('dragging')).toBe(false);
+    // No later window event can clear it either (listeners removed) —
+    // proving teardown was the last chance:
+    windowPointer('pointerup', 200);
+    windowPointer('pointercancel', 200);
+    expect(root.classList.contains('dragging')).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------
+// P2-2. Re-render token hygiene while a drag is live
+// ------------------------------------------------------------
+describe('hardening 2: Svelte re-render mid-drag must not wipe imperative drag state', () => {
+  it('rerender MID-DRAG preserves the dragging class, the dragged --split, the ignition, and drag liveness', async () => {
+    const { container, rerender } = renderSlider({
+      overlapPairs: PAIRS,
+      position: 20,
+    });
+    mockRect(container, 0, 400);
+    pointerDown(container, 80);
+    pointerMove(container, 200); // 50 — in band
+    expect(hasDraggingClass(container)).toBe(true);
+    expect(ignitedEls(container).length).toBe(4);
+    await rerender({
+      position: 90,
+      overlapPairs: [],
+      left: { ...LEFT, sentences: ['rerender bait'] },
+    });
+    // The interaction machinery is frozen at mount (the component's own
+    // stated contract): an update cycle must not clobber live drag state.
+    expect(hasDraggingClass(container)).toBe(true);
+    expect(draggingTokenCount(container)).toBe(1);
+    expect(valuenow(container)).toBe('50'); // not 90, not 20
+    expectSplit(container, 50);
+    // imperative 'ignited' tokens survive the update cycle too
+    expect(ignitedEls(container).length).toBe(4);
+    pointerMove(container, 100); // 25 — drag still LIVE after the re-render
+    expect(valuenow(container)).toBe('25');
+    windowPointer('pointerup', 100);
+    expect(hasDraggingClass(container)).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------
+// P2-3. Poisoned preventDefault must not stop the arm
+// (the impl's own comment: "the rest of the handler must still run")
+// ------------------------------------------------------------
+describe('hardening 2: poisoned preventDefault still arms the drag fully', () => {
+  it('throwing preventDefault: class appears synchronously, moves are live, one up clears everything', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    const ev = pointerEvent('pointerdown', 200);
+    Object.defineProperty(ev, 'preventDefault', {
+      value: () => {
+        throw new Error('preventDefault poisoned');
+      },
+      configurable: true,
+    });
+    try {
+      divider(container).dispatchEvent(ev);
+    } catch {
+      /* listener error propagation is environment-dependent */
+    }
+    // pinned: the handler swallows the poison and STILL arms the drag
+    expect(hasDraggingClass(container)).toBe(true);
+    expect(draggingTokenCount(container)).toBe(1);
+    pointerMove(container, 100); // 25 — drag fully live
+    expect(valuenow(container)).toBe('25');
+    expectSplit(container, 25);
+    windowPointer('pointerup', 100);
+    expect(hasDraggingClass(container)).toBe(false);
+    pointerMove(container, 300); // dead after up
+    expect(valuenow(container)).toBe('25');
+  });
+});
+
+// ------------------------------------------------------------
+// P2-4. Selector APPLICABILITY — the suppression must actually
+// reach deep panel content, and must stop reaching it after up
+// ------------------------------------------------------------
+describe('hardening 2: suppression selector actually matches the live DOM', () => {
+  it('while dragging, user-select:none REACHES a deep sentence and the version chip in BOTH panels; after pointerup it reaches none', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    const root = rootEl(container);
+    const deepL = sentenceEl(container, 'left', 2)!;
+    const deepR = sentenceEl(container, 'right', 2)!;
+    expect(deepL).toBeTruthy();
+    expect(deepR).toBeTruthy();
+    // at rest NOTHING suppresses selection anywhere in the chain
+    expect(suppressionReaches(deepL, root)).toBe(false);
+    expect(suppressionReaches(deepR, root)).toBe(false);
+    pointerDown(container, 200);
+    // the compiled selector (scope hashes and all) must match a real
+    // ancestor of the deepest text-bearing elements on BOTH sides
+    expect(suppressionReaches(deepL, root)).toBe(true);
+    expect(suppressionReaches(deepR, root)).toBe(true);
+    // panel-head content (labels/chips) is selectable text too — covered
+    for (const chip of qa(container, 'diff-version-chip')) {
+      expect(suppressionReaches(chip, root)).toBe(true);
+    }
+    windowPointer('pointerup', 200);
+    // selectability RESTORED: the chain matches no suppression rule
+    expect(suppressionReaches(deepL, root)).toBe(false);
+    expect(suppressionReaches(deepR, root)).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------
+// P2-5. Cancelled-drag continuity — pos, aria-valuenow, band
+// ------------------------------------------------------------
+describe('hardening 2: cancelled-drag position continuity', () => {
+  it('keyboard resumes from the RAW fractional position after pointercancel; band re-entry still ignites', () => {
+    const { container } = renderSlider({ overlapPairs: PAIRS, position: 10 });
+    mockRect(container, 0, 300);
+    pointerDown(container, 30);
+    pointerMove(container, 100); // (100/300)*100 = 33.33…
+    expect(valuenow(container)).toBe('33');
+    windowPointer('pointercancel', 100);
+    expect(valuenow(container)).toBe('33'); // cancel freezes, never resets
+    press(container, 'ArrowRight'); // raw 33.33… + 2 = 35.33…
+    expect(valuenow(container)).toBe('35');
+    // the RAW fractional value carried across the cancel — not a rounded copy
+    expect(rootEl(container).getAttribute('style') || '').toContain(
+      `${(100 / 300) * 100 + 2}%`,
+    );
+    expect(ignitedEls(container).length).toBe(0); // 35.33 — below the band
+    press(container, 'PageUp'); // 45.33… — inside the band
+    expect(valuenow(container)).toBe('45');
+    expect(ignitedEls(container).length).toBe(4);
+  });
+
+  it('pointercancel INSIDE the band clears the dragging class but leaves the ignition lit', () => {
+    const { container } = renderSlider({ overlapPairs: PAIRS, position: 10 });
+    mockRect(container, 0, 400);
+    pointerDown(container, 40);
+    pointerMove(container, 200); // 50 — ignites
+    expect(ignitedEls(container).length).toBe(4);
+    expect(hasDraggingClass(container)).toBe(true);
+    windowPointer('pointercancel', 200);
+    expect(hasDraggingClass(container)).toBe(false);
+    expect(ignitedEls(container).length).toBe(4); // cancel ends the DRAG, not the state
+    expect(valuenow(container)).toBe('50');
+  });
+
+  it('after pointercancel a flood of extreme/NaN window moves never moves the divider, resurrects the class, or poisons the style', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    pointerDown(container, 200);
+    pointerMove(container, 100); // 25
+    windowPointer('pointercancel', 100);
+    for (const x of [1e9, -1e9, 0, 400]) windowPointer('pointermove', x);
+    const nanMove = pointerEvent('pointermove', 0);
+    Object.defineProperty(nanMove, 'clientX', { value: NaN });
+    window.dispatchEvent(nanMove);
+    expect(valuenow(container)).toBe('25');
+    expectSplit(container, 25);
+    expect(hasDraggingClass(container)).toBe(false);
+    expect(draggingTokenCount(container)).toBe(0);
+    expect(rootEl(container).getAttribute('style') || '').not.toMatch(
+      /NaN|Infinity/,
+    );
+  });
+});
+
+// ------------------------------------------------------------
+// P2-6. Multi-pointer & multi-instance interleavings
+// ------------------------------------------------------------
+describe('hardening 2: multi-pointer and multi-instance interleavings', () => {
+  it('two downs from DIFFERENT pointerIds share ONE drag; the FIRST pointer lifting ends it for both', () => {
+    const { container } = renderSlider();
+    mockRect(container, 0, 400);
+    divider(container).dispatchEvent(pointerEventWithId('pointerdown', 100, 1));
+    divider(container).dispatchEvent(pointerEventWithId('pointerdown', 300, 2));
+    expect(draggingTokenCount(container)).toBe(1); // never two tokens
+    window.dispatchEvent(pointerEventWithId('pointermove', 200, 2)); // 50
+    expect(valuenow(container)).toBe('50');
+    window.dispatchEvent(pointerEventWithId('pointerup', 200, 1)); // FIRST pointer lifts
+    expect(hasDraggingClass(container)).toBe(false);
+    // the surviving pointer must be dead too — no half-live drag
+    window.dispatchEvent(pointerEventWithId('pointermove', 40, 2));
+    expect(valuenow(container)).toBe('50');
+    expectSplit(container, 50);
+  });
+
+  it('BOTH instances dragging simultaneously: one shared window pointerup clears BOTH classes and kills BOTH drags', () => {
+    const a = renderSlider();
+    const b = renderSlider();
+    mockRect(a.container, 0, 400);
+    mockRect(b.container, 100, 400);
+    pointerDown(a.container, 200);
+    pointerDown(b.container, 200);
+    expect(hasDraggingClass(a.container)).toBe(true);
+    expect(hasDraggingClass(b.container)).toBe(true);
+    windowPointer('pointermove', 300); // a: 75, b: 50 — own rects
+    expect(valuenow(a.container)).toBe('75');
+    expect(valuenow(b.container)).toBe('50');
+    windowPointer('pointerup', 300);
+    expect(hasDraggingClass(a.container)).toBe(false);
+    expect(hasDraggingClass(b.container)).toBe(false);
+    windowPointer('pointermove', 0); // both dead
+    expect(valuenow(a.container)).toBe('75');
+    expect(valuenow(b.container)).toBe('50');
+  });
+});
+
+// ------------------------------------------------------------
+// P2-7. Geometry pathology mid-drag — null rect
+// ------------------------------------------------------------
+describe('hardening 2: null getBoundingClientRect mid-drag', () => {
+  it('a null rect makes moves inert WITHOUT killing the drag; the drag heals when geometry returns', () => {
+    const { container } = renderSlider();
+    const root = mockRect(container, 0, 400);
+    pointerDown(container, 200);
+    pointerMove(container, 100); // 25
+    Object.defineProperty(root, 'getBoundingClientRect', {
+      value: () => null,
+      configurable: true,
+    });
+    expect(() => pointerMove(container, 300)).not.toThrow();
+    expect(valuenow(container)).toBe('25');
+    expect(hasDraggingClass(container)).toBe(true); // drag SURVIVES
+    mockRect(container, 0, 400); // geometry heals
+    pointerMove(container, 300); // 75 — the drag never died
+    expect(valuenow(container)).toBe('75');
+    expectSplit(container, 75);
+    windowPointer('pointerup', 300);
+    expect(hasDraggingClass(container)).toBe(false);
   });
 });

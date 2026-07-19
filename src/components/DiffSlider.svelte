@@ -171,15 +171,27 @@
 
   const endDrag = () => {
     dragging = false;
+    if (rootEl) rootEl.classList.remove('dragging');
     removeDragListeners();
   };
 
-  const onPointerDown = () => {
+  const onPointerDown = (event: PointerEvent) => {
     if (destroyed) return;
+    // preventDefault suppresses native text-selection during drag. Wrap in
+    // try/catch so a hostile event object (throws on .preventDefault) cannot
+    // corrupt drag bookkeeping — the rest of the handler must still run.
+    try {
+      event.preventDefault();
+    } catch (_) {
+      // hostile event — swallow and continue
+    }
     if (typeof window === 'undefined') return;
     // Re-arms on every pointerdown; addEventListener with the same handler
     // reference is idempotent, so a down-during-drag never double-binds.
     dragging = true;
+    // classList.add is idempotent — repeated pointerdowns without an
+    // intervening pointerup never produce duplicate tokens.
+    if (rootEl) rootEl.classList.add('dragging');
     window.addEventListener('pointermove', onWindowPointerMove);
     window.addEventListener('pointerup', onWindowPointerUp);
     window.addEventListener('pointercancel', onWindowPointerUp);
@@ -188,10 +200,14 @@
   // Unmount teardown: no zombie window listeners, and handlers on any
   // retained element references become inert via the destroyed flag —
   // dispatching events after unmount neither throws nor mutates.
+  // We also remove the dragging class here (mirroring endDrag) so that
+  // a component unmounted mid-drag never leaves the class on the retained
+  // root element.
   $effect(() => {
     return () => {
       destroyed = true;
       dragging = false;
+      if (rootEl) rootEl.classList.remove('dragging');
       removeDragListeners();
     };
   });
@@ -346,6 +362,14 @@
     color: rgba(255, 255, 255, 0.62);
     overflow-wrap: break-word;
     transition: color 0.25s ease;
+  }
+
+  /* Fully :global — the runtime-added .dragging class carries no scope hash,
+     and a hash-coupled descendant would break on every recompile. user-select
+     is suppressed for the whole panel subtree only while dragging. */
+  :global(.diff-slider.dragging .panel) {
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   /* Ignition: white text, weight only — no glow, no theatrics. The class is
