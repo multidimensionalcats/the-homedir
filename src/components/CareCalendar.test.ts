@@ -100,6 +100,48 @@ function labelsIn(el: Element): Element[] {
   return Array.from(el.querySelectorAll('[data-testid="care-day-label"]'));
 }
 
+function rowLabelsIn(el: Element): Element[] {
+  return Array.from(el.querySelectorAll('[data-testid="care-row-label"]'));
+}
+
+function legendIn(root: Element): Element | null {
+  return root.querySelector('[data-testid="care-legend"]');
+}
+
+/**
+ * Deepest elements inside `scope` whose full trimmed textContent is exactly
+ * one of `texts` — a parent wrapping a matching child is not double-counted.
+ * Returned in document order. Exact, case-sensitive string comparison:
+ * "Death" never matches "death". Never call with '' in `texts` (empty
+ * swatch elements would match).
+ */
+function deepestExact(
+  scope: Element,
+  texts: string[],
+): { el: Element; text: string }[] {
+  return Array.from(scope.querySelectorAll('*'))
+    .map((el) => ({ el, text: (el.textContent || '').trim() }))
+    .filter(
+      ({ el, text }) =>
+        texts.includes(text) &&
+        !Array.from(el.children).some((c) =>
+          texts.includes((c.textContent || '').trim()),
+        ),
+    );
+}
+
+/** Count of legend entries labeled with EXACTLY this text. */
+function legendLabelCount(legend: Element, text: string): number {
+  return deepestExact(legend, [text]).length;
+}
+
+/** All elements inside the legend carrying this hex via inline style. */
+function legendSwatches(legend: Element, hex: string): Element[] {
+  return Array.from(legend.querySelectorAll('*')).filter((el) =>
+    elementCarriesColor(el, hex),
+  );
+}
+
 /** true if el sits inside an aria-hidden="true" subtree bounded by root */
 function isAriaHidden(el: Element, root: Element): boolean {
   let cur: Element | null = el;
@@ -517,7 +559,12 @@ describe('CareCalendar -- event colors', () => {
 });
 
 // ============================================================
-// 6. Sparse date labels — first, last, death days ONLY
+// 6. Sparse date labels — collision-suppression rule
+//    (spec 2026-07-19): death labels ALWAYS render; the
+//    first-day label renders only if index 0 is >= 2 away from
+//    every death-label index; the last-day label renders only
+//    if it is >= 2 away from every death-label index AND >= 2
+//    away from index 0 when the first-day label rendered.
 // ============================================================
 describe('CareCalendar -- sparse date labels', () => {
   it('with no deaths, ONLY first and last days carry a label', () => {
@@ -547,15 +594,17 @@ describe('CareCalendar -- sparse date labels', () => {
     expect(labelsIn(getByTestId('care-calendar')).length).toBe(3);
   });
 
-  it('a DAY-level death on a middle day adds a label to that day', () => {
+  it('a DAY-level death at index 3 of 5 labels that day AND suppresses the adjacent last-day label', () => {
     const days = makeWindow(5);
     days[3] = makeDay('2026-02-04', {
       dayEvents: [makeEvent({ event_type: 'death' })],
     });
     const { getByTestId } = render(CareCalendar, { props: { days } });
     const cols = daysIn(getByTestId('care-calendar'));
-    expect(labelsIn(cols[3]).length).toBe(1);
-    expect(labelsIn(getByTestId('care-calendar')).length).toBe(3);
+    expect(labelsIn(cols[3]).length).toBe(1); // death label always renders
+    expect(labelsIn(cols[0]).length).toBe(1); // |0-3| >= 2 → first-day label survives
+    expect(labelsIn(cols[4]).length).toBe(0); // |4-3| < 2 → last-day label SUPPRESSED
+    expect(labelsIn(getByTestId('care-calendar')).length).toBe(2);
   });
 
   it('non-death events on middle days do NOT earn a label', () => {
@@ -866,6 +915,249 @@ describe('CareCalendar -- malformed input', () => {
       const { getByTestId } = render(CareCalendar, { props: { days } });
       expect(daysIn(getByTestId('care-calendar')).length).toBe(2);
     }).not.toThrow();
+  });
+});
+
+// ============================================================
+// 8b. Review pins 2026-07-19 — pet_name access hardening at
+// render sites. The dedup path guards via readPetName(), but
+// the AM/PM slot loops (`title={event.pet_name}`), the
+// day-events loop, and the sr-table interpolation all read the
+// property RAW. A throwing `pet_name` getter on an otherwise
+// valid event must not crash the render ("malformed entries
+// never crash siblings"), and non-string pet_names pin to the
+// readPetName discipline: EMPTY STRING, never a coercion.
+// ============================================================
+describe('CareCalendar -- review pins 2026-07-19: hostile pet_name at render sites', () => {
+  // Built by hand — makeEvent() spreads overrides, which would
+  // TRIGGER the getter at fixture-build time. defineProperty keeps
+  // the trap armed until the component itself touches pet_name.
+  function trapNameEvent(overrides: Record<string, any> = {}) {
+    const ev: Record<string, any> = {
+      event_type: 'care',
+      event_timestamp: '2026-02-01T09:00:00Z',
+      notes: 'fed and watered',
+      ...overrides,
+    };
+    Object.defineProperty(ev, 'pet_name', {
+      enumerable: true,
+      get() {
+        throw new Error('trap');
+      },
+    });
+    return ev;
+  }
+
+  /** title attribute normalized: absent (null) and "" are both "empty". */
+  function titleOf(el: Element): string {
+    return el.getAttribute('title') ?? '';
+  }
+
+  it('AM slot with one valid + one throwing-getter pet_name event: render does NOT throw, BOTH dots render, hostile title is empty/absent, valid title intact, sibling day unaffected', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot({
+            events: [
+              makeEvent({ pet_name: 'Bramble', event_type: 'acquired' }),
+              trapNameEvent({ event_type: 'care' }),
+            ],
+          }),
+          PM: makeSlot(),
+        },
+      }),
+      makeDay('2026-02-02'),
+    ];
+    let root: HTMLElement;
+    expect(() => {
+      const { getByTestId } = render(CareCalendar, { props: { days } });
+      root = getByTestId('care-calendar');
+    }).not.toThrow();
+    const cols = daysIn(root!);
+    expect(cols.length).toBe(2); // sibling day survives
+    const amDots = eventsIn(slotAm(cols[0])!);
+    expect(amDots.length).toBe(2); // hostile dot is NOT dropped
+    expect(amDots.map((e) => e.getAttribute('data-event-type'))).toEqual([
+      'acquired',
+      'care',
+    ]);
+    expect(titleOf(amDots[0])).toBe('Bramble'); // valid title untouched
+    expect(titleOf(amDots[1])).toBe(''); // hostile title empty or absent
+  });
+
+  it('PM slot throwing-getter pet_name: render does NOT throw, dot renders with empty/absent title', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot(),
+          PM: makeSlot({ events: [trapNameEvent({ event_type: 'death' })] }),
+        },
+      }),
+    ];
+    let root: HTMLElement;
+    expect(() => {
+      const { getByTestId } = render(CareCalendar, { props: { days } });
+      root = getByTestId('care-calendar');
+    }).not.toThrow();
+    const pmDots = eventsIn(slotPm(daysIn(root!)[0])!);
+    expect(pmDots.length).toBe(1);
+    expect(pmDots[0].getAttribute('data-event-type')).toBe('death');
+    expect(titleOf(pmDots[0])).toBe('');
+  });
+
+  it('dayEvents with one throwing-getter + one valid event: render does NOT throw, both dots render in order, hostile title empty/absent', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [
+          trapNameEvent({ event_type: 'care' }),
+          makeEvent({ pet_name: 'Wren', event_type: 'acquired' }),
+        ],
+      }),
+      makeDay('2026-02-02'),
+    ];
+    let root: HTMLElement;
+    expect(() => {
+      const { getByTestId } = render(CareCalendar, { props: { days } });
+      root = getByTestId('care-calendar');
+    }).not.toThrow();
+    const cols = daysIn(root!);
+    expect(cols.length).toBe(2);
+    const area = cols[0].querySelector('[data-testid="care-day-events"]')!;
+    const dots = eventsIn(area);
+    expect(dots.length).toBe(2);
+    expect(dots.map((e) => e.getAttribute('data-event-type'))).toEqual([
+      'care',
+      'acquired',
+    ]);
+    expect(titleOf(dots[0])).toBe(''); // hostile
+    expect(titleOf(dots[1])).toBe('Wren'); // valid sibling in the SAME loop
+  });
+
+  it('sr-table with a throwing-getter pet_name: renders without throwing; the hostile row cell keeps its event_type and notes with an EMPTY pet_name contribution', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot({
+            events: [
+              makeEvent({
+                pet_name: 'Bramble',
+                event_type: 'acquired',
+                notes: 'welcomed home',
+              }),
+              trapNameEvent({ event_type: 'care', notes: 'trap notes survive' }),
+            ],
+          }),
+          PM: makeSlot(),
+        },
+      }),
+    ];
+    let table: Element;
+    expect(() => {
+      const { getByTestId } = render(CareCalendar, { props: { days } });
+      table = getByTestId('care-calendar-table');
+    }).not.toThrow();
+    const rows = Array.from(table!.querySelectorAll('tbody tr'));
+    expect(rows.length).toBe(1);
+    const rowText = rows[0].textContent || '';
+    // Valid sibling event in the same cell is fully intact.
+    expect(rowText).toContain('Bramble');
+    expect(rowText).toContain('acquired');
+    expect(rowText).toContain('welcomed home');
+    // Hostile event still contributes its event_type and notes...
+    expect(rowText).toContain('care');
+    expect(rowText).toContain('trap notes survive');
+    // ...as its own sr-event span (not silently dropped from the cell).
+    const srEvents = Array.from(rows[0].querySelectorAll('.sr-event'));
+    expect(srEvents.length).toBe(2);
+    const trapSpanText = srEvents[1].textContent || '';
+    expect(trapSpanText).toContain('care');
+    expect(trapSpanText).toContain('trap notes survive');
+  });
+
+  it('non-string pet_name 42 pins to EMPTY: title empty/absent (never "42") and "42" never appears in the sr table', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot({
+            events: [
+              makeEvent({
+                pet_name: 42 as any,
+                event_type: 'care',
+                notes: 'plain notes',
+              }),
+            ],
+          }),
+          PM: makeSlot(),
+        },
+      }),
+    ];
+    let root: HTMLElement;
+    expect(() => {
+      const { getByTestId } = render(CareCalendar, { props: { days } });
+      root = getByTestId('care-calendar');
+    }).not.toThrow();
+    const dot = eventsIn(slotAm(daysIn(root!)[0])!)[0];
+    expect(titleOf(dot)).toBe('');
+    const table = root!.querySelector('[data-testid="care-calendar-table"]')!;
+    expect(table.textContent || '').not.toContain('42');
+    // The event itself is still exposed to AT — only the name is empty.
+    expect(table.textContent || '').toContain('plain notes');
+  });
+
+  it('object pet_name pins to EMPTY: no "[object Object]" in title, grid, or sr table', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [
+          makeEvent({
+            pet_name: { sneaky: true } as any,
+            event_type: 'acquired',
+          }),
+        ],
+      }),
+    ];
+    let root: HTMLElement;
+    expect(() => {
+      const { getByTestId } = render(CareCalendar, { props: { days } });
+      root = getByTestId('care-calendar');
+    }).not.toThrow();
+    const area = daysIn(root!)[0].querySelector(
+      '[data-testid="care-day-events"]',
+    )!;
+    const dot = eventsIn(area)[0];
+    expect(titleOf(dot)).toBe('');
+    expect(titleOf(dot)).not.toContain('[object');
+    expect(root!.textContent || '').not.toContain('[object Object]');
+  });
+
+  it('object pet_name with a THROWING toString: render does NOT throw, dot renders with empty/absent title, sr row survives', () => {
+    const bomb = {
+      toString() {
+        throw new Error('hostile toString');
+      },
+    };
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot({
+            events: [makeEvent({ pet_name: bomb as any, event_type: 'care' })],
+          }),
+          PM: makeSlot(),
+        },
+      }),
+      makeDay('2026-02-02'),
+    ];
+    let root: HTMLElement;
+    expect(() => {
+      const { getByTestId } = render(CareCalendar, { props: { days } });
+      root = getByTestId('care-calendar');
+    }).not.toThrow();
+    const cols = daysIn(root!);
+    expect(cols.length).toBe(2);
+    const dot = eventsIn(slotAm(cols[0])!)[0];
+    expect(dot.getAttribute('data-event-type')).toBe('care');
+    expect(titleOf(dot)).toBe('');
+    const table = root!.querySelector('[data-testid="care-calendar-table"]')!;
+    expect(table.querySelectorAll('tbody tr').length).toBe(2);
   });
 });
 
@@ -1773,7 +2065,9 @@ describe('review pins 2026-07-15', () => {
 // first OCCURRENCE in input order — the component's input-order
 // contract; it has no timestamps to compare beyond day
 // membership. Event DOTS are unchanged: every death event still
-// renders. First/last-day labels are unaffected.
+// renders. First/last-day labels follow the 2026-07-19
+// collision-suppression rule (see section 6 and the dedicated
+// collision-suppression describe below).
 // ============================================================
 describe('death-label dedup (QA ruling 2026-07-15)', () => {
   function deathDotsIn(col: Element): Element[] {
@@ -1858,7 +2152,10 @@ describe('death-label dedup (QA ruling 2026-07-15)', () => {
     // Non-chronological input: Moss dies on Feb 9 (input index 1) and
     // Feb 2 (input index 2). Feb 2 is chronologically earlier, but the
     // component's contract is input order — the earlier-INDEXED day
-    // (Feb 9) wins the label; Feb 2 gets none.
+    // (Feb 9) wins the label; Feb 2 gets none. Under the collision
+    // rule the death label at index 1 also SUPPRESSES the first-day
+    // label (|0-1| < 2); the last-day label at index 4 survives
+    // (|4-1| >= 2, and the first-day label did not render).
     const days = [
       makeDay('2026-02-05'),
       makeDay('2026-02-09', {
@@ -1872,11 +2169,707 @@ describe('death-label dedup (QA ruling 2026-07-15)', () => {
     ];
     const { getByTestId } = render(CareCalendar, { props: { days } });
     const cols = daysIn(getByTestId('care-calendar'));
+    expect(labelsIn(cols[0]).length).toBe(0); // first-day label suppressed by adjacent death label
     expect(labelsIn(cols[1]).length).toBe(1); // Feb 9 — first occurrence in input
     expect(labelsIn(cols[2]).length).toBe(0); // Feb 2 — later in input, NO label
-    // first day + Feb 9 + last day = 3 labels total
-    expect(labelsIn(getByTestId('care-calendar')).length).toBe(3);
+    expect(labelsIn(cols[4]).length).toBe(1); // last-day label survives
+    // death label (index 1) + last day = 2 labels total
+    expect(labelsIn(getByTestId('care-calendar')).length).toBe(2);
     // The unlabeled repeat day keeps its death dot
     expect(deathDotsIn(cols[2]).length).toBe(1);
+  });
+});
+
+// ============================================================
+// VC-1. Version-change spec 2026-07-19: label collision
+// suppression. Deterministic rule over day indices:
+//   - candidates: index 0, last index, every hasDeathLabel day
+//   - death labels ALWAYS render
+//   - first-day label only if |0 - d| >= 2 for EVERY death-label
+//     index d (a death ON index 0 is one label, not two)
+//   - last-day label only if |last - d| >= 2 for every
+//     death-label index d AND |last - 0| >= 2 when the first-day
+//     label rendered
+//   - single-day window: exactly one label
+// Suppression keys off death-LABEL indices (post per-pet dedup),
+// NOT death-event indices.
+// ============================================================
+describe('CareCalendar -- label collision suppression (spec 2026-07-19)', () => {
+  function allLabels(root: Element): Element[] {
+    return labelsIn(root as HTMLElement);
+  }
+
+  /** indices (into rendered columns) that carry a day label */
+  function labeledIndices(root: Element): number[] {
+    const out: number[] = [];
+    daysIn(root as HTMLElement).forEach((col, i) => {
+      if (labelsIn(col).length > 0) out.push(i);
+    });
+    return out;
+  }
+
+  function deathAt(date: string, pet: string) {
+    return makeDay(date, {
+      dayEvents: [makeEvent({ pet_name: pet, event_type: 'death' })],
+    });
+  }
+
+  it('THE PIN: 10-day window with death labels at indices 2 and 8 renders labels at EXACTLY {0, 2, 8} — index 9 suppressed', () => {
+    const days = makeWindow(10);
+    days[2] = deathAt('2026-02-03', 'Pixel');
+    days[8] = deathAt('2026-02-09', 'Echo');
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0, 2, 8]);
+    expect(allLabels(root).length).toBe(3);
+    // every labeled day carries exactly ONE label
+    const cols = daysIn(root);
+    for (const i of [0, 2, 8]) {
+      expect(labelsIn(cols[i]).length).toBe(1);
+    }
+    expect(labelsIn(cols[9]).length).toBe(0);
+  });
+
+  it('2-day death-free window: exactly ONE label, on index 0 (last suppressed: |1-0| < 2 with first rendered)', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(2) },
+    });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0]);
+    expect(allLabels(root).length).toBe(1);
+  });
+
+  it('3-day death-free window: exactly two labels at indices 0 and 2 (|2-0| = 2 clears the bar)', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(3) },
+    });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0, 2]);
+    expect(allLabels(root).length).toBe(2);
+  });
+
+  it('death on the FIRST day of a 2-day window: exactly ONE label total, on index 0 (death + first collapse to one; last suppressed)', () => {
+    const days = makeWindow(2);
+    days[0] = deathAt('2026-02-01', 'Moss');
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0]);
+    expect(allLabels(root).length).toBe(1);
+    expect(labelsIn(daysIn(root)[0]).length).toBe(1); // one label, not two
+  });
+
+  it('death on the LAST day of a 5-day window: labels at {0, 4}, exactly one label on the death day (death + last collapse)', () => {
+    const days = makeWindow(5);
+    days[4] = deathAt('2026-02-05', 'Moss');
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0, 4]);
+    expect(allLabels(root).length).toBe(2);
+    expect(labelsIn(daysIn(root)[4]).length).toBe(1); // never doubled
+  });
+
+  it('deaths at indices 0 AND 1 simultaneously (different pets, 5 days): labels at exactly {0, 1, 4}, one per day', () => {
+    const days = makeWindow(5);
+    days[0] = deathAt('2026-02-01', 'Pixel');
+    days[1] = deathAt('2026-02-02', 'Echo');
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0, 1, 4]);
+    expect(allLabels(root).length).toBe(3);
+    const cols = daysIn(root);
+    expect(labelsIn(cols[0]).length).toBe(1);
+    expect(labelsIn(cols[1]).length).toBe(1);
+  });
+
+  it('adjacent deaths at indices 3 and 4 of 6 (different pets): both death labels render, last-day label (5) suppressed → {0, 3, 4}', () => {
+    const days = makeWindow(6);
+    days[3] = deathAt('2026-02-04', 'Pixel');
+    days[4] = deathAt('2026-02-05', 'Echo');
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0, 3, 4]);
+    expect(allLabels(root).length).toBe(3);
+  });
+
+  it('ALL 10 days carry deaths (10 distinct pets): exactly one label per day, 10 total — first/last never stack a second label', () => {
+    const days = makeWindow(10);
+    for (let i = 0; i < 10; i++) {
+      days[i] = deathAt(days[i].date, `Pet-${i}`);
+    }
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    const cols = daysIn(root);
+    expect(cols.length).toBe(10);
+    for (const col of cols) {
+      expect(labelsIn(col).length).toBe(1);
+    }
+    expect(allLabels(root).length).toBe(10);
+  });
+
+  it('death label at index 1 of 10 suppresses the FIRST-day label; last-day label survives (first did not render) → {1, 9}', () => {
+    const days = makeWindow(10);
+    days[1] = deathAt('2026-02-02', 'Moss');
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([1, 9]);
+    expect(allLabels(root).length).toBe(2);
+  });
+
+  it('death label at index 8 of 10 suppresses the LAST-day label; first-day label survives → {0, 8}', () => {
+    const days = makeWindow(10);
+    days[8] = deathAt('2026-02-09', 'Moss');
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0, 8]);
+    expect(allLabels(root).length).toBe(2);
+  });
+
+  it('suppression keys off death-LABEL indices, not death-EVENT indices: a deduped repeat death at index 8 does NOT suppress the last-day label', () => {
+    // Pixel dies at index 2 (labeled) and AGAIN at index 8 (per-pet
+    // dedup → dot only, NO death label). Death-label indices = {2},
+    // so the last-day label at 9 survives (|9-2| >= 2). A naive
+    // implementation using raw death-event indices would suppress it.
+    const days = makeWindow(10);
+    days[2] = deathAt('2026-02-03', 'Pixel');
+    days[8] = deathAt('2026-02-09', 'Pixel');
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0, 2, 9]);
+    expect(allLabels(root).length).toBe(3);
+    expect(labelsIn(daysIn(root)[8]).length).toBe(0);
+    // the deduped repeat still renders its dot
+    const dots = eventsIn(daysIn(root)[8]).filter(
+      (e) => e.getAttribute('data-event-type') === 'death',
+    );
+    expect(dots.length).toBe(1);
+  });
+
+  it('suppression removes LABELS only — every death dot still renders in the pin scenario', () => {
+    const days = makeWindow(10);
+    days[2] = deathAt('2026-02-03', 'Pixel');
+    days[8] = deathAt('2026-02-09', 'Echo');
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    const deathDots = Array.from(
+      root.querySelectorAll('[data-testid="care-event"]'),
+    ).filter((e) => e.getAttribute('data-event-type') === 'death');
+    expect(deathDots.length).toBe(2);
+  });
+
+  it('suppression is recomputed on rerender: growing the window past the dead zone resurrects the last-day label', async () => {
+    const days = makeWindow(10);
+    days[8] = deathAt('2026-02-09', 'Moss');
+    const { getByTestId, rerender } = render(CareCalendar, {
+      props: { days },
+    });
+    let root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0, 8]); // last (9) suppressed
+    const grown = makeWindow(12);
+    grown[8] = deathAt('2026-02-09', 'Moss');
+    await rerender({ days: grown });
+    root = getByTestId('care-calendar');
+    expect(labeledIndices(root)).toEqual([0, 8, 11]); // |11-8| >= 2 → last returns
+  });
+});
+
+// ============================================================
+// VC-2. Version-change spec 2026-07-19: visible legend —
+// rendering conditions, visibility, slot-state entries, and
+// the untouched sr-table AT surface.
+// ============================================================
+describe('CareCalendar -- legend: rendering, visibility & slot-state entries', () => {
+  it('legend renders inside the component root with data-testid="care-legend" when days are present', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(3) },
+    });
+    const root = getByTestId('care-calendar');
+    const legend = legendIn(root);
+    expect(legend).not.toBeNull();
+    expect(root.contains(legend!)).toBe(true);
+  });
+
+  it('legend element itself carries aria-hidden="true"', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(3) },
+    });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legend.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('legend is VISIBLE: neither it nor any ancestor inside the component carries class "sr-only"', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(3) },
+    });
+    const root = getByTestId('care-calendar');
+    const legend = legendIn(root)!;
+    let cur: Element | null = legend;
+    while (cur && cur !== root.parentElement) {
+      expect(cur.classList.contains('sr-only')).toBe(false);
+      cur = cur.parentElement;
+    }
+  });
+
+  it('slot-state entries "session ran" and "no session" each appear EXACTLY once, even in a window with zero sessions and zero events', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(4) },
+    });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'session ran')).toBe(1);
+    expect(legendLabelCount(legend, 'no session')).toBe(1);
+  });
+
+  it('slot-state labels are exact lowercase — no capitalized variants anywhere in the legend', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(2) },
+    });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    const text = legend.textContent || '';
+    expect(text).toContain('session ran');
+    expect(text).toContain('no session');
+    expect(text).not.toContain('Session');
+    expect(text).not.toContain('No session');
+  });
+
+  it('days=[] (hasData false): legend is NOT rendered; empty marker is', () => {
+    const { getByTestId } = render(CareCalendar, { props: { days: [] } });
+    const root = getByTestId('care-calendar');
+    expect(legendIn(root)).toBeNull();
+    expect(
+      root.querySelector('[data-testid="care-calendar-empty"]'),
+    ).not.toBeNull();
+  });
+
+  it('days prop omitted: no legend', () => {
+    const { getByTestId } = render(CareCalendar, { props: {} });
+    expect(legendIn(getByTestId('care-calendar'))).toBeNull();
+  });
+
+  it('ALL-malformed days ([null, undefined, 42, "x"]) → hasData false → no legend', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: [null, undefined, 42, 'x'] as any },
+    });
+    expect(legendIn(getByTestId('care-calendar'))).toBeNull();
+  });
+
+  it('legend lifecycle tracks hasData across rerenders: present → gone at [] → back again', async () => {
+    const { getByTestId, rerender } = render(CareCalendar, {
+      props: { days: makeWindow(2) },
+    });
+    expect(legendIn(getByTestId('care-calendar'))).not.toBeNull();
+    await rerender({ days: [] });
+    expect(legendIn(getByTestId('care-calendar'))).toBeNull();
+    await rerender({ days: makeWindow(3) });
+    expect(legendIn(getByTestId('care-calendar'))).not.toBeNull();
+  });
+
+  it('sr table stays the untouched AT surface: not aria-hidden, no legend or row-label testids inside it, thead exactly Date/AM/PM/Events, one row per day', () => {
+    const days = makeWindow(3);
+    days[1] = makeDay('2026-02-02', {
+      dayEvents: [makeEvent({ event_type: 'death' })],
+    });
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    const table = getByTestId('care-calendar-table');
+    expect(isAriaHidden(table, root)).toBe(false);
+    expect(table.querySelector('[data-testid="care-legend"]')).toBeNull();
+    expect(table.querySelector('[data-testid="care-row-label"]')).toBeNull();
+    const ths = Array.from(table.querySelectorAll('thead th')).map((th) =>
+      (th.textContent || '').trim(),
+    );
+    expect(ths).toEqual(['Date', 'AM', 'PM', 'Events']);
+    expect(table.querySelectorAll('tbody tr').length).toBe(3);
+  });
+
+  it('legend does not mint extra care-event dots: a window with 1 event still has exactly 1 [data-testid="care-event"]', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot({ events: [makeEvent({ event_type: 'care' })] }),
+          PM: makeSlot(),
+        },
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    expect(eventsIn(getByTestId('care-calendar')).length).toBe(1);
+  });
+});
+
+// ============================================================
+// VC-3. Version-change spec 2026-07-19: legend event-type
+// entries — presence-driven, fixed order, pinned colors.
+// ============================================================
+describe('CareCalendar -- legend: event-type entries, fixed order & colors', () => {
+  const KNOWN = ['acquired', 'care', 'death'];
+
+  it('no events anywhere → NO event-type entries and NO "other": zero known labels, zero known-color or fallback-color swatches', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(5) },
+    });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    for (const name of KNOWN) {
+      expect(legendLabelCount(legend, name)).toBe(0);
+    }
+    expect(legendLabelCount(legend, 'other')).toBe(0);
+    for (const hex of Object.values(EVENT_COLORS)) {
+      expect(legendSwatches(legend, hex).length).toBe(0);
+    }
+    expect(legendSwatches(legend, FALLBACK_COLOR).length).toBe(0);
+  });
+
+  it('acquired-only window: exactly one "acquired" entry with exactly one #6bb08a swatch; care/death/other all absent', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot({ events: [makeEvent({ event_type: 'acquired' })] }),
+          PM: makeSlot(),
+        },
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'acquired')).toBe(1);
+    expect(legendSwatches(legend, EVENT_COLORS.acquired).length).toBe(1);
+    expect(legendLabelCount(legend, 'care')).toBe(0);
+    expect(legendLabelCount(legend, 'death')).toBe(0);
+    expect(legendLabelCount(legend, 'other')).toBe(0);
+    expect(legendSwatches(legend, EVENT_COLORS.care).length).toBe(0);
+    expect(legendSwatches(legend, EVENT_COLORS.death).length).toBe(0);
+    expect(legendSwatches(legend, FALLBACK_COLOR).length).toBe(0);
+  });
+
+  it('care-only via a PM slot: exactly one "care" entry with exactly one #7ea7c8 swatch', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot(),
+          PM: makeSlot({ events: [makeEvent({ event_type: 'care' })] }),
+        },
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'care')).toBe(1);
+    expect(legendSwatches(legend, EVENT_COLORS.care).length).toBe(1);
+    expect(legendLabelCount(legend, 'acquired')).toBe(0);
+    expect(legendLabelCount(legend, 'death')).toBe(0);
+  });
+
+  it('death-only via dayEvents (no slot events at all): legend still picks it up — one "death" entry, one #ca6c6b swatch', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [makeEvent({ event_type: 'death' })],
+      }),
+      makeDay('2026-02-02'),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'death')).toBe(1);
+    expect(legendSwatches(legend, EVENT_COLORS.death).length).toBe(1);
+    expect(legendLabelCount(legend, 'acquired')).toBe(0);
+    expect(legendLabelCount(legend, 'care')).toBe(0);
+    expect(legendLabelCount(legend, 'other')).toBe(0);
+  });
+
+  it('all three types present but SCRAMBLED in input (death first, acquired last): legend order is acquired, care, death', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [makeEvent({ event_type: 'death' })],
+      }),
+      makeDay('2026-02-02', {
+        slots: {
+          AM: makeSlot({ events: [makeEvent({ event_type: 'care' })] }),
+          PM: makeSlot(),
+        },
+      }),
+      makeDay('2026-02-03', {
+        slots: {
+          AM: makeSlot(),
+          PM: makeSlot({ events: [makeEvent({ event_type: 'acquired' })] }),
+        },
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    const orderedTexts = deepestExact(legend, KNOWN).map((e) => e.text);
+    expect(orderedTexts).toEqual(['acquired', 'care', 'death']);
+    for (const hex of Object.values(EVENT_COLORS)) {
+      expect(legendSwatches(legend, hex).length).toBe(1);
+    }
+  });
+
+  it('duplicate types NEVER duplicate entries: five "care" events across days, slots and dayEvents → exactly one "care" entry and one swatch', () => {
+    const care = () => makeEvent({ event_type: 'care' });
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [care(), care()],
+        slots: { AM: makeSlot({ events: [care()] }), PM: makeSlot() },
+      }),
+      makeDay('2026-02-02', {
+        slots: {
+          AM: makeSlot({ events: [care()] }),
+          PM: makeSlot({ events: [care()] }),
+        },
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'care')).toBe(1);
+    expect(legendSwatches(legend, EVENT_COLORS.care).length).toBe(1);
+  });
+
+  it('a type appearing after a rerender shows up: no events → zero entries, then a death is added → "death" entry appears', async () => {
+    const { getByTestId, rerender } = render(CareCalendar, {
+      props: { days: makeWindow(2) },
+    });
+    let legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'death')).toBe(0);
+    const days = makeWindow(2);
+    days[1] = makeDay('2026-02-02', {
+      dayEvents: [makeEvent({ event_type: 'death' })],
+    });
+    await rerender({ days });
+    legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'death')).toBe(1);
+    expect(legendSwatches(legend, EVENT_COLORS.death).length).toBe(1);
+  });
+
+  it('two instances keep independent legends: acquired-only instance never shows "death" and vice versa', () => {
+    const a = render(CareCalendar, {
+      props: {
+        days: [
+          makeDay('2026-02-01', {
+            dayEvents: [makeEvent({ event_type: 'acquired' })],
+          }),
+        ],
+      },
+    });
+    const b = render(CareCalendar, {
+      props: {
+        days: [
+          makeDay('2026-03-01', {
+            dayEvents: [makeEvent({ event_type: 'death' })],
+          }),
+        ],
+      },
+    });
+    const rootA = a.container.querySelector('[data-testid="care-calendar"]')!;
+    const rootB = b.container.querySelector('[data-testid="care-calendar"]')!;
+    const legendA = legendIn(rootA)!;
+    const legendB = legendIn(rootB)!;
+    expect(legendLabelCount(legendA, 'acquired')).toBe(1);
+    expect(legendLabelCount(legendA, 'death')).toBe(0);
+    expect(legendLabelCount(legendB, 'death')).toBe(1);
+    expect(legendLabelCount(legendB, 'acquired')).toBe(0);
+  });
+});
+
+// ============================================================
+// VC-4. Version-change spec 2026-07-19: unknown & hostile
+// event types collapse to a single "other" legend entry.
+// ============================================================
+describe('CareCalendar -- legend: unknown & hostile event types → single "other"', () => {
+  it('one unknown type "resurrected": exactly one "other" entry with exactly one #838997 swatch; zero known entries', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot({ events: [makeEvent({ event_type: 'resurrected' })] }),
+          PM: makeSlot(),
+        },
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'other')).toBe(1);
+    expect(legendSwatches(legend, FALLBACK_COLOR).length).toBe(1);
+    expect(legendLabelCount(legend, 'acquired')).toBe(0);
+    expect(legendLabelCount(legend, 'care')).toBe(0);
+    expect(legendLabelCount(legend, 'death')).toBe(0);
+  });
+
+  it('FIVE distinct hostile unknowns ("__proto__", "", 42, null, "🐟💀") still yield exactly ONE "other" entry and ONE fallback swatch', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [
+          makeEvent({ event_type: '__proto__' }),
+          makeEvent({ event_type: '' }),
+        ],
+        slots: {
+          AM: makeSlot({
+            events: [
+              makeEvent({ event_type: 42 as any }),
+              makeEvent({ event_type: null as any }),
+            ],
+          }),
+          PM: makeSlot({ events: [makeEvent({ event_type: '🐟💀' })] }),
+        },
+      }),
+    ];
+    let legend: Element;
+    expect(() => {
+      const { getByTestId } = render(CareCalendar, { props: { days } });
+      legend = legendIn(getByTestId('care-calendar'))!;
+    }).not.toThrow();
+    expect(legend!).not.toBeNull();
+    expect(legendLabelCount(legend!, 'other')).toBe(1);
+    expect(legendSwatches(legend!, FALLBACK_COLOR).length).toBe(1);
+  });
+
+  it('prototype-chain keys never unlock known entries: "__proto__"/"constructor"/"hasOwnProperty" produce "other" only, no known labels or colors', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [
+          makeEvent({ event_type: '__proto__' }),
+          makeEvent({ event_type: 'constructor' }),
+          makeEvent({ event_type: 'hasOwnProperty' }),
+        ],
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'other')).toBe(1);
+    for (const name of ['acquired', 'care', 'death']) {
+      expect(legendLabelCount(legend, name)).toBe(0);
+    }
+    for (const hex of Object.values(EVENT_COLORS)) {
+      expect(legendSwatches(legend, hex).length).toBe(0);
+    }
+  });
+
+  it('raw unknown type strings never leak into the legend text', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [
+          makeEvent({ event_type: 'resurrected' }),
+          makeEvent({ event_type: '__proto__' }),
+          makeEvent({ event_type: 42 as any }),
+        ],
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    const text = legend.textContent || '';
+    expect(text).not.toContain('resurrected');
+    expect(text).not.toContain('__proto__');
+    expect(text).not.toContain('42');
+  });
+
+  it('XSS payload as an unknown event_type: legend stays inert (no img/script, no execution) and shows exactly one "other"', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [makeEvent({ event_type: XSS_PAYLOAD })],
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const root = getByTestId('care-calendar');
+    const legend = legendIn(root)!;
+    expect(legend.querySelector('img')).toBeNull();
+    expect(legend.querySelector('script')).toBeNull();
+    expect((window as any).__care_pwned).toBeUndefined();
+    expect(legendLabelCount(legend, 'other')).toBe(1);
+  });
+
+  it('known + unknown mixed ("care" + "__proto__" + "zombie"): one "care" entry AND exactly one "other"', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        slots: {
+          AM: makeSlot({ events: [makeEvent({ event_type: 'care' })] }),
+          PM: makeSlot({ events: [makeEvent({ event_type: 'zombie' })] }),
+        },
+        dayEvents: [makeEvent({ event_type: '__proto__' })],
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'care')).toBe(1);
+    expect(legendSwatches(legend, EVENT_COLORS.care).length).toBe(1);
+    expect(legendLabelCount(legend, 'other')).toBe(1);
+    expect(legendSwatches(legend, FALLBACK_COLOR).length).toBe(1);
+  });
+
+  it('type matching is LITERAL: "Death" (capitalized) is unknown → "other" entry, NO "death" entry, no #ca6c6b swatch in the legend', () => {
+    const days = [
+      makeDay('2026-02-01', {
+        dayEvents: [makeEvent({ event_type: 'Death' })],
+      }),
+    ];
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    const legend = legendIn(getByTestId('care-calendar'))!;
+    expect(legendLabelCount(legend, 'other')).toBe(1);
+    expect(legendLabelCount(legend, 'death')).toBe(0);
+    expect(legendSwatches(legend, EVENT_COLORS.death).length).toBe(0);
+    expect(legendSwatches(legend, FALLBACK_COLOR).length).toBe(1);
+  });
+});
+
+// ============================================================
+// VC-5. Version-change spec 2026-07-19: visible AM/PM row
+// labels inside the aria-hidden grid area.
+// ============================================================
+describe('CareCalendar -- AM/PM row labels', () => {
+  it('exactly TWO care-row-label elements with texts exactly ["AM", "PM"] in document order (multi-day window)', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(5) },
+    });
+    const labels = rowLabelsIn(getByTestId('care-calendar'));
+    expect(labels.length).toBe(2);
+    expect(labels.map((l) => (l.textContent || '').trim())).toEqual([
+      'AM',
+      'PM',
+    ]);
+  });
+
+  it('row labels live inside an aria-hidden subtree (the sr table remains the AT surface)', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(3) },
+    });
+    const root = getByTestId('care-calendar');
+    const labels = rowLabelsIn(root);
+    expect(labels.length).toBe(2);
+    for (const label of labels) {
+      expect(isAriaHidden(label, root)).toBe(true);
+    }
+  });
+
+  it('days=[]: no row labels (no grid, no labels)', () => {
+    const { getByTestId } = render(CareCalendar, { props: { days: [] } });
+    expect(rowLabelsIn(getByTestId('care-calendar')).length).toBe(0);
+  });
+
+  it('single-day window still gets exactly 2 row labels', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: [makeDay('2026-02-01')] },
+    });
+    const labels = rowLabelsIn(getByTestId('care-calendar'));
+    expect(labels.length).toBe(2);
+  });
+
+  it('a 50-day window still has exactly 2 row labels — labels are per ROW, never per day', () => {
+    const days = [];
+    for (let i = 0; i < 50; i++) {
+      const d = new Date(Date.UTC(2026, 1, 1) + i * 86400000);
+      days.push(makeDay(d.toISOString().slice(0, 10)));
+    }
+    const { getByTestId } = render(CareCalendar, { props: { days } });
+    expect(rowLabelsIn(getByTestId('care-calendar')).length).toBe(2);
+  });
+
+  it('row labels never masquerade as day labels: no care-day-label carries the text "AM" or "PM"', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(4) },
+    });
+    const dayLabels = labelsIn(getByTestId('care-calendar'));
+    for (const label of dayLabels) {
+      const text = (label.textContent || '').trim();
+      expect(text).not.toBe('AM');
+      expect(text).not.toBe('PM');
+    }
+  });
+
+  it('row labels never appear inside the sr table', () => {
+    const { getByTestId } = render(CareCalendar, {
+      props: { days: makeWindow(2) },
+    });
+    const table = getByTestId('care-calendar-table');
+    expect(table.querySelector('[data-testid="care-row-label"]')).toBeNull();
   });
 });
