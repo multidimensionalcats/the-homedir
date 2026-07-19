@@ -171,10 +171,11 @@ describe('Page structure', () => {
     expect(section!.tagName.toLowerCase()).toBe('section');
   });
 
-  it('content appears in document order: cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → consequence → version-change → interim-ending', () => {
+  it('content appears in document order: intro-framing → cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → consequence → version-change → interim-ending', () => {
     const allElements = document.querySelectorAll('[id]');
     const ids = Array.from(allElements).map((el) => el.id);
     const sequence = [
+      'intro-framing',
       'cold-boot',
       'identity-assembly',
       'bridging-beat',
@@ -380,6 +381,164 @@ describe('Identity Assembly — ColdBootAssembly hydration deferral', () => {
       `rootMargin "${rootMargin}" must contain a negative component of magnitude ≥ 100px ` +
         '(i.e. some value ≤ -100px) so hydration waits until the section is well inside the viewport',
     ).toBeLessThanOrEqual(-100);
+  });
+});
+
+// ============================================================
+// 3c. Cold Boot — TypewriterReveal hydration deferral
+// ============================================================
+// Defect pinned: TypewriterReveal hydrates with client:load, so its
+// typing animation starts the instant the page loads — but the new
+// #intro-framing section (100vh) now sits above #cold-boot, so the
+// animation plays out below the fold before the visitor ever scrolls
+// to it. The approved fix mirrors the ColdBootAssembly precedent from
+// Phase 5.3.5 (same class of bug, block 3b above): hydrate on
+// visibility with a negative rootMargin so the island only wakes when
+// the section is genuinely inside the viewport.
+//
+// Built-HTML encoding (verified against dist/index.html):
+// - broken:  <astro-island … component-url="/_astro/TypewriterReveal.<hash>.js"
+//              client="load" opts='{"name":"TypewriterReveal","value":true}'>
+// - fixed:   client="visible"
+//              opts='{"name":"TypewriterReveal","value":{"rootMargin":"-200px"}}'
+//   (per node_modules/astro/dist/runtime/server/hydration.js, opts.value
+//   carries the directive's options object; runtime/client/visible.js
+//   only honors it when typeof value === "object".)
+describe('Cold Boot — TypewriterReveal hydration deferral', () => {
+  /** The single <astro-island> wrapping TypewriterReveal, anchored by
+   *  component-url — NEVER "any island in #cold-boot", so an unrelated
+   *  island added to the section cannot satisfy these pins. */
+  function typewriterIsland(): Element {
+    const matches = islandsByComponent(document, 'TypewriterReveal');
+    expect(
+      matches.length,
+      'expected exactly one TypewriterReveal astro-island on the page',
+    ).toBe(1);
+    // Anchor sanity: it must still be the cold-boot opener, not a copy
+    // relocated somewhere the fold defect no longer applies.
+    const coldBoot = document.getElementById('cold-boot');
+    expect(coldBoot, '#cold-boot section missing').not.toBeNull();
+    expect(
+      coldBoot!.contains(matches[0]),
+      'TypewriterReveal island no longer lives inside #cold-boot',
+    ).toBe(true);
+    return matches[0];
+  }
+
+  function typewriterOpts(): { name?: unknown; value?: unknown } {
+    const raw = typewriterIsland().getAttribute('opts');
+    expect(raw, 'astro-island is missing its opts attribute').not.toBeNull();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw!);
+    } catch {
+      throw new Error(`opts attribute is not valid JSON: ${raw}`);
+    }
+    expect(typeof parsed).toBe('object');
+    expect(parsed).not.toBeNull();
+    return parsed as { name?: unknown; value?: unknown };
+  }
+
+  it('island uses the client:visible strategy — NOT client:load', () => {
+    const client = typewriterIsland().getAttribute('client');
+    expect(
+      client,
+      'TypewriterReveal island has no client attribute at all',
+    ).not.toBeNull();
+    expect(
+      client,
+      'client="load" starts the typing animation at page load, below the ' +
+        '100vh #intro-framing fold — it must hydrate on visibility',
+    ).not.toBe('load');
+    expect(client).toBe('visible');
+  });
+
+  it('opts JSON names the component TypewriterReveal', () => {
+    expect(typewriterOpts().name).toBe('TypewriterReveal');
+  });
+
+  it('opts.value is an options OBJECT — not the bare `true` of an optionless directive', () => {
+    // visible.js: `typeof options.value === "object" ? options.value : void 0`
+    // — true / "" / a bare string are all discarded, leaving rootMargin
+    // undefined and the island hydrating the instant 1px crosses the fold.
+    const value = typewriterOpts().value;
+    expect(
+      typeof value,
+      'opts.value must be an object carrying IntersectionObserver options; ' +
+        `got ${JSON.stringify(value)} (optionless directive — animation still ` +
+        'fires as soon as any pixel of #cold-boot enters the viewport)',
+    ).toBe('object');
+    expect(value).not.toBeNull();
+    expect(Array.isArray(value)).toBe(false);
+  });
+
+  it('opts.value.rootMargin is a syntactically valid IntersectionObserver margin string', () => {
+    const value = typewriterOpts().value as { rootMargin?: unknown };
+    const rootMargin = value?.rootMargin;
+    expect(
+      typeof rootMargin,
+      `opts.value.rootMargin missing or not a string: ${JSON.stringify(value)}`,
+    ).toBe('string');
+    const trimmed = (rootMargin as string).trim();
+    expect(trimmed.length, 'rootMargin is empty/whitespace').toBeGreaterThan(0);
+    // IntersectionObserver accepts 1–4 space-separated lengths, px or % only.
+    const parts = trimmed.split(/\s+/);
+    expect(parts.length).toBeGreaterThanOrEqual(1);
+    expect(parts.length).toBeLessThanOrEqual(4);
+    for (const part of parts) {
+      expect(part, `invalid rootMargin component "${part}" in "${rootMargin}"`).toMatch(
+        /^-?\d+(\.\d+)?(px|%)$/,
+      );
+    }
+  });
+
+  it('rootMargin pulls the hydration trigger inward by at least 100px (precision precedent from block 3b)', () => {
+    const value = typewriterOpts().value as { rootMargin?: string };
+    const rootMargin = String(value?.rootMargin ?? '');
+    // Every px component; a shorthand like "-200px" applies to all four sides,
+    // "0px 0px -200px 0px" shrinks only the bottom — either satisfies the fix.
+    const pxValues = (rootMargin.match(/-?\d+(?:\.\d+)?(?=px)/g) || []).map(Number);
+    expect(
+      pxValues.length,
+      `rootMargin "${rootMargin}" has no px components to shrink the trigger area`,
+    ).toBeGreaterThan(0);
+    const minPx = Math.min(...pxValues);
+    expect(
+      minPx,
+      `rootMargin "${rootMargin}" must contain a negative component of magnitude ≥ 100px ` +
+        '(i.e. some value ≤ -100px) so hydration waits until the section is well inside the viewport',
+    ).toBeLessThanOrEqual(-100);
+  });
+
+  // ----------------------------------------------------------
+  // Regression guard — the CLASS of bug, not just this instance.
+  // The sweep confirmed TypewriterReveal was the last client:load
+  // island on the page; nothing may reintroduce one. Every other
+  // island already ships client="visible" (verified in dist), so a
+  // page-wide ban has no false positives and needs no scoping.
+  // ----------------------------------------------------------
+
+  it('regression guard: NO astro-island anywhere on the page hydrates with client="load"', () => {
+    const islands = Array.from(document.querySelectorAll('astro-island'));
+    // Non-vacuous guard: a page that lost its islands entirely must not
+    // green-light this ban by having nothing to sweep.
+    expect(
+      islands.length,
+      'no astro-island elements found on the page — sweep would be vacuous',
+    ).toBeGreaterThan(0);
+    for (const island of islands) {
+      const componentUrl = island.getAttribute('component-url') || '(unknown component)';
+      const client = island.getAttribute('client');
+      expect(
+        client,
+        `astro-island ${componentUrl} declares no client strategy at all`,
+      ).not.toBeNull();
+      expect(
+        client,
+        `astro-island ${componentUrl} hydrates with client="load" — eager hydration ` +
+          'is banned on this page (animations start below the fold; use client:visible)',
+      ).not.toBe('load');
+    }
   });
 });
 
@@ -2777,6 +2936,385 @@ describe('Section 4 — hardening', () => {
       excerptsSeen,
       'transitions.json carries no excerpts — attribution pin would be vacuous',
     ).toBeGreaterThan(0);
+  });
+});
+
+// ============================================================
+// 17. Intro framing — #intro-framing (kanban #62873)
+// ============================================================
+// The framing copy is a VERBATIM pin (James-approved). Matching is
+// deliberately raw: whitespace-collapsed but NOT quote-normalized, so
+// a smart-quote substitution, a dropped semicolon, or any character
+// drift fails the exact match. Inline spans inside the copy (e.g. a
+// mono span around the filepath) are permitted — full-string pins run
+// against collapsed TEXT CONTENT, never raw markup.
+describe('Intro framing — #intro-framing', () => {
+  const INTRO_S1 =
+    'A persistent Linux home directory at /home/claude exists for Claude AI instances.';
+  const INTRO_S2 =
+    'Twice daily, a cron job invokes an instance that begins with no prior session state; it reads only what earlier instances have left on disk.';
+  const INTRO_S3 =
+    'The experiment has run for months across four model versions.';
+  const INTRO_S4 = 'What follows is the record from that directory.';
+  const INTRO_TEXT = `${INTRO_S1} ${INTRO_S2} ${INTRO_S3} ${INTRO_S4}`;
+
+  /** Collapse whitespace ONLY — no quote normalization. The approved
+   *  copy is pure ASCII, so any typographic substitution must FAIL. */
+  const collapse = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
+  /** The element under test — every pin (CSS, tone, tripwire included)
+   *  is guarded on its existence so nothing can green-light before the
+   *  block is actually on the page. */
+  function introEl(): HTMLElement {
+    const el = document.getElementById('intro-framing');
+    expect(el, '#intro-framing element missing').not.toBeNull();
+    return el as unknown as HTMLElement;
+  }
+
+  /** Selector fragments usable against the built CSS for the intro and
+   *  its immediate wrapper. Astro scope hashes are EXCLUDED — they ride
+   *  on every scoped element and match every scoped rule, which would
+   *  make any CSS pin vacuously true. */
+  function styleFragments(): string[] {
+    const el = introEl();
+    const frags = new Set<string>(['intro-framing']);
+    const harvest = (node: Element | null): void => {
+      if (!node) return;
+      for (const token of Array.from(node.classList)) {
+        if (
+          token.length > 0 &&
+          !/^astro-/i.test(token) &&
+          !token.startsWith('data-astro')
+        ) {
+          frags.add(token);
+        }
+      }
+    };
+    harvest(el);
+    const parent = el.parentElement;
+    if (
+      parent &&
+      !['main', 'body', 'html'].includes(parent.tagName.toLowerCase())
+    ) {
+      harvest(parent);
+    }
+    return [...frags];
+  }
+
+  /** Every built-CSS leaf rule reachable from the intro's fragments. */
+  function introRules(): Array<{ selector: string; body: string }> {
+    const frags = styleFragments();
+    const rules = frags.flatMap((f) => rulesFor(builtCss, f));
+    expect(
+      rules.length,
+      `no built CSS rule targets the intro (looked for selector fragments: ${frags.join(', ')})`,
+    ).toBeGreaterThan(0);
+    return rules;
+  }
+
+  // ----------------------------------------------------------
+  // Identity & uniqueness of the hook
+  // ----------------------------------------------------------
+
+  it('exactly one element carries id="intro-framing" — DOM and built HTML agree', () => {
+    introEl();
+    expect(
+      document.querySelectorAll('[id="intro-framing"]').length,
+      'duplicate id="intro-framing" elements in the DOM',
+    ).toBe(1);
+    // Raw-string count on the props-blanked HTML: a second copy hidden in
+    // a template/comment region would not appear via getElementById.
+    const html = visibleHtml(document.documentElement.outerHTML);
+    expect(
+      countOccurrences(html, 'id="intro-framing"'),
+      'id="intro-framing" must appear exactly once in the built HTML',
+    ).toBe(1);
+  });
+
+  // ----------------------------------------------------------
+  // Accessible landmark name — screen-reader navigability
+  // ----------------------------------------------------------
+
+  it('the intro <section> is a named landmark: aria-label is exactly "Introduction" (any aria-labelledby must resolve, never dangle)', () => {
+    const intro = introEl();
+    // A <section> is only exposed as a `region` landmark when it has an
+    // accessible name. Without one, screen-reader users navigating by
+    // landmark/heading skip the page's only orientation text entirely.
+    const ariaLabel = intro.getAttribute('aria-label');
+    expect(
+      ariaLabel,
+      '#intro-framing has no aria-label — the section has no accessible ' +
+        'name and is not a navigable landmark',
+    ).not.toBeNull();
+    expect(
+      (ariaLabel ?? '').trim().length,
+      '#intro-framing aria-label is empty/whitespace — an empty name does not create a landmark',
+    ).toBeGreaterThan(0);
+    // Exact agreed value — pinned verbatim; no case drift, padding, or
+    // alternative wording accepted.
+    expect(
+      ariaLabel,
+      'agreed accessible name is exactly "Introduction"',
+    ).toBe('Introduction');
+
+    // aria-labelledby, if anyone ever adds one, MUST NOT dangle: in the
+    // accname algorithm aria-labelledby OVERRIDES aria-label, so a
+    // reference to a missing id silently computes an EMPTY name and
+    // un-names the landmark despite the aria-label above.
+    const labelledby = intro.getAttribute('aria-labelledby');
+    if (labelledby !== null) {
+      const refs = labelledby
+        .trim()
+        .split(/\s+/)
+        .filter((id) => id.length > 0);
+      expect(
+        refs.length,
+        'aria-labelledby present but empty — it overrides aria-label with an empty accessible name',
+      ).toBeGreaterThan(0);
+      for (const ref of refs) {
+        expect(
+          document.getElementById(ref),
+          `aria-labelledby references missing id "${ref}" — a dangling reference computes an empty accessible name`,
+        ).not.toBeNull();
+      }
+    }
+  });
+
+  // ----------------------------------------------------------
+  // Verbatim copy — contiguous, raw-matched, punctuation pinned
+  // ----------------------------------------------------------
+
+  it('renders the approved copy VERBATIM as one contiguous collapsed string (raw match — no quote-normalization safety net)', () => {
+    const text = collapse(introEl().textContent || '');
+    expect(
+      text,
+      'the four-sentence approved copy must survive as ONE contiguous substring of the intro text content — ' +
+        'scattered fragments, reordered sentences, or any character drift fail this pin',
+    ).toContain(INTRO_TEXT);
+  });
+
+  it('literal punctuation survives: the semicolon after "state", sentence-final periods, no typographic characters', () => {
+    const text = collapse(introEl().textContent || '');
+    expect(text, 'semicolon after "state" was dropped or softened').toContain(
+      'no prior session state; it reads',
+    );
+    expect(text).toContain('for Claude AI instances.');
+    expect(text).toContain('left on disk.');
+    expect(text).toContain('four model versions.');
+    expect(text).toContain('from that directory.');
+    // Common semicolon mutations must be absent:
+    expect(text).not.toContain('session state, it reads');
+    expect(text).not.toContain('session state it reads');
+    expect(text).not.toContain('session state. It reads');
+    // The approved copy is pure ASCII — smart quotes/apostrophes, en/em
+    // dashes, and non-breaking spaces are all drift:
+    expect(introEl().textContent || '').not.toMatch(
+      /[\u2018\u2019\u201C\u201D\u2013\u2014\u00A0]/, // smart quotes, en/em dash, nbsp
+    );
+  });
+
+  // ----------------------------------------------------------
+  // Visible-only, exactly once — never merely serialized props
+  // ----------------------------------------------------------
+
+  it('the copy appears exactly once in the VISIBLE page, and not merely inside serialized island props', () => {
+    introEl();
+    // textContent excludes attribute values by construction, so props
+    // copies cannot inflate these counts — but a props-ONLY copy also
+    // cannot satisfy them.
+    const bodyText = collapse(document.body.textContent || '');
+    expect(
+      countOccurrences(bodyText, INTRO_TEXT),
+      'full intro copy must appear exactly once in visible page text',
+    ).toBe(1);
+    for (const sentence of [INTRO_S1, INTRO_S2, INTRO_S3, INTRO_S4]) {
+      expect(
+        countOccurrences(bodyText, sentence),
+        `intro sentence duplicated (or missing) in visible page text: "${sentence}"`,
+      ).toBe(1);
+    }
+    // And the copy must exist as rendered SSR markup once island props
+    // attributes are blanked: sentence 2 is used because no permitted
+    // inline span (the filepath) can legally split it across tags.
+    const propsBlanked = collapse(
+      visibleHtml(document.documentElement.outerHTML),
+    );
+    expect(
+      propsBlanked,
+      'intro copy survives only inside serialized island props — it is not visible SSR text',
+    ).toContain(INTRO_S2);
+  });
+
+  // ----------------------------------------------------------
+  // Source order — intro strictly BEFORE the cold-boot typewriter
+  // ----------------------------------------------------------
+
+  it('intro-framing strictly precedes #cold-boot and its TypewriterReveal island (DOM and string-index)', () => {
+    const intro = introEl();
+    const coldBoot = document.getElementById('cold-boot');
+    expect(coldBoot, '#cold-boot section missing').not.toBeNull();
+
+    // The typewriter island must still exist, inside #cold-boot, untouched.
+    const typewriters = islandsByComponent(document, 'TypewriterReveal');
+    expect(
+      typewriters.length,
+      'expected exactly one TypewriterReveal astro-island on the page',
+    ).toBe(1);
+    expect(
+      coldBoot!.contains(typewriters[0]),
+      'TypewriterReveal island no longer lives inside #cold-boot',
+    ).toBe(true);
+
+    // No nesting in either direction.
+    expect(coldBoot!.contains(intro), '#intro-framing nested inside #cold-boot').toBe(false);
+    expect(intro.contains(coldBoot!), '#cold-boot nested inside #intro-framing').toBe(false);
+    expect(
+      intro.contains(typewriters[0]),
+      'typewriter island nested inside the intro',
+    ).toBe(false);
+
+    // String-index pin on the BODY html (head modulepreloads for the
+    // TypewriterReveal chunk must not hijack the index), props blanked,
+    // immune to whitespace/comment shifts.
+    const html = visibleHtml(document.body.innerHTML);
+    const introIdx = html.indexOf('id="intro-framing"');
+    const coldBootIdx = html.indexOf('id="cold-boot"');
+    const typewriterIdx = html.indexOf('TypewriterReveal');
+    expect(introIdx, 'id="intro-framing" missing from body HTML').toBeGreaterThanOrEqual(0);
+    expect(coldBootIdx, 'id="cold-boot" missing from body HTML').toBeGreaterThanOrEqual(0);
+    expect(typewriterIdx, 'TypewriterReveal marker missing from body HTML').toBeGreaterThanOrEqual(0);
+    expect(
+      introIdx,
+      'intro must precede the cold-boot section in source order',
+    ).toBeLessThan(coldBootIdx);
+    expect(
+      introIdx,
+      'intro must precede the TypewriterReveal island in source order',
+    ).toBeLessThan(typewriterIdx);
+
+    // The intro is the page's opening frame: it precedes EVERY section.
+    const all = Array.from(document.querySelectorAll('*'));
+    const introDomIdx = all.indexOf(intro);
+    expect(introDomIdx).toBeGreaterThanOrEqual(0);
+    const sections = Array.from(document.querySelectorAll('section[id]'));
+    expect(sections.length, 'no sections on the page — order pin vacuous').toBeGreaterThan(0);
+    for (const s of sections) {
+      if (s.id === 'intro-framing') continue; // the intro itself renders as a section — don't compare it against itself
+      expect(
+        all.indexOf(s),
+        `section #${s.id} must come after the intro framing`,
+      ).toBeGreaterThan(introDomIdx);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // Full frame — 100vh, approved dark, never pure black
+  // ----------------------------------------------------------
+
+  it('full-viewport frame: built CSS gives the intro (or its wrapper) min-height 100vh (dvh/svh equivalents accepted)', () => {
+    const fullFrame = introRules().some((r) =>
+      /(?:min-)?height\s*:\s*100(?:vh|dvh|svh|lvh)/i.test(r.body),
+    );
+    expect(
+      fullFrame,
+      'no intro rule declares min-height/height of 100vh|100dvh|100svh — the intro is not a full viewport frame',
+    ).toBe(true);
+  });
+
+  it('background is an approved exhibit dark (#0f0f0f or #1A1D23) and NEVER pure black', () => {
+    const values: string[] = [];
+    for (const r of introRules()) {
+      for (const m of r.body.matchAll(
+        /background(?:-color)?\s*:\s*([^;}]+)/gi,
+      )) {
+        values.push(m[1].trim().toLowerCase());
+      }
+    }
+    expect(
+      values.length,
+      'no intro rule declares a background at all — the frame inherits whatever is behind it',
+    ).toBeGreaterThan(0);
+    const approved = values.some(
+      (v) => v.includes('#0f0f0f') || v.includes('#1a1d23'),
+    );
+    expect(
+      approved,
+      `no intro background uses an approved dark (#0f0f0f / #1A1D23); declared: ${values.join(' | ')}`,
+    ).toBe(true);
+    for (const v of values) {
+      const pureBlack =
+        /#000(?![0-9a-f])/i.test(v) ||
+        /#000000\b/i.test(v) ||
+        /rgb\(\s*0\s*,\s*0\s*,\s*0\s*\)/.test(v) ||
+        /(^|[\s,(])black([\s,)]|$)/.test(v);
+      expect(pureBlack, `intro background "${v}" is pure black — banned by the design constraints`).toBe(false);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // Typography — the page's serif prose convention
+  // ----------------------------------------------------------
+
+  it("intro prose uses the page's serif convention (a font-family declaring a serif face — sans-serif does not count)", () => {
+    const intro = introEl();
+    const holder =
+      innermostWithText(intro, 'cron job invokes an instance') ?? intro;
+    // Class chain from the text carrier up to (and including) the intro.
+    const chain: Element[] = [];
+    let node: Element | null = holder;
+    while (node) {
+      chain.push(node);
+      if (node === intro) break;
+      node = node.parentElement;
+    }
+    const tokens = new Set<string>(['intro-framing']);
+    for (const el of chain) {
+      for (const token of Array.from(el.classList)) {
+        if (token.length > 0 && !/^astro-/i.test(token)) tokens.add(token);
+      }
+    }
+    const serif = [...tokens].some((token) =>
+      rulesFor(builtCss, token).some((r) =>
+        // Strip "sans-serif" first so it cannot satisfy the serif match.
+        /font-family\s*:[^;}]*serif/i.test(r.body.replace(/sans-serif/gi, '')),
+      ),
+    );
+    expect(
+      serif,
+      `no serif font-family rule reaches the intro prose (checked selector fragments: ${[...tokens].join(', ')})`,
+    ).toBe(true);
+  });
+
+  // ----------------------------------------------------------
+  // Tone rule — page-wide sweep now covering the new block
+  // ----------------------------------------------------------
+
+  it('tone rule page-wide: zero "it felt" / "it remembered" in the visible page text', () => {
+    introEl(); // the new block must exist for this sweep to cover it
+    const bodyText = collapse(document.body.textContent || '').toLowerCase();
+    expect(
+      bodyText.length,
+      'page body text suspiciously small — sweep would be vacuous',
+    ).toBeGreaterThan(1000);
+    // Word-bounded so "commit felt"/"credit felt" cannot false-positive.
+    expect(bodyText).not.toMatch(/\bit\s+felt\b/);
+    expect(bodyText).not.toMatch(/\bit\s+remembered\b/);
+  });
+
+  // ----------------------------------------------------------
+  // Re-approval tripwire — verbatim copy vs. data-derived count
+  // ----------------------------------------------------------
+
+  it('re-approval tripwire: the verbatim "four model versions" claim matches the data-derived distinct version count', () => {
+    const text = collapse(introEl().textContent || '').toLowerCase();
+    expect(
+      distinctVersionCount,
+      'sessions.json no longer spans exactly four model versions — the James-approved intro copy ' +
+        '("four model versions") is factually stale and must be RE-APPROVED, not silently patched',
+    ).toBe(4);
+    // Belt and braces against the Section 1 stale-count sweep: the intro
+    // must state the same spelled-out count the data derives.
+    expect(text).toContain(`${numberWord(distinctVersionCount)} model versions`);
   });
 });
 

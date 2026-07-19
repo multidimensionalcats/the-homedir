@@ -119,6 +119,15 @@ const diffOverlapPairs: Array<[number, number]> = [[4, 2]];
   <main>
 
     <!-- ============================================================
+         Intro Framing — first thing a visitor sees, before cold-boot
+         ============================================================ -->
+    <section id="intro-framing" class="intro-framing" aria-label="Introduction">
+      <div class="intro-framing-inner">
+        <p class="intro-framing-prose">A persistent Linux home directory at <span class="intro-framing-mono">/home/claude</span> exists for Claude AI instances. Twice daily, a cron job invokes an instance that begins with no prior session state; it reads only what earlier instances have left on disk. The experiment has run for months across four model versions. What follows is the record from that directory.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================
          Section 0: Cold Boot
          ============================================================ -->
     <section id="cold-boot" class="cold-boot">
@@ -126,7 +135,7 @@ const diffOverlapPairs: Array<[number, number]> = [[4, 2]];
         <TypewriterReveal
           text={coldBootText}
           speed={40}
-          client:load
+          client:visible={{ rootMargin: "-200px" }}
         />
 
         <div class="cold-boot-meta" id="cold-boot-meta">
@@ -429,6 +438,37 @@ const diffOverlapPairs: Array<[number, number]> = [[4, 2]];
 </Layout>
 
 <style>
+  /* ============================================================
+     Intro Framing
+     ============================================================ */
+  .intro-framing {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f0f0f;
+    padding: 4rem 2rem;
+  }
+
+  .intro-framing-inner {
+    max-width: 65ch;
+    width: 100%;
+  }
+
+  .intro-framing-prose {
+    font-family: 'Source Serif 4', serif;
+    font-size: 1.25rem;
+    line-height: 1.8;
+    color: #8b8f98;
+    margin: 0;
+  }
+
+  .intro-framing-mono {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+    font-size: 1.1em;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
   /* ============================================================
      Section 0: Cold Boot
      ============================================================ */
