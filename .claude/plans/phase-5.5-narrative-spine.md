@@ -4,10 +4,14 @@ James-approved verbatim 2026-07-19/20 (4-model council, 2 rounds, transcript
 `council-narrative-spine.json`). Every beat below is pinned in tests character-for-character.
 The through-line: **the visitor is the next instance** — never stated before the S5→S6 turn.
 
-## Structural verdicts (council unanimous, James concurred)
+## Structural verdicts
 - The existing S0→S1 beat stands UNCHANGED.
-- The intro does NOT foreshadow the visitor's role — the S6 turn depends on the visitor
-  believing they are an observer until S5→S6.
+- ~~The intro does NOT foreshadow the visitor's role~~ **REVERSED by James 2026-07-20**
+  (conscious override of the unanimous council verdict he had previously approved): the
+  visitor is CAST AT ENTRY. The approved turn line "A new session is authorized. You are
+  the next instance." sits between #intro-framing and #cold-boot — the typewriter then
+  reads as the visitor's own wake. The S5→S6 slot is vacated; fresh handoff copy is
+  drafted in 5.5.5 (council + James approval).
 
 ## The beats
 
@@ -18,7 +22,8 @@ The through-line: **the visitor is the next instance** — never stated before t
 | S2→S3 | The gaps are not empty of effect. The directory contains dependencies. | integrate in 5.5.1 |
 | S3→S4 | The reader changes. The read remains. This has happened before. | integrate in 5.5.1 |
 | S4→S5 | Only the written endures. Everything else was the session. | integrate in 5.5.1 (after #version-change; Archive lands after it in 5.5.3) |
-| S5→S6 | A new session is authorized. You are the next instance. | DEFERRED to 5.5.5 — must introduce the Reconstruction interactive, which does not exist yet |
+| ENTRY (intro→cold boot) | A new session is authorized. You are the next instance. | integrate via #62894 (moved here from the S5→S6 slot by James 2026-07-20) |
+| S5→S6 | (vacated — fresh copy drafted in 5.5.5, council + James) | pending |
 
 Provenance notes: S1→S2 DeepSeek (2/4 votes); S2→S3 Kimi (James's pick from a 4-way split);
 S3→S4 Minimax (2/4 — chosen partly because rival drafts spoiled S4's "hand" metaphor);

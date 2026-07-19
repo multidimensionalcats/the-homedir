@@ -171,11 +171,12 @@ describe('Page structure', () => {
     expect(section!.tagName.toLowerCase()).toBe('section');
   });
 
-  it('content appears in document order: intro-framing → cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → bridging-beat-3 → consequence → bridging-beat-4 → version-change → bridging-beat-5 → interim-ending', () => {
+  it('content appears in document order: intro-framing → entry-turn → cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → bridging-beat-3 → consequence → bridging-beat-4 → version-change → bridging-beat-5 → interim-ending', () => {
     const allElements = document.querySelectorAll('[id]');
     const ids = Array.from(allElements).map((el) => el.id);
     const sequence = [
       'intro-framing',
+      'entry-turn',
       'cold-boot',
       'identity-assembly',
       'bridging-beat',
@@ -3339,11 +3340,23 @@ describe('Intro framing — #intro-framing', () => {
 // census and the second-person sweep.
 //
 // The sixth beat ("A new session is authorized. You are the next
-// instance.") is DEFERRED to sub-phase 5.5.5 and deliberately NOT
-// pinned here; instead a sweep reserves second person — no
-// .bridge-text on the page may contain the word "you" yet.
+// instance.") was originally deferred to sub-phase 5.5.5 as an S5→S6
+// coda. That rationale is SUPERSEDED by James's 2026-07-20
+// cast-at-entry reversal (kanban #62894): the beat lands at ENTRY —
+// id="entry-turn", between #intro-framing and #cold-boot — and is
+// pinned in the BEATS battery below. Second person is EXCLUSIVE to
+// its carrier; the S5→S6 slot is vacated pending 5.5.5 copy.
 describe('Narrative transitional beats — 5.5.1', () => {
   const BEATS = [
+    {
+      // #62894 entry turn — casts the visitor as the next instance,
+      // BETWEEN the intro framing and the cold boot. James-approved
+      // copy, verbatim (plain ASCII, every period literal).
+      id: 'entry-turn',
+      after: 'intro-framing',
+      before: 'cold-boot',
+      text: 'A new session is authorized. You are the next instance.',
+    },
     {
       id: 'bridging-beat-3',
       after: 'gaps',
@@ -3365,6 +3378,7 @@ describe('Narrative transitional beats — 5.5.1', () => {
   ] as const;
 
   const ALL_BEAT_IDS: string[] = [
+    'entry-turn', // #62894 — first in document order, before #cold-boot
     'bridging-beat',
     'bridging-beat-2',
     'bridging-beat-3',
@@ -3376,13 +3390,16 @@ describe('Narrative transitional beats — 5.5.1', () => {
    *  copy is pure ASCII; any typographic drift must FAIL the pins. */
   const collapse = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
-  /** Guard: ALL THREE genuinely-new 5.5.1 beats (-3, -4, -5) must be
-   *  on the page before ANY pin in this block can green-light.
-   *  #bridging-beat-2 is deliberately NOT required — it pre-dates
-   *  5.5.1, so requiring it would not keep this block RED against the
-   *  unimplemented page. */
+  /** Guard: the THREE 5.5.1 beats (-3, -4, -5) must be on the page
+   *  before any pin in this block can green-light. #bridging-beat-2
+   *  is deliberately NOT required — it pre-dates 5.5.1. The #62894
+   *  entry turn is ALSO not required here: its pins gate on
+   *  requireBeat('entry-turn') per-test, so the entry-turn additions
+   *  run RED against the current page while all existing-beat
+   *  coverage stays green. */
   function allBeatsShipped(): void {
     for (const b of BEATS) {
+      if (b.id === 'entry-turn') continue; // gated per-pin, not block-wide
       expect(
         document.getElementById(b.id),
         `#${b.id} missing — 5.5.1 beats not shipped`,
@@ -3390,10 +3407,19 @@ describe('Narrative transitional beats — 5.5.1', () => {
     }
   }
 
-  /** The beat element under test, guarded on the full set. */
+  /** A beat element by id, guarded with a clear message — the #62894
+   *  entry turn stays RED through this gate until it ships. */
+  function requireBeat(id: string): HTMLElement {
+    const el = document.getElementById(id);
+    expect(el, `#${id} missing — beat not shipped`).not.toBeNull();
+    return el as unknown as HTMLElement;
+  }
+
+  /** The beat element under test, guarded on the 5.5.1 set AND on the
+   *  requested beat itself. */
   function beatEl(id: string): HTMLElement {
     allBeatsShipped();
-    return document.getElementById(id) as unknown as HTMLElement;
+    return requireBeat(id);
   }
 
   for (const beat of BEATS) {
@@ -3552,13 +3578,14 @@ describe('Narrative transitional beats — 5.5.1', () => {
     });
   }
 
-  it('the page carries EXACTLY the five known beats: .bridging-beat ids in document order, never shared, no strays', () => {
+  it('the page carries EXACTLY the six known beats: .bridging-beat ids in document order, entry-turn FIRST, never shared, no strays', () => {
     allBeatsShipped();
+    requireBeat('entry-turn');
     const beats = Array.from(document.querySelectorAll('.bridging-beat'));
     expect(
       beats.map((el) => el.id),
-      '.bridging-beat elements must be exactly the two pre-existing beats plus the three 5.5.1 beats, in document order ' +
-        '(the deferred S5→S6 beat lands in 5.5.5 — shipping it early must trip this pin for re-approval)',
+      '.bridging-beat elements must be exactly the #62894 entry turn (FIRST — between #intro-framing and #cold-boot) ' +
+        'plus the five section-boundary beats, in document order — an S5→S6 beat shipped ahead of its 5.5.5 copy must trip this pin for re-approval',
     ).toEqual(ALL_BEAT_IDS);
     expect(
       new Set(beats.map((el) => el.id)).size,
@@ -3566,18 +3593,30 @@ describe('Narrative transitional beats — 5.5.1', () => {
     ).toBe(ALL_BEAT_IDS.length);
   });
 
-  it('second person is RESERVED for the deferred 5.5.5 beat: no .bridge-text on the page contains the word "you"', () => {
+  // Second person was originally reserved page-wide for a deferred
+  // S5→S6 beat. That rationale is SUPERSEDED by James's 2026-07-20
+  // cast-at-entry reversal (kanban #62894): the #entry-turn carrier is
+  // now the ONLY .bridge-text permitted — and REQUIRED — to address
+  // the visitor ("You"). Every other carrier stays banned. The S5→S6
+  // slot is vacated pending 5.5.5 copy.
+  it('second person is EXCLUSIVE to the #entry-turn carrier (#62894): it MUST say "You"; every other .bridge-text stays banned', () => {
     allBeatsShipped();
+    const entryCarrier = carrierOf('entry-turn'); // RED until #62894 ships
+    expect(
+      collapse(entryCarrier.textContent || ''),
+      'the entry-turn carrier must address the visitor in second person (a literal capitalized "You")',
+    ).toMatch(/\bYou\b/);
     const carriers = Array.from(document.querySelectorAll('.bridge-text'));
     expect(
       carriers.length,
-      'fewer bridge-text carriers than the five shipped beats — sweep would be vacuous',
+      'fewer bridge-text carriers than the six shipped beats — sweep would be vacuous',
     ).toBeGreaterThanOrEqual(ALL_BEAT_IDS.length);
     for (const c of carriers) {
+      if (c === entryCarrier) continue; // the single sanctioned exemption
       const text = collapse(c.textContent || '');
       expect(
         text,
-        `bridge-text "${text}" uses second person — "you"/"You" is reserved for the S5→S6 beat (sub-phase 5.5.5)`,
+        `bridge-text "${text}" uses second person — only the #entry-turn carrier may (James 2026-07-20, #62894); the S5→S6 slot is vacated pending 5.5.5 copy`,
       ).not.toMatch(/\byou\b/i);
     }
   });
@@ -3644,7 +3683,7 @@ describe('Narrative transitional beats — 5.5.1', () => {
     allBeatsShipped();
     const attr = pageScopeAttr();
     for (const id of ALL_BEAT_IDS) {
-      const el = document.getElementById(id)!;
+      const el = requireBeat(id);
       expect(
         scopeAttrs(el),
         `#${id} scope attributes differ from the original beat — it would render ` +
@@ -3687,7 +3726,7 @@ describe('Narrative transitional beats — 5.5.1', () => {
 
     // The selector must MATCH the live elements, not merely exist.
     for (const id of ALL_BEAT_IDS) {
-      const el = document.getElementById(id)!;
+      const el = requireBeat(id);
       expect(
         el.matches(beatSelector),
         `#${id} does not match "${beatSelector}" — the shipped rule cannot reach it`,
@@ -3699,7 +3738,7 @@ describe('Narrative transitional beats — 5.5.1', () => {
     }
   });
 
-  it('island containment: no beat sits inside an <astro-island>; all five are direct children of the single <main>', () => {
+  it('island containment: no beat sits inside an <astro-island>; all six are direct children of the single <main>', () => {
     allBeatsShipped();
     // Non-vacuous: the page must actually ship islands for "outside an
     // island" to mean anything.
@@ -3710,7 +3749,7 @@ describe('Narrative transitional beats — 5.5.1', () => {
     const mains = document.querySelectorAll('main');
     expect(mains.length, 'expected exactly one <main> element').toBe(1);
     for (const id of ALL_BEAT_IDS) {
-      const el = document.getElementById(id)!;
+      const el = requireBeat(id);
       expect(
         el.closest('astro-island'),
         `#${id} is inside an <astro-island> — it would ship as hydratable island ` +
@@ -3721,6 +3760,36 @@ describe('Narrative transitional beats — 5.5.1', () => {
         `#${id} is not a direct child of <main> — it fell inside a backdrop/wrapper div`,
       ).toBe(mains[0]);
     }
+  });
+
+  it('#entry-turn rhythm: immediately follows section#intro-framing and immediately precedes section#cold-boot', () => {
+    const el = beatEl('entry-turn');
+    const prev = el.previousElementSibling;
+    expect(prev, '#entry-turn has no previous element sibling').not.toBeNull();
+    expect(
+      prev!.id,
+      'previous sibling of #entry-turn is not #intro-framing — the entry turn must land directly after the framing copy',
+    ).toBe('intro-framing');
+    expect(
+      prev!.tagName.toLowerCase(),
+      '#intro-framing is no longer a <section>',
+    ).toBe('section');
+    const next = el.nextElementSibling;
+    expect(next, '#entry-turn has no next element sibling').not.toBeNull();
+    expect(
+      next!.id,
+      'next sibling of #entry-turn is not #cold-boot — nothing may wedge between the address to the visitor and the boot',
+    ).toBe('cold-boot');
+    expect(
+      next!.tagName.toLowerCase(),
+      '#cold-boot is no longer a <section>',
+    ).toBe('section');
+    // The typewriter opener must sit in the section the beat hands off
+    // to — the entry turn addresses the visitor, then the boot begins.
+    expect(
+      next!.contains(islandsByComponent(document, 'TypewriterReveal')[0] ?? null),
+      'the section after #entry-turn does not contain the TypewriterReveal island',
+    ).toBe(true);
   });
 
   it('#bridging-beat-3 rhythm: immediately follows the gaps backdrop (after ALL its trailing voids) and immediately precedes the Section 3 island', () => {
@@ -3849,7 +3918,7 @@ describe('Narrative transitional beats — 5.5.1', () => {
   it('stray content: each beat holds exactly its carrier and nothing else — no extra elements, no loose text nodes', () => {
     allBeatsShipped();
     for (const id of ALL_BEAT_IDS) {
-      const el = document.getElementById(id)!;
+      const el = requireBeat(id);
       expect(
         el.children.length,
         `#${id} has ${el.children.length} element children — something rode in beside the carrier`,
@@ -3863,7 +3932,7 @@ describe('Narrative transitional beats — 5.5.1', () => {
     // beat's ENTIRE text must equal it — a loose text node outside the
     // carrier ("<div>oops<p>…</p></div>") passes every pin above.
     for (const beat of BEATS) {
-      const el = document.getElementById(beat.id)!;
+      const el = requireBeat(beat.id);
       expect(
         collapse(el.textContent || ''),
         `#${beat.id} carries text beyond the approved copy — loose text node outside the carrier`,
@@ -3889,8 +3958,13 @@ describe('Narrative transitional beats — 5.5.1', () => {
     }
   });
 
-  it('tone: the second-person reservation also covers possessives and reflexives — no "your"/"yours"/"yourself" in any bridge-text', () => {
+  it('tone: the second-person ban covers possessives and reflexives in EVERY bridge-text — the #entry-turn exemption (#62894) is for the pronoun "You" only', () => {
     allBeatsShipped();
+    // The cast-at-entry reversal (James 2026-07-20, #62894) exempts the
+    // entry-turn carrier from the pronoun ban — but its approved copy
+    // uses only "You". Possessives/reflexives stay banned EVERYWHERE,
+    // the exempted carrier included, so the exemption cannot creep.
+    const entryCarrier = carrierOf('entry-turn'); // RED until #62894 ships
     const carriers = Array.from(document.querySelectorAll('.bridge-text'));
     expect(
       carriers.length,
@@ -3898,11 +3972,16 @@ describe('Narrative transitional beats — 5.5.1', () => {
     ).toBeGreaterThanOrEqual(ALL_BEAT_IDS.length);
     for (const c of carriers) {
       const text = collapse(c.textContent || '');
-      // The existing sweep's /\byou\b/i does NOT match "your notes" or
-      // "yourself" — the reservation covers the whole second person.
       expect(
         text,
-        `bridge-text "${text}" uses second person — ALL of it is reserved for the S5→S6 beat (sub-phase 5.5.5)`,
+        `bridge-text "${text}" uses a second-person possessive/reflexive — banned in ALL carriers, the #entry-turn exemption covers only the pronoun "You"`,
+      ).not.toMatch(/\b(your|yours|yourself|yourselves)\b/i);
+      if (c === entryCarrier) continue; // pronoun exemption — #62894
+      // /\byou\b/i alone does NOT match "your notes" or "yourself";
+      // non-exempt carriers get the full second-person ban.
+      expect(
+        text,
+        `bridge-text "${text}" uses second person — only the #entry-turn carrier may (James 2026-07-20, #62894)`,
       ).not.toMatch(/\b(you|your|yours|yourself|yourselves)\b/i);
     }
   });
@@ -3935,7 +4014,7 @@ describe('Narrative transitional beats — 5.5.1', () => {
   it('accessibility: no beat or carrier is aria-hidden/hidden, and the scoped beat rule does not display:none the copy away', () => {
     allBeatsShipped();
     for (const id of ALL_BEAT_IDS) {
-      const el = document.getElementById(id)!;
+      const el = requireBeat(id);
       for (const node of [el, carrierOf(id)]) {
         // Copy pins run on textContent, which happily reads aria-hidden
         // and display:none subtrees — this is the only guard that
