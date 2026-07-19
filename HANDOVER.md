@@ -5,7 +5,9 @@
 **Read FIRST, in order:** `.claude/plans/phase-5.5-archive-reconstruction.md` (the 5.5 plan —
 sub-phases 5.5.0–5.5.6, James's locked decisions incl. FULL parallax Archive) and
 `.claude/plans/phase-5.5-narrative-spine.md` (5.5.0 output — ALL approved beat copy verbatim).
-Kanban #62884 (5.5) is in_progress under epic #62711.
+Kanban #62884 (5.5 umbrella) is in_progress under epic #62711, with per-sub-phase todos:
+#62886 (5.5.0, COMPLETE pending James's closure nod), #62887 (5.5.1, in_progress — the
+resume point), #62888 (5.5.2), #62889 (5.5.3), #62890 (5.5.4), #62891 (5.5.5), #62892 (5.5.6).
 
 ### Exact resume point (5.5.1 mid-pipeline)
 1. Test pins are DONE and committed: `src/pages/index.test.ts` block "Narrative transitional
