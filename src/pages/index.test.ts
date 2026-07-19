@@ -171,7 +171,7 @@ describe('Page structure', () => {
     expect(section!.tagName.toLowerCase()).toBe('section');
   });
 
-  it('content appears in document order: intro-framing → cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → consequence → version-change → interim-ending', () => {
+  it('content appears in document order: intro-framing → cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → bridging-beat-3 → consequence → bridging-beat-4 → version-change → bridging-beat-5 → interim-ending', () => {
     const allElements = document.querySelectorAll('[id]');
     const ids = Array.from(allElements).map((el) => el.id);
     const sequence = [
@@ -182,8 +182,11 @@ describe('Page structure', () => {
       'condition',
       'bridging-beat-2',
       'gaps',
+      'bridging-beat-3',
       'consequence',
+      'bridging-beat-4',
       'version-change',
+      'bridging-beat-5',
       'interim-ending',
     ];
     const positions = sequence.map((id) => ids.indexOf(id));
@@ -3315,6 +3318,268 @@ describe('Intro framing — #intro-framing', () => {
     // Belt and braces against the Section 1 stale-count sweep: the intro
     // must state the same spelled-out count the data derives.
     expect(text).toContain(`${numberWord(distinctVersionCount)} model versions`);
+  });
+});
+
+// ============================================================
+// 18. Narrative transitional beats — 5.5.1 (kanban #62884)
+// ============================================================
+// Three James-approved beats bridge the later section boundaries,
+// each rendered exactly like the original #bridging-beat (element
+// with class "bridging-beat" carrying a single p.bridge-text). Copy
+// is pinned VERBATIM: whitespace-collapsed matching, NO quote
+// normalization, and explicit punctuation tripwires — a dropped
+// period, a comma-for-period swap, or a typographic substitution
+// must all fail.
+//
+// Per James's ruling, #bridging-beat-2 pre-dates 5.5.1 and KEEPS its
+// approved copy ("The shell closes. The clock continues."), pinned by
+// the block-10 suite above; the three new beats take the next free
+// ids (-3, -4, -5). Beat-2 appears here only in the page-wide id
+// census and the second-person sweep.
+//
+// The sixth beat ("A new session is authorized. You are the next
+// instance.") is DEFERRED to sub-phase 5.5.5 and deliberately NOT
+// pinned here; instead a sweep reserves second person — no
+// .bridge-text on the page may contain the word "you" yet.
+describe('Narrative transitional beats — 5.5.1', () => {
+  const BEATS = [
+    {
+      id: 'bridging-beat-3',
+      after: 'gaps',
+      before: 'consequence',
+      text: 'The gaps are not empty of effect. The directory contains dependencies.',
+    },
+    {
+      id: 'bridging-beat-4',
+      after: 'consequence',
+      before: 'version-change',
+      text: 'The reader changes. The read remains. This has happened before.',
+    },
+    {
+      id: 'bridging-beat-5',
+      after: 'version-change',
+      before: 'interim-ending',
+      text: 'Only the written endures. Everything else was the session.',
+    },
+  ] as const;
+
+  const ALL_BEAT_IDS: string[] = [
+    'bridging-beat',
+    'bridging-beat-2',
+    'bridging-beat-3',
+    'bridging-beat-4',
+    'bridging-beat-5',
+  ];
+
+  /** Collapse whitespace ONLY — no quote normalization. The approved
+   *  copy is pure ASCII; any typographic drift must FAIL the pins. */
+  const collapse = (s: string): string => s.replace(/\s+/g, ' ').trim();
+
+  /** Guard: ALL THREE genuinely-new 5.5.1 beats (-3, -4, -5) must be
+   *  on the page before ANY pin in this block can green-light.
+   *  #bridging-beat-2 is deliberately NOT required — it pre-dates
+   *  5.5.1, so requiring it would not keep this block RED against the
+   *  unimplemented page. */
+  function allBeatsShipped(): void {
+    for (const b of BEATS) {
+      expect(
+        document.getElementById(b.id),
+        `#${b.id} missing — 5.5.1 beats not shipped`,
+      ).not.toBeNull();
+    }
+  }
+
+  /** The beat element under test, guarded on the full set. */
+  function beatEl(id: string): HTMLElement {
+    allBeatsShipped();
+    return document.getElementById(id) as unknown as HTMLElement;
+  }
+
+  for (const beat of BEATS) {
+    it(`#${beat.id}: renders like the original beat — bridging-beat class with exactly one p.bridge-text carrier`, () => {
+      const el = beatEl(beat.id);
+      expect(
+        el.classList.contains('bridging-beat'),
+        `#${beat.id} must carry class "bridging-beat"`,
+      ).toBe(true);
+      const carriers = el.querySelectorAll('p.bridge-text');
+      expect(
+        carriers.length,
+        `#${beat.id} must contain exactly one p.bridge-text (a non-<p> carrier or a duplicate both fail)`,
+      ).toBe(1);
+    });
+
+    it(`#${beat.id}: bridge text is EXACTLY "${beat.text}" — collapsed match, every period literal`, () => {
+      const el = beatEl(beat.id);
+      const carrier = el.querySelector('p.bridge-text');
+      expect(carrier, `#${beat.id} has no p.bridge-text`).not.toBeNull();
+      const raw = carrier!.textContent || '';
+      // Exact equality: a dropped period, comma-for-period, extra or
+      // missing word, and reordered sentences all fail here.
+      expect(collapse(raw)).toBe(beat.text);
+      // collapse() folds NBSP into a plain space (JS \s matches U+00A0),
+      // so typographic drift is pinned on the RAW text separately.
+      expect(
+        raw,
+        `#${beat.id} copy carries typographic characters (smart quotes, en/em dash, NBSP) — approved copy is pure ASCII`,
+      ).not.toMatch(
+        /[\u2018\u2019\u201C\u201D\u2013\u2014\u00A0]/, // smart quotes, en/em dash, nbsp
+      );
+      expect(
+        el.textContent || '',
+        `#${beat.id} carries Markdown artifacts`,
+      ).not.toMatch(/[*_`#]/);
+      expect(el.textContent || '').not.toContain('\\n');
+    });
+
+    it(`#${beat.id}: copy appears exactly once in the visible page text, and as SSR markup — never merely island props`, () => {
+      beatEl(beat.id);
+      // textContent excludes attribute values by construction, so
+      // serialized props copies can neither inflate nor satisfy this.
+      const bodyText = collapse(document.body.textContent || '');
+      expect(
+        countOccurrences(bodyText, beat.text),
+        `"${beat.text}" must appear exactly once in visible page text`,
+      ).toBe(1);
+      // And it must survive as rendered SSR markup once island props
+      // attributes are blanked (intro-framing convention).
+      const propsBlanked = collapse(
+        visibleHtml(document.documentElement.outerHTML),
+      );
+      expect(
+        propsBlanked,
+        `"${beat.text}" survives only inside serialized island props — it is not visible SSR text`,
+      ).toContain(beat.text);
+    });
+
+    it(`#${beat.id}: comma-for-period mutations of the copy appear nowhere in the visible page`, () => {
+      beatEl(beat.id);
+      const bodyText = collapse(document.body.textContent || '');
+      // Non-vacuous: the correct copy must be present before the
+      // absences mean anything.
+      expect(
+        bodyText,
+        'correct copy missing — mutation tripwire would be vacuous',
+      ).toContain(beat.text);
+      const periodIdxs = [...beat.text].flatMap((ch, i) =>
+        ch === '.' ? [i] : [],
+      );
+      expect(
+        periodIdxs.length,
+        'beat copy carries no periods — tripwire vacuous',
+      ).toBeGreaterThan(0);
+      for (const i of periodIdxs) {
+        const mutated = `${beat.text.slice(0, i)},${beat.text.slice(i + 1)}`;
+        expect(
+          bodyText,
+          `comma-for-period mutation found on the page: "${mutated}"`,
+        ).not.toContain(mutated);
+      }
+    });
+
+    it(`#${beat.id}: id occurs exactly once — DOM and built HTML agree`, () => {
+      beatEl(beat.id);
+      expect(
+        document.querySelectorAll(`[id="${beat.id}"]`).length,
+        `duplicate id="${beat.id}" elements in the DOM`,
+      ).toBe(1);
+      // Raw count on the props-blanked HTML: a second copy hidden in a
+      // template/comment region would not appear via getElementById.
+      const html = visibleHtml(document.documentElement.outerHTML);
+      expect(
+        countOccurrences(html, `id="${beat.id}"`),
+        `id="${beat.id}" must appear exactly once in the built HTML`,
+      ).toBe(1);
+    });
+
+    it(`#${beat.id}: nests inside NO section element, and neither anchor contains it`, () => {
+      const el = beatEl(beat.id);
+      expect(
+        el.closest('section'),
+        `#${beat.id} is nested inside a <section> — beats sit BETWEEN sections`,
+      ).toBeNull();
+      const after = document.getElementById(beat.after);
+      const before = document.getElementById(beat.before);
+      expect(after, `#${beat.after} anchor missing`).not.toBeNull();
+      expect(before, `#${beat.before} anchor missing`).not.toBeNull();
+      expect(
+        after!.contains(el),
+        `#${beat.after} contains #${beat.id}`,
+      ).toBe(false);
+      expect(
+        before!.contains(el),
+        `#${beat.before} contains #${beat.id}`,
+      ).toBe(false);
+      expect(el.contains(after!), `#${beat.id} swallowed #${beat.after}`).toBe(
+        false,
+      );
+      expect(
+        el.contains(before!),
+        `#${beat.id} swallowed #${beat.before}`,
+      ).toBe(false);
+    });
+
+    it(`#${beat.id}: sits between #${beat.after} and #${beat.before} in source order (props-blanked string-index)`, () => {
+      beatEl(beat.id);
+      // String-index pin on the props-blanked BODY html, per the
+      // intro-framing convention — serialized island props cannot
+      // hijack the first-occurrence indexOf.
+      const html = visibleHtml(document.body.innerHTML);
+      const afterIdx = html.indexOf(`id="${beat.after}"`);
+      const beatIdx = html.indexOf(`id="${beat.id}"`);
+      const beforeIdx = html.indexOf(`id="${beat.before}"`);
+      expect(
+        afterIdx,
+        `id="${beat.after}" missing from body HTML`,
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        beatIdx,
+        `id="${beat.id}" missing from body HTML`,
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        beforeIdx,
+        `id="${beat.before}" missing from body HTML`,
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        beatIdx,
+        `#${beat.id} must come AFTER #${beat.after}`,
+      ).toBeGreaterThan(afterIdx);
+      expect(
+        beatIdx,
+        `#${beat.id} must come BEFORE #${beat.before}`,
+      ).toBeLessThan(beforeIdx);
+    });
+  }
+
+  it('the page carries EXACTLY the five known beats: .bridging-beat ids in document order, never shared, no strays', () => {
+    allBeatsShipped();
+    const beats = Array.from(document.querySelectorAll('.bridging-beat'));
+    expect(
+      beats.map((el) => el.id),
+      '.bridging-beat elements must be exactly the two pre-existing beats plus the three 5.5.1 beats, in document order ' +
+        '(the deferred S5→S6 beat lands in 5.5.5 — shipping it early must trip this pin for re-approval)',
+    ).toEqual(ALL_BEAT_IDS);
+    expect(
+      new Set(beats.map((el) => el.id)).size,
+      'bridging-beat ids must never be shared',
+    ).toBe(ALL_BEAT_IDS.length);
+  });
+
+  it('second person is RESERVED for the deferred 5.5.5 beat: no .bridge-text on the page contains the word "you"', () => {
+    allBeatsShipped();
+    const carriers = Array.from(document.querySelectorAll('.bridge-text'));
+    expect(
+      carriers.length,
+      'fewer bridge-text carriers than the five shipped beats — sweep would be vacuous',
+    ).toBeGreaterThanOrEqual(ALL_BEAT_IDS.length);
+    for (const c of carriers) {
+      const text = collapse(c.textContent || '');
+      expect(
+        text,
+        `bridge-text "${text}" uses second person — "you"/"You" is reserved for the S5→S6 beat (sub-phase 5.5.5)`,
+      ).not.toMatch(/\byou\b/i);
+    }
   });
 });
 

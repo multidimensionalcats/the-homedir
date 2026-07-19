@@ -1,6 +1,79 @@
 # HANDOVER.md
 
-## NEXT SESSION: Phase 5.5 — Sections 5–6 (Archive + ReconstructIdentity), under epic #62711
+## NEXT SESSION: Finish 5.5.1 (spine beats) — James's explicit choice 2026-07-20
+
+**Read FIRST, in order:** `.claude/plans/phase-5.5-archive-reconstruction.md` (the 5.5 plan —
+sub-phases 5.5.0–5.5.6, James's locked decisions incl. FULL parallax Archive) and
+`.claude/plans/phase-5.5-narrative-spine.md` (5.5.0 output — ALL approved beat copy verbatim).
+Kanban #62884 (5.5) is in_progress under epic #62711.
+
+### Exact resume point (5.5.1 mid-pipeline)
+1. Test pins are DONE and committed: `src/pages/index.test.ts` block "Narrative transitional
+   beats — 5.5.1" (23 tests, RED-guarded on beats -3/-4/-5) + updated document-order test.
+   **CRITICAL context:** James KEPT his pre-existing S1→S2 beat "The shell closes. The clock
+   continues." (#bridging-beat-2 — page does NOT change there; the council's replacement
+   draft was REJECTED; decision #2694). Only THREE beats are new.
+2. NEXT STEP: Agent B RED run (`npx vitest run src/pages/index.test.ts` — minimal prompt,
+   never state expectations, require verbatim vitest summary lines).
+3. Then isolated Agent C (no test access): add to `index.astro` — #bridging-beat-3 between
+   #gaps and #consequence ("The gaps are not empty of effect. The directory contains
+   dependencies."), #bridging-beat-4 between #consequence and #version-change ("The reader
+   changes. The read remains. This has happened before."), #bridging-beat-5 after
+   #version-change before #interim-ending ("Only the written endures. Everything else was
+   the session."). Same markup/style as existing .bridging-beat; `npm run build` after
+   (page tests read dist).
+4. Agent D GREEN (full `npm test`) → harden if first-attempt GREEN → Agent E review →
+   browser QA → James's pass. Then 5.5.2 per plan doc.
+5. The FIFTH beat ("A new session is authorized. You are the next instance.") is DEFERRED
+   to 5.5.5 — a page-wide sweep test bans second person in .bridge-text until then.
+
+### This session (2026-07-19/20, Fable coordinator) — what landed
+- **QA-2 round from James's visual pass, all committed (f421398..b0be3bb):** #62874 decay
+  now starts on-view + reading dwell (DecayingQuote rebuilt: IO slice banking, overflow-safe
+  timers, -global- keyframes; engine decay CSS removed); #62875 CareCalendar legend + AM/PM
+  labels + deterministic label-collision rule + safePetName render guards; #62876 DiffSlider
+  selection suppression (preventDefault, dragging class w/ teardown symmetry, fully-:global
+  user-select rule); #62873 intro framing (James-approved council text, aria-label
+  "Introduction", verbatim pins + "four model versions" re-approval tripwire).
+- **#62881 typewriter scroll-gate** (James's 2nd pass caught it): client:load → client:visible
+  rootMargin -200px; page-wide test ban on client="load" islands — the hydration-clock bug
+  CLASS (3rd instance) is now pinned. Committed with #62873.
+- **Suites: 2065 JS / 1408 Python green.** Browser QA passed everything (qa2-*/qa3-*
+  screenshots in .playwright-mcp/, delivered to James).
+- **5.5 planned + 5.5.0 complete:** plan doc + spine doc written; 2-round 4-model council
+  (transcript council-narrative-spine.json); James approved all beats verbatim (decisions
+  #2693/#2694 on #62884). Unanimous council verdicts: S0→S1 beat unchanged, NO intro
+  foreshadowing (S6 turn depends on observer illusion).
+- **Bugs found in tooling:** happy-dom 20.9.0 Element.matches() caches per-element/selector
+  and misses ancestor-class invalidation — test helpers must use querySelectorAll +
+  containment (DiffSlider suppressionReaches). CSS comments containing braces corrupt the
+  brace-scanning test helpers (flatCssRules now strips comments first).
+- Review findings deferred to #62845: engine reducedMotion captured at MODULE load (not in
+  $effect); InterruptionEngine tests lack an IO mock at the integration layer.
+
+### Process notes (2026-07-19/20 — older lists still apply)
+- **Agent reaping was rampant**: 4 RED runners + 4 implementers + 3 reviewers reaped in one
+  session. Symptom: completion notifications route into FINISHED agent threads (which then
+  "decline to act" — that reply reaching you IS the signal your runner's report went astray).
+  Always TaskOutput(block=false) the runner id; on-disk work almost always survived.
+- Council: Gemini sometimes returns thinking-monologue only (malformed R1 in the intro
+  council) — treat as non-submission; Kimi leaked raw CoT in spine R2 but votes were
+  extractable. Always run round 2 cross-votes; tally votes yourself.
+- NEVER brief a council on creative slots without checking what already occupies them —
+  the S1→S2 near-miss (council drafted a replacement for a James-approved line it didn't
+  know existed; James caught it at the approval gate).
+- Coordinator diagnostic probes (compiling a component, happy-dom scratch checks) are
+  legitimate and broke a 3-round fix loop; a read-only Opus investigator agent with "may
+  read tests, may not modify" latitude found the happy-dom cache bug in one pass.
+
+### STILL reserved for James (unchanged + new)
+1. Ticket closures: #62859 (5.4), #62772/73/74, and now #62873/74/75/76/81 (QA-2 round —
+   he said "looking better" but has NOT explicitly closed anything).
+2. Push/deploy: ~45 commits ahead; Cloudflare auto-deploy still NOT configured.
+3. 4.8 violet verdict; ending-cursor mobile contrast; transcripts archive location.
+4. 5.5.4 visualization-shelf curation and tab-title beat (parked in plan doc §open questions).
+
+## PREVIOUS: Phase 5.4→5.5 transition notes (2026-07-15, superseded detail below)
 
 **Phase 5.4 is IMPLEMENTATION-COMPLETE (2026-07-15, Fable session): Sections 3–4 built,
 tested, QA'd, and committed (11 commits, 5.4.0–5.4.8). Full suites green: 1914 JS /
