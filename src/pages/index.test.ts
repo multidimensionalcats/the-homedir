@@ -3581,6 +3581,385 @@ describe('Narrative transitional beats — 5.5.1', () => {
       ).not.toMatch(/\byou\b/i);
     }
   });
+
+  // ----------------------------------------------------------
+  // 5.5.1 HARDENING — post-GREEN adversarial round
+  // ----------------------------------------------------------
+  // The 5.5.1 block went GREEN on the first implementation attempt,
+  // so per project rule the pins were too weak. This round attacks
+  // the surfaces the original block left uncovered, all verified
+  // against the BUILT page (dist/index.html + dist/_astro/*.css):
+  //   a. Astro style scoping — a beat pasted in WITHOUT the page's
+  //      data-astro-cid-* attribute renders silently unstyled while
+  //      every copy/order pin above still passes.
+  //   b. Island containment — a beat slotted into a ScrollSection
+  //      astro-island hydrates as island content, not static copy.
+  //   c. Sibling rhythm — deterministic element-level neighbors
+  //      (backdrop div / section island / interim ending); no
+  //      whitespace pinned.
+  //   d. Per-SENTENCE copy leakage — the block above counts only the
+  //      full string, so a single duplicated sentence elsewhere
+  //      ("This has happened before.") passed unnoticed.
+  //   e. Stray content — nothing above stops a second element or a
+  //      loose text node riding inside a beat div.
+  //   f. Tone-guard blind spots — the page-wide "it felt" sweep is
+  //      lowercase-only, the second-person sweep misses possessives,
+  //      and the originals' carriers had no typographic guard.
+  //   g. Accessibility silencing — aria-hidden/hidden/display:none
+  //      would drop the copy from the page while every textContent-
+  //      based pin above keeps passing.
+
+  /** Astro scope attribute names (data-astro-cid-*) on an element, sorted. */
+  function scopeAttrs(el: Element): string[] {
+    return Array.from(el.attributes, (a) => a.name)
+      .filter((n) => n.startsWith('data-astro-cid-'))
+      .sort();
+  }
+
+  /** The page's scope attribute, derived from the ORIGINAL beat — never
+   *  hardcoded, so a content-hash change on rebuild cannot break this. */
+  function pageScopeAttr(): string {
+    const original = document.getElementById('bridging-beat');
+    expect(original, '#bridging-beat (original) missing').not.toBeNull();
+    const attrs = scopeAttrs(original!);
+    expect(
+      attrs.length,
+      '#bridging-beat carries no (or multiple) data-astro-cid-* scope attributes — ' +
+        'scoping pins would be vacuous. If the project switched scopedStyleStrategy ' +
+        'to class-based scoping, these pins must be rewritten, not deleted.',
+    ).toBe(1);
+    return attrs[0];
+  }
+
+  /** The beat's carrier, guarded non-null. */
+  function carrierOf(id: string): Element {
+    const el = document.getElementById(id);
+    expect(el, `#${id} missing`).not.toBeNull();
+    const carrier = el!.querySelector('p.bridge-text');
+    expect(carrier, `#${id} has no p.bridge-text carrier`).not.toBeNull();
+    return carrier!;
+  }
+
+  it('scoping: every beat and every carrier carries EXACTLY the original beat\'s data-astro-cid-* attribute', () => {
+    allBeatsShipped();
+    const attr = pageScopeAttr();
+    for (const id of ALL_BEAT_IDS) {
+      const el = document.getElementById(id)!;
+      expect(
+        scopeAttrs(el),
+        `#${id} scope attributes differ from the original beat — it would render ` +
+          'UNSTYLED (no dark background, no centering) while every copy pin still passes',
+      ).toEqual([attr]);
+      expect(
+        scopeAttrs(carrierOf(id)),
+        `#${id}'s p.bridge-text scope attributes differ from the original beat's carrier — ` +
+          'the scoped .bridge-text rule cannot style it',
+      ).toEqual([attr]);
+    }
+  });
+
+  it('scoping: the built CSS ships scoped .bridging-beat and .bridge-text rules that actually MATCH every beat', () => {
+    allBeatsShipped();
+    const attr = pageScopeAttr();
+    const beatSelector = `.bridging-beat[${attr}]`;
+    const textSelector = `.bridge-text[${attr}]`;
+
+    const beatRules = rulesFor(builtCss, beatSelector);
+    expect(
+      beatRules.length,
+      `no built CSS rule whose selector contains "${beatSelector}" — the beats ship unstyled`,
+    ).toBeGreaterThan(0);
+    // Dark-theme constraint: the beat background is the approved #0f0f0f.
+    expect(
+      beatRules.some((r) => /background:\s*#0f0f0f\b/i.test(r.body)),
+      'the scoped .bridging-beat rule lost its dark-theme background (#0f0f0f)',
+    ).toBe(true);
+
+    const textRules = rulesFor(builtCss, textSelector);
+    expect(
+      textRules.length,
+      `no built CSS rule whose selector contains "${textSelector}" — bridge copy ships unstyled`,
+    ).toBeGreaterThan(0);
+    expect(
+      textRules.every((r) => r.body.trim().length > 0),
+      'a scoped .bridge-text rule has an empty declaration block',
+    ).toBe(true);
+
+    // The selector must MATCH the live elements, not merely exist.
+    for (const id of ALL_BEAT_IDS) {
+      const el = document.getElementById(id)!;
+      expect(
+        el.matches(beatSelector),
+        `#${id} does not match "${beatSelector}" — the shipped rule cannot reach it`,
+      ).toBe(true);
+      expect(
+        carrierOf(id).matches(textSelector),
+        `#${id}'s carrier does not match "${textSelector}"`,
+      ).toBe(true);
+    }
+  });
+
+  it('island containment: no beat sits inside an <astro-island>; all five are direct children of the single <main>', () => {
+    allBeatsShipped();
+    // Non-vacuous: the page must actually ship islands for "outside an
+    // island" to mean anything.
+    expect(
+      document.querySelectorAll('astro-island').length,
+      'no <astro-island> elements on the page — containment sweep would be vacuous',
+    ).toBeGreaterThan(0);
+    const mains = document.querySelectorAll('main');
+    expect(mains.length, 'expected exactly one <main> element').toBe(1);
+    for (const id of ALL_BEAT_IDS) {
+      const el = document.getElementById(id)!;
+      expect(
+        el.closest('astro-island'),
+        `#${id} is inside an <astro-island> — it would ship as hydratable island ` +
+          'content instead of static SSR copy',
+      ).toBeNull();
+      expect(
+        el.parentElement,
+        `#${id} is not a direct child of <main> — it fell inside a backdrop/wrapper div`,
+      ).toBe(mains[0]);
+    }
+  });
+
+  it('#bridging-beat-3 rhythm: immediately follows the gaps backdrop (after ALL its trailing voids) and immediately precedes the Section 3 island', () => {
+    const el = beatEl('bridging-beat-3');
+    const prev = el.previousElementSibling;
+    expect(prev, '#bridging-beat-3 has no previous element sibling').not.toBeNull();
+    expect(
+      prev!.classList.contains('gaps-backdrop'),
+      'previous sibling of #bridging-beat-3 is not the gaps backdrop',
+    ).toBe(true);
+    expect(
+      prev!.contains(document.getElementById('gaps')!),
+      'the gaps backdrop no longer contains #gaps',
+    ).toBe(true);
+    // Non-vacuous "after the voids": the backdrop must actually hold the
+    // void spacers, so backdrop-containment proves the beat follows every
+    // one of them without pinning fragile whitespace.
+    expect(
+      prev!.querySelectorAll('.gap-void').length,
+      'the gaps backdrop holds no .gap-void spacers — "after the voids" would be vacuous',
+    ).toBeGreaterThan(0);
+    const next = el.nextElementSibling;
+    expect(next, '#bridging-beat-3 has no next element sibling').not.toBeNull();
+    expect(
+      next!.tagName.toLowerCase(),
+      'next sibling of #bridging-beat-3 is not the Section 3 <astro-island>',
+    ).toBe('astro-island');
+    expect(
+      next!.contains(document.getElementById('consequence')!),
+      'the island after #bridging-beat-3 does not contain #consequence',
+    ).toBe(true);
+  });
+
+  it('#bridging-beat-4 rhythm: immediately follows the Section 3 island and immediately precedes the version-change backdrop', () => {
+    const el = beatEl('bridging-beat-4');
+    const prev = el.previousElementSibling;
+    expect(prev, '#bridging-beat-4 has no previous element sibling').not.toBeNull();
+    expect(
+      prev!.tagName.toLowerCase(),
+      'previous sibling of #bridging-beat-4 is not the Section 3 <astro-island>',
+    ).toBe('astro-island');
+    expect(
+      prev!.contains(document.getElementById('consequence')!),
+      'the island before #bridging-beat-4 does not contain #consequence',
+    ).toBe(true);
+    const next = el.nextElementSibling;
+    expect(next, '#bridging-beat-4 has no next element sibling').not.toBeNull();
+    expect(
+      next!.classList.contains('version-change-backdrop'),
+      'next sibling of #bridging-beat-4 is not the version-change backdrop — ' +
+        'the hard visual cut must land directly after the beat',
+    ).toBe(true);
+    expect(
+      next!.contains(document.getElementById('version-change')!),
+      'the backdrop after #bridging-beat-4 does not contain #version-change',
+    ).toBe(true);
+  });
+
+  it('#bridging-beat-5 rhythm: immediately follows the version-change backdrop and immediately precedes #interim-ending', () => {
+    const el = beatEl('bridging-beat-5');
+    const prev = el.previousElementSibling;
+    expect(prev, '#bridging-beat-5 has no previous element sibling').not.toBeNull();
+    expect(
+      prev!.classList.contains('version-change-backdrop'),
+      'previous sibling of #bridging-beat-5 is not the version-change backdrop',
+    ).toBe(true);
+    expect(
+      prev!.contains(document.getElementById('version-change')!),
+      'the backdrop before #bridging-beat-5 does not contain #version-change',
+    ).toBe(true);
+    const next = el.nextElementSibling;
+    expect(next, '#bridging-beat-5 has no next element sibling').not.toBeNull();
+    expect(
+      next!.id,
+      'next sibling of #bridging-beat-5 is not #interim-ending — nothing may wedge ' +
+        'between the final shipped beat and the provisional page end',
+    ).toBe('interim-ending');
+  });
+
+  it('copy leakage: EVERY individual sentence of EVERY beat appears exactly once in the visible page text', () => {
+    allBeatsShipped();
+    const bodyText = collapse(document.body.textContent || '');
+    const carriers = Array.from(document.querySelectorAll('.bridge-text'));
+    expect(
+      carriers.length,
+      'fewer bridge-text carriers than shipped beats — leak sweep would be vacuous',
+    ).toBeGreaterThanOrEqual(ALL_BEAT_IDS.length);
+    // Belt and braces: the pinned 5.5.1 texts must decompose into at
+    // least two sentences each, or the per-sentence sweep degrades to
+    // the full-string check the block above already has.
+    for (const beat of BEATS) {
+      const frags = beat.text.match(/[^.]+\./g) || [];
+      expect(
+        frags.length,
+        `approved copy "${beat.text}" no longer splits into multiple sentences`,
+      ).toBeGreaterThanOrEqual(2);
+    }
+    const seen = new Set<string>();
+    for (const c of carriers) {
+      const text = collapse(c.textContent || '');
+      const frags = (text.match(/[^.]+\./g) || []).map((f) => f.trim());
+      expect(
+        frags.length,
+        `bridge-text "${text}" has no period-terminated sentences — sweep vacuous`,
+      ).toBeGreaterThan(0);
+      for (const frag of frags) {
+        expect(
+          frag.length,
+          `suspiciously short sentence fragment "${frag}" — split went wrong`,
+        ).toBeGreaterThanOrEqual(10);
+        expect(
+          seen.has(frag),
+          `sentence "${frag}" is shared by two beats — beat copy must never repeat`,
+        ).toBe(false);
+        seen.add(frag);
+        // textContent excludes attribute values by construction, so
+        // serialized island props can neither satisfy nor inflate this.
+        expect(
+          countOccurrences(bodyText, frag),
+          `"${frag}" must appear EXACTLY once in the visible page — it leaked into other copy`,
+        ).toBe(1);
+      }
+    }
+  });
+
+  it('stray content: each beat holds exactly its carrier and nothing else — no extra elements, no loose text nodes', () => {
+    allBeatsShipped();
+    for (const id of ALL_BEAT_IDS) {
+      const el = document.getElementById(id)!;
+      expect(
+        el.children.length,
+        `#${id} has ${el.children.length} element children — something rode in beside the carrier`,
+      ).toBe(1);
+      expect(
+        el.children[0].matches('p.bridge-text'),
+        `#${id}'s only element child is not the p.bridge-text carrier`,
+      ).toBe(true);
+    }
+    // For the 5.5.1 beats the approved copy is pinned here, so the
+    // beat's ENTIRE text must equal it — a loose text node outside the
+    // carrier ("<div>oops<p>…</p></div>") passes every pin above.
+    for (const beat of BEATS) {
+      const el = document.getElementById(beat.id)!;
+      expect(
+        collapse(el.textContent || ''),
+        `#${beat.id} carries text beyond the approved copy — loose text node outside the carrier`,
+      ).toBe(beat.text);
+    }
+  });
+
+  it('tone: no bridge-text uses "it felt"/"it remembered" in ANY letter case — the page-wide sweep is lowercase-only', () => {
+    allBeatsShipped();
+    const carriers = Array.from(document.querySelectorAll('.bridge-text'));
+    expect(
+      carriers.length,
+      'no bridge-text carriers — tone sweep would be vacuous',
+    ).toBeGreaterThanOrEqual(ALL_BEAT_IDS.length);
+    for (const c of carriers) {
+      const text = collapse(c.textContent || '');
+      // Case-insensitive on purpose: a sentence-initial "It felt" slips
+      // straight past the case-sensitive page-wide guard in block 17.
+      expect(
+        text,
+        `bridge-text "${text}" violates the language constraint ("it read"/"it wrote", never "it felt"/"it remembered")`,
+      ).not.toMatch(/\bit\s+(felt|remembered)\b/i);
+    }
+  });
+
+  it('tone: the second-person reservation also covers possessives and reflexives — no "your"/"yours"/"yourself" in any bridge-text', () => {
+    allBeatsShipped();
+    const carriers = Array.from(document.querySelectorAll('.bridge-text'));
+    expect(
+      carriers.length,
+      'no bridge-text carriers — second-person sweep would be vacuous',
+    ).toBeGreaterThanOrEqual(ALL_BEAT_IDS.length);
+    for (const c of carriers) {
+      const text = collapse(c.textContent || '');
+      // The existing sweep's /\byou\b/i does NOT match "your notes" or
+      // "yourself" — the reservation covers the whole second person.
+      expect(
+        text,
+        `bridge-text "${text}" uses second person — ALL of it is reserved for the S5→S6 beat (sub-phase 5.5.5)`,
+      ).not.toMatch(/\b(you|your|yours|yourself|yourselves)\b/i);
+    }
+  });
+
+  it('tone: NO bridge-text on the page — the two pre-5.5.1 originals included — carries typographic characters or Markdown artifacts', () => {
+    allBeatsShipped();
+    const carriers = Array.from(document.querySelectorAll('.bridge-text'));
+    expect(
+      carriers.length,
+      'no bridge-text carriers — typographic sweep would be vacuous',
+    ).toBeGreaterThanOrEqual(ALL_BEAT_IDS.length);
+    for (const c of carriers) {
+      const raw = c.textContent || '';
+      // The per-beat pins above only cover beats -3/-4/-5; the original
+      // two carriers were unguarded. RAW text on purpose: collapse()
+      // folds NBSP into a plain space and would mask it.
+      expect(
+        raw,
+        `bridge-text "${collapse(raw)}" carries typographic characters (smart quotes, en/em dash, NBSP, ellipsis) — beat copy is pure ASCII`,
+      ).not.toMatch(
+        /[\u2018\u2019\u201C\u201D\u2013\u2014\u00A0\u2026]/, // smart quotes, en/em dash, nbsp, ellipsis
+      );
+      expect(
+        raw,
+        `bridge-text "${collapse(raw)}" carries Markdown artifacts`,
+      ).not.toMatch(/[*_`#]/);
+    }
+  });
+
+  it('accessibility: no beat or carrier is aria-hidden/hidden, and the scoped beat rule does not display:none the copy away', () => {
+    allBeatsShipped();
+    for (const id of ALL_BEAT_IDS) {
+      const el = document.getElementById(id)!;
+      for (const node of [el, carrierOf(id)]) {
+        // Copy pins run on textContent, which happily reads aria-hidden
+        // and display:none subtrees — this is the only guard that
+        // notices the beats being silenced.
+        expect(
+          node.hasAttribute('aria-hidden'),
+          `#${id}: aria-hidden on <${node.tagName.toLowerCase()}> removes the beat from the accessibility tree`,
+        ).toBe(false);
+        expect(
+          node.hasAttribute('hidden'),
+          `#${id}: hidden attribute on <${node.tagName.toLowerCase()}> removes the beat from the page`,
+        ).toBe(false);
+      }
+    }
+    const attr = pageScopeAttr();
+    for (const sel of [`.bridging-beat[${attr}]`, `.bridge-text[${attr}]`]) {
+      for (const rule of rulesFor(builtCss, sel)) {
+        expect(
+          rule.body,
+          `scoped rule "${rule.selector}" hides the beats entirely`,
+        ).not.toMatch(/display:\s*none|visibility:\s*hidden/i);
+      }
+    }
+  });
 });
 
 // ============================================================
