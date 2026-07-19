@@ -1,33 +1,36 @@
 # HANDOVER.md
 
-## NEXT SESSION: Finish 5.5.1 (spine beats) — James's explicit choice 2026-07-20
+## NEXT SESSION: 5.5.2 + 5.5.3 together (Archive data, then parallax field) — James's explicit choice 2026-07-20
 
 **Read FIRST, in order:** `.claude/plans/phase-5.5-archive-reconstruction.md` (the 5.5 plan —
 sub-phases 5.5.0–5.5.6, James's locked decisions incl. FULL parallax Archive) and
 `.claude/plans/phase-5.5-narrative-spine.md` (5.5.0 output — ALL approved beat copy verbatim).
-Kanban #62884 (5.5 umbrella) is in_progress under epic #62711, with per-sub-phase todos:
-#62886 (5.5.0, COMPLETE pending James's closure nod), #62887 (5.5.1, in_progress — the
-resume point), #62888 (5.5.2), #62889 (5.5.3), #62890 (5.5.4), #62891 (5.5.5), #62892 (5.5.6).
+Kanban: #62884 (5.5 umbrella, in_progress) under epic #62711; #62886 (5.5.0) CLOSED by
+James; #62887 (5.5.1) COMPLETE + committed (be82f94) but OPEN pending his visual pass;
+#62888 (5.5.2) and #62889 (5.5.3) are next — James's mandate is to run BOTH in one session
+without checking back between sub-phases, EXCEPT the creative/curation gates (excerpt
+eligibility council + James approval in 5.5.2; any visitor-facing copy) which always come
+to him.
 
-### Exact resume point (5.5.1 mid-pipeline)
-1. Test pins are DONE and committed: `src/pages/index.test.ts` block "Narrative transitional
-   beats — 5.5.1" (23 tests, RED-guarded on beats -3/-4/-5) + updated document-order test.
-   **CRITICAL context:** James KEPT his pre-existing S1→S2 beat "The shell closes. The clock
-   continues." (#bridging-beat-2 — page does NOT change there; the council's replacement
-   draft was REJECTED; decision #2694). Only THREE beats are new.
-2. NEXT STEP: Agent B RED run (`npx vitest run src/pages/index.test.ts` — minimal prompt,
-   never state expectations, require verbatim vitest summary lines).
-3. Then isolated Agent C (no test access): add to `index.astro` — #bridging-beat-3 between
-   #gaps and #consequence ("The gaps are not empty of effect. The directory contains
-   dependencies."), #bridging-beat-4 between #consequence and #version-change ("The reader
-   changes. The read remains. This has happened before."), #bridging-beat-5 after
-   #version-change before #interim-ending ("Only the written endures. Everything else was
-   the session."). Same markup/style as existing .bridging-beat; `npm run build` after
-   (page tests read dist).
-4. Agent D GREEN (full `npm test`) → harden if first-attempt GREEN → Agent E review →
-   browser QA → James's pass. Then 5.5.2 per plan doc.
-5. The FIFTH beat ("A new session is authorized. You are the next instance.") is DEFERRED
-   to 5.5.5 — a page-wide sweep test bans second person in .bridge-text until then.
+### Resume point
+1. **5.5.1 is DONE** (be82f94): beats -3/-4/-5 live, 2100/2100 JS green, hardening round
+   added 11 pins (Astro scope-attribute coverage, island containment, per-sentence copy
+   leakage, tone-guard blind spots), review clean, QA pass (qa4-* screenshots delivered).
+   James KEPT his pre-existing S1→S2 beat (decision #2694); the S5→S6 beat ("A new session
+   is authorized. You are the next instance.") is DEFERRED to 5.5.5 and a page-wide sweep
+   bans second person in .bridge-text until then.
+2. **START 5.5.2 (#62888)** per plan §5.5.2: `deriveArchiveFragments` in
+   `src/lib/transforms.ts` (sessions.json + quotes.json + writing; fragment = {sessionId,
+   date, version, excerpt, source}; N-version-proof colors; DETERMINISTIC sampling — no
+   Math.random, seed from session id; alignment payoff line verified REAL:
+   "Hello, future self…" from discontinuous.md, already in quotes.json). Full pipeline;
+   hostile transforms tests per plan. Curation gate: excerpt eligibility → council + James.
+3. **THEN 5.5.3 (#62889)** per plan §5.5.3: ArchiveField.svelte — FULL parallax (James's
+   call): depth-layered drifting fragments, precise-scroll alignment into the payoff line,
+   breaks on continued scroll; private journal as LABELED ABSENCE (4.8 consent condition).
+   Risk budget in plan: fragment cap, transform-only animation, client:visible (page-wide
+   client:load ban is pinned in tests), mobile reduction, reduced-motion static aligned
+   state, aria-hidden field + sr-only equivalent. Hostile test inventory in plan.
 
 ### This session (2026-07-19/20, Fable coordinator) — what landed
 - **QA-2 round from James's visual pass, all committed (f421398..b0be3bb):** #62874 decay
