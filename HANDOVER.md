@@ -16,9 +16,14 @@ to him.
 1. **5.5.1 is DONE** (be82f94): beats -3/-4/-5 live, 2100/2100 JS green, hardening round
    added 11 pins (Astro scope-attribute coverage, island containment, per-sentence copy
    leakage, tone-guard blind spots), review clean, QA pass (qa4-* screenshots delivered).
-   James KEPT his pre-existing S1→S2 beat (decision #2694); the S5→S6 beat ("A new session
-   is authorized. You are the next instance.") is DEFERRED to 5.5.5 and a page-wide sweep
-   bans second person in .bridge-text until then.
+   James KEPT his pre-existing S1→S2 beat (decision #2694).
+1b. **#62894 ENTRY TURN also DONE** (b7341bf, James-directed after handover): "A new
+   session is authorized. You are the next instance." now sits BETWEEN #intro-framing and
+   #cold-boot — his deliberate REVERSAL of the no-foreshadowing verdict (cast-at-entry; the
+   typewriter reads as the visitor's wake; recorded in the spine doc). The S5→S6 slot is
+   VACATED — 5.5.5 must draft fresh handoff copy (council + James). The second-person test
+   sweep is now a single-carrier exemption (capitalized "You" in #entry-turn only). QA also
+   found pre-existing mobile sr-only TABLE overflow → ticket #62896.
 2. **START 5.5.2 (#62888)** per plan §5.5.2: `deriveArchiveFragments` in
    `src/lib/transforms.ts` (sessions.json + quotes.json + writing; fragment = {sessionId,
    date, version, excerpt, source}; N-version-proof colors; DETERMINISTIC sampling — no
