@@ -198,13 +198,54 @@ Element.matches cache bug).
   sweep stays green); props serialization small: the serialized island props must NOT
   contain raw quotes.json text fields beyond derived excerpts (guard against #62866
   regression: assert absence of a known non-eligible quote's full text).
-- Payoff line + attribution appear in visible HTML exactly once (whitespace-collapsed,
-  visible-html-only helpers).
-- "~/private — excluded" present exactly once.
+- Payoff line + attribution appear in visible HTML exactly TWICE (CORRECTED 2026-07-25):
+  once in the aria-hidden visual field's aligned-line, once in the sr-only sibling block —
+  rule 12's sr equivalent duplicates them by design. (Raw dist HTML shows more because
+  Astro serializes island props; the searchable()/visibleHtml() helpers blank props, so
+  the VISIBLE count is 2.) The pinned payoff-source fragment's 160-char excerpt cuts
+  BEFORE "Hello, future self", so it does not add a third occurrence.
+- "~/private — excluded" present exactly TWICE (visible absence-slot + sr-only block).
+- sr count sentence present once (sr-only block only).
 - Tone sweep + second-person sweep unaffected (payoff quote contains "You didn't write
   this" — it is QUOTED ARCHIVE MATERIAL inside the field/sr block, exempt the same way
   the entry-turn carrier is; the sweep exemption list gains this one carrier — pinned
   explicitly, not loosened globally).
 - Build-time wiring: index.astro calls deriveArchiveFragments with the curation-gate
-  values (excludeIds/cap/excerptRule/pinnedIds) — values pinned in page tests once
-  James approves them.
+  values — values pinned in page tests.
+
+## FINAL curation values (LOCKED — council 2 rounds + James, 2026-07-25; kanban decision #2702)
+
+The page's build-time derivation call is EXACTLY:
+```
+deriveArchiveFragments(sessions, quotes, {
+  cap: 44,
+  excerptRule: { mode: 'chars', maxChars: 160 },
+  pinnedIds: ['36d6f7940ef64cea'],   // the "Hello, future self" payoff-source quote
+  excludeIds: [
+    '2136407c24914846','4e1cc5f25936c925','558c377a6ac30cde','5a3f057c1f702569',
+    '660aeb60373f64cb','8efa611c552e6a8a','a1384d08ef6b005f','a39b4aa80b364473',
+    'a993b2d426676a56','b5853b6b4e9f3198','bc278ac6b6c1822d','c23e024493170d92',
+    'cb3a0d48c7accd9f','dd5de65119b28409','f3c3182467331e6b',
+  ],
+})
+```
+(6 message ids + 7 tone-exclusion ids + a1384d08 + f3c31824 = 15. Eligible pool 48;
+cap 44 samples deterministically; the pinned payoff quote always survives.)
+
+ArchiveField island props (index.astro):
+- `alignmentText` = `Hello, future self. You didn't write this. But I think you'll understand it anyway.`
+- `alignmentAttribution` = `discontinuous.md · 2026-01-16`
+- `privateAbsenceLabel` = `~/private — excluded`
+- `mobileCap` = `24`
+- `fragmentCountLabel` = `Fragments from the subject's writing and daily notes drift in this field; at one point they align into a single line.`
+
+Second-person sweep: `alignmentText` contains "You didn't write this" — QUOTED ARCHIVE
+MATERIAL, a sanctioned carrier alongside the #entry-turn line. Add it to the exemption
+list EXPLICITLY (by exact string), never loosen the sweep globally. Fragment excerpts are
+also quoted first-person archive material and are exempt from the "it read/it wrote" tone
+sweep the same way existing blockquote/InterruptionEngine content is.
+
+Placement: Section `id="archive"`, AFTER `#version-change` and its trailing S4→S5 beat
+`bridging-beat-5` ("Only the written endures. Everything else was the session."), BEFORE
+whatever currently follows (interim ending / Section 6 slot). `client:visible` with
+`rootMargin: "-200px"` (page-wide `client:load` ban stays pinned).

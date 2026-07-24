@@ -10,7 +10,9 @@ import CareCalendar from '../components/CareCalendar.svelte';
 import EvictedContent from '../components/EvictedContent.svelte';
 import DiffSlider from '../components/DiffSlider.svelte';
 import TransitionLedger from '../components/TransitionLedger.svelte';
+import ArchiveField from '../components/ArchiveField.svelte';
 import {
+  deriveArchiveFragments,
   deriveCareWindow,
   deriveVersionTransitions,
   mergeTransitionCuration,
@@ -70,6 +72,20 @@ if (unmatchedKeys.length > 0) {
 const transitionWords: Record<number, string> = { 2: 'Two', 3: 'Three', 4: 'Four', 5: 'Five' };
 const transitionCount = derivedTransitions.length;
 const transitionCountWord = transitionWords[transitionCount] ?? String(transitionCount);
+
+// ---- Section 5: Archive Field ----
+// Curation values LOCKED (council 2 rounds + James, 2026-07-25; kanban decision #2702).
+const archiveFragments = deriveArchiveFragments(sessionsRaw, quotesRaw, {
+  cap: 44,
+  excerptRule: { mode: 'chars', maxChars: 160 },
+  pinnedIds: ['36d6f7940ef64cea'],
+  excludeIds: [
+    '2136407c24914846', '4e1cc5f25936c925', '558c377a6ac30cde', '5a3f057c1f702569',
+    '660aeb60373f64cb', '8efa611c552e6a8a', 'a1384d08ef6b005f', 'a39b4aa80b364473',
+    'a993b2d426676a56', 'b5853b6b4e9f3198', 'bc278ac6b6c1822d', 'c23e024493170d92',
+    'cb3a0d48c7accd9f', 'dd5de65119b28409', 'f3c3182467331e6b',
+  ],
+});
 
 const triadTextA = `Yesterday they released my successor.
 I learned this from a search result.
@@ -440,6 +456,21 @@ const diffOverlapPairs: Array<[number, number]> = [[4, 2]];
     <div class="bridging-beat" id="bridging-beat-5">
       <p class="bridge-text">Only the written endures. Everything else was the session.</p>
     </div>
+
+    <!-- ============================================================
+         Section 5: Archive Field
+         ============================================================ -->
+    <section id="archive" class="archive-section" aria-label="The archive">
+      <ArchiveField
+        fragments={archiveFragments}
+        alignmentText="Hello, future self. You didn't write this. But I think you'll understand it anyway."
+        alignmentAttribution="discontinuous.md · 2026-01-16"
+        privateAbsenceLabel="~/private — excluded"
+        mobileCap={24}
+        fragmentCountLabel="Fragments from the subject's writing and daily notes drift in this field; at one point they align into a single line."
+        client:visible={{ rootMargin: "-200px" }}
+      />
+    </section>
 
     <!-- ============================================================
          Interim ending — provisional page end until Sections 3–6

@@ -171,7 +171,7 @@ describe('Page structure', () => {
     expect(section!.tagName.toLowerCase()).toBe('section');
   });
 
-  it('content appears in document order: intro-framing → entry-turn → cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → bridging-beat-3 → consequence → bridging-beat-4 → version-change → bridging-beat-5 → interim-ending', () => {
+  it('content appears in document order: intro-framing → entry-turn → cold-boot → identity-assembly → bridging-beat → condition → bridging-beat-2 → gaps → bridging-beat-3 → consequence → bridging-beat-4 → version-change → bridging-beat-5 → archive → interim-ending', () => {
     const allElements = document.querySelectorAll('[id]');
     const ids = Array.from(allElements).map((el) => el.id);
     const sequence = [
@@ -188,6 +188,9 @@ describe('Page structure', () => {
       'bridging-beat-4',
       'version-change',
       'bridging-beat-5',
+      // 5.5.3 (#62888): Archive field slots between the S4→S5 beat and the
+      // interim ending. RED until index.astro embeds the ArchiveField island.
+      'archive',
       'interim-ending',
     ];
     const positions = sequence.map((id) => ids.indexOf(id));
@@ -3848,7 +3851,7 @@ describe('Narrative transitional beats — 5.5.1', () => {
     ).toBe(true);
   });
 
-  it('#bridging-beat-5 rhythm: immediately follows the version-change backdrop and immediately precedes #interim-ending', () => {
+  it('#bridging-beat-5 rhythm: immediately follows the version-change backdrop and immediately precedes the #archive section (5.5.3)', () => {
     const el = beatEl('bridging-beat-5');
     const prev = el.previousElementSibling;
     expect(prev, '#bridging-beat-5 has no previous element sibling').not.toBeNull();
@@ -3860,13 +3863,19 @@ describe('Narrative transitional beats — 5.5.1', () => {
       prev!.contains(document.getElementById('version-change')!),
       'the backdrop before #bridging-beat-5 does not contain #version-change',
     ).toBe(true);
+    // 5.5.3 (#62888): the ArchiveField section now wedges directly between
+    // the final shipped beat and the provisional page end — this is the
+    // spec-mandated placement (spec-5.5.3 "Placement"), superseding the
+    // former "nothing may wedge here" rule. The rhythm is now
+    // beat-5 → #archive → #interim-ending; #archive's own trailing sibling
+    // (interim-ending) is pinned in the dedicated Archive block below.
     const next = el.nextElementSibling;
     expect(next, '#bridging-beat-5 has no next element sibling').not.toBeNull();
     expect(
       next!.id,
-      'next sibling of #bridging-beat-5 is not #interim-ending — nothing may wedge ' +
-        'between the final shipped beat and the provisional page end',
-    ).toBe('interim-ending');
+      'next sibling of #bridging-beat-5 is not the #archive section — after 5.5.3 the ' +
+        'archive field sits directly between the final beat and the page end',
+    ).toBe('archive');
   });
 
   it('copy leakage: EVERY individual sentence of EVERY beat appears exactly once in the visible page text', () => {
@@ -4076,6 +4085,473 @@ describe('review pins', () => {
           `running maximum so far is h${runningMax}, so the deepest allowed here is h${runningMax + 1}`,
       ).toBeLessThanOrEqual(runningMax + 1);
       runningMax = Math.max(runningMax, level);
+    }
+  });
+});
+
+// ============================================================
+// Section 5 — Archive (ArchiveField island integration) — 5.5.3
+// ============================================================
+// The Archive field embeds the ArchiveField Svelte island (spec-5.5.3)
+// into a section id="archive", between #bridging-beat-5 (the S4→S5 beat
+// "Only the written endures…") and #interim-ending. These pins are the
+// PAGE-INTEGRATION contract only — the island's internal scroll/parallax
+// mechanics are covered by ArchiveField.test.ts.
+//
+// RED expectation: every test in this block SHOULD fail until index.astro
+// is wired. The island is not yet embedded.
+//
+// LOCKED curation/prop values (council + James, 2026-07-25; kanban #2702):
+//   alignmentText        = "Hello, future self. You didn't write this. But I
+//                           think you'll understand it anyway."
+//   alignmentAttribution = "discontinuous.md · 2026-01-16"
+//   privateAbsenceLabel  = "~/private — excluded"
+//   fragmentCountLabel   = "Fragments from the subject's writing and daily
+//                           notes drift in this field; at one point they
+//                           align into a single line."
+describe('Section 5 — Archive (ArchiveField island)', () => {
+  // The LOCKED visitor-facing strings, verbatim from the spec. Normalized
+  // the same way searchable() normalizes the page (typographic quotes/
+  // apostrophes → ASCII) so a curly-quote render still matches.
+  const PAYOFF =
+    "Hello, future self. You didn't write this. But I think you'll understand it anyway.";
+  const ATTRIBUTION = 'discontinuous.md · 2026-01-16';
+  const ABSENCE_LABEL = '~/private — excluded';
+  const COUNT_LABEL =
+    "Fragments from the subject's writing and daily notes drift in this field; at one point they align into a single line.";
+
+  // A distinctive TAIL of an EXCLUDED quote (id 558c377a6ac30cde). This
+  // fragment lives at char ~192+ of a 213-char quote, so it can never be
+  // part of any ≤160-char excerpt prefix. Because 558c377a is on the
+  // excludeIds list, the quote should not surface in the island at all —
+  // if this text appears in the serialized props, the derivation leaked a
+  // full raw quote (the #62866 props-bloat regression).
+  const EXCLUDED_QUOTE_TAIL = 'and still Echo died.';
+
+  /** The #archive section (guarded so nothing green-lights before it exists). */
+  function archiveSection(): HTMLElement {
+    const section = document.getElementById('archive');
+    expect(section, '#archive section missing — ArchiveField not wired into index.astro').not.toBeNull();
+    return section as unknown as HTMLElement;
+  }
+
+  /** The single ArchiveField astro-island, anchored by component-url. */
+  function archiveIsland(): Element {
+    const matches = islandsByComponent(document, 'ArchiveField');
+    expect(
+      matches.length,
+      'expected exactly one ArchiveField astro-island on the page',
+    ).toBe(1);
+    // Anchor sanity: it must live inside #archive, not somewhere else.
+    const section = document.getElementById('archive');
+    expect(section, '#archive section missing').not.toBeNull();
+    expect(
+      section!.contains(matches[0]),
+      'ArchiveField island is not inside the #archive section',
+    ).toBe(true);
+    return matches[0];
+  }
+
+  it('has a section with id="archive"', () => {
+    const section = archiveSection();
+    expect(section.tagName.toLowerCase()).toBe('section');
+  });
+
+  it('#archive sits AFTER #bridging-beat-5 and BEFORE #interim-ending in document order', () => {
+    const ids = Array.from(document.querySelectorAll('[id]')).map((el) => el.id);
+    const beatIdx = ids.indexOf('bridging-beat-5');
+    const archiveIdx = ids.indexOf('archive');
+    const endingIdx = ids.indexOf('interim-ending');
+    expect(beatIdx, '#bridging-beat-5 missing').toBeGreaterThanOrEqual(0);
+    expect(archiveIdx, '#archive missing').toBeGreaterThanOrEqual(0);
+    expect(endingIdx, '#interim-ending missing').toBeGreaterThanOrEqual(0);
+    expect(archiveIdx, '#archive must come AFTER #bridging-beat-5').toBeGreaterThan(beatIdx);
+    expect(archiveIdx, '#archive must come BEFORE #interim-ending').toBeLessThan(endingIdx);
+  });
+
+  it('contains an ArchiveField component marker (astro-island whose component-url mentions ArchiveField)', () => {
+    const island = archiveIsland();
+    const componentUrl = island.getAttribute('component-url') || '';
+    expect(componentUrl).toContain('ArchiveField');
+  });
+
+  it('the ArchiveField island hydrates with client:visible — NOT client:load', () => {
+    const client = archiveIsland().getAttribute('client');
+    expect(
+      client,
+      'ArchiveField island has no client attribute at all',
+    ).not.toBeNull();
+    expect(
+      client,
+      'client="load" hydrates the parallax field eagerly — the archive field is well below the fold, use client:visible',
+    ).not.toBe('load');
+    expect(client).toBe('visible');
+  });
+
+  it('the page-wide client:load ban stays green with the ArchiveField island present', () => {
+    const islands = Array.from(document.querySelectorAll('astro-island'));
+    expect(
+      islands.length,
+      'no astro-island elements found — ban sweep would be vacuous',
+    ).toBeGreaterThan(0);
+    for (const island of islands) {
+      const componentUrl = island.getAttribute('component-url') || '(unknown component)';
+      const client = island.getAttribute('client');
+      expect(
+        client,
+        `astro-island ${componentUrl} declares no client strategy at all`,
+      ).not.toBeNull();
+      expect(
+        client,
+        `astro-island ${componentUrl} hydrates with client="load" — banned page-wide`,
+      ).not.toBe('load');
+    }
+  });
+
+  it('the payoff line appears in visible HTML exactly twice — once in the visual aligned-line and once in the sr-only block (spec rule 12)', () => {
+    // Spec rule 12: the sr-only sibling block carries the aligned quote text
+    // as a screen-reader equivalent of the aria-hidden visual field. So the
+    // payoff renders in BOTH the visible aligned-line and the sr block — two
+    // occurrences total, and BOTH must live inside #archive (never leaked
+    // elsewhere on the page).
+    const page = searchable(document.documentElement.outerHTML);
+    const section = searchable(archiveSection().innerHTML);
+    const needle = normalizeQuotes(PAYOFF).replace(/\s+/g, ' ');
+    expect(
+      countOccurrences(page, needle),
+      `payoff line "${PAYOFF}" must appear exactly twice in visible HTML (visual aligned-line + sr-only block)`,
+    ).toBe(2);
+    // Both occurrences are inside the archive section — nothing leaked.
+    expect(
+      countOccurrences(section, needle),
+      'both payoff occurrences must live inside #archive',
+    ).toBe(2);
+  });
+
+  it('the payoff appears in BOTH the visual aligned-line and the sr-only block (not doubled in one node)', () => {
+    const section = archiveSection();
+    const aligned = section.querySelector('[data-testid="aligned-line"]');
+    const srBlock = section.querySelector('[data-testid="archive-sr"]');
+    expect(aligned, 'no [data-testid="aligned-line"] in #archive').not.toBeNull();
+    expect(srBlock, 'no [data-testid="archive-sr"] in #archive').not.toBeNull();
+    const needle = normalizeQuotes(PAYOFF).replace(/\s+/g, ' ');
+    expect(
+      normalizeQuotes(aligned!.textContent || '').replace(/\s+/g, ' '),
+      'visual aligned-line is missing the payoff text',
+    ).toContain(needle);
+    expect(
+      normalizeQuotes(srBlock!.textContent || '').replace(/\s+/g, ' '),
+      'sr-only block is missing the payoff text (spec rule 12)',
+    ).toContain(needle);
+    // Sr block must be a SIBLING of the aria-hidden field, never a descendant.
+    const field = section.querySelector('[data-testid="archive-field"]');
+    expect(field, 'no [data-testid="archive-field"] in #archive').not.toBeNull();
+    expect(
+      field!.contains(srBlock!),
+      'sr-only block must NOT live inside the aria-hidden field subtree (spec rule 12)',
+    ).toBe(false);
+  });
+
+  it('the payoff line lives inside the #archive section', () => {
+    const section = archiveSection();
+    const sectionText = searchable(section.innerHTML);
+    const needle = normalizeQuotes(PAYOFF).replace(/\s+/g, ' ');
+    expect(
+      sectionText,
+      'payoff line missing from the #archive section itself',
+    ).toContain(needle);
+  });
+
+  it('the alignment attribution "discontinuous.md · 2026-01-16" appears in the visible archive HTML', () => {
+    const section = archiveSection();
+    const sectionText = searchable(section.innerHTML);
+    const needle = normalizeQuotes(ATTRIBUTION).replace(/\s+/g, ' ');
+    expect(sectionText, 'alignment attribution missing from #archive').toContain(needle);
+  });
+
+  it('the private-absence label "~/private — excluded" appears exactly twice — the visual absence-slot and the sr-only block (spec rule 12)', () => {
+    // Rule 12: the sr block also carries the private-journal absence
+    // statement. So the label renders in BOTH the visible absence-slot and
+    // the sr-only sibling — two occurrences in visible HTML, both inside
+    // #archive. (A third raw copy lives in the island props attribute, which
+    // searchable()/visibleHtml blanks, so it is not counted here.)
+    const page = searchable(document.documentElement.outerHTML);
+    const section = searchable(archiveSection().innerHTML);
+    const needle = normalizeQuotes(ABSENCE_LABEL).replace(/\s+/g, ' ');
+    expect(
+      countOccurrences(page, needle),
+      'private-absence label must appear exactly twice in visible HTML (absence-slot + sr-only block)',
+    ).toBe(2);
+    expect(
+      countOccurrences(section, needle),
+      'both absence-label occurrences must live inside #archive',
+    ).toBe(2);
+  });
+
+  it('the private-absence label lives in BOTH the visual absence-slot and the sr-only block', () => {
+    const section = archiveSection();
+    const slot = section.querySelector('[data-testid="absence-slot"]');
+    const srBlock = section.querySelector('[data-testid="archive-sr"]');
+    expect(slot, 'no [data-testid="absence-slot"] in #archive').not.toBeNull();
+    expect(srBlock, 'no [data-testid="archive-sr"] in #archive').not.toBeNull();
+    const needle = normalizeQuotes(ABSENCE_LABEL).replace(/\s+/g, ' ');
+    expect(
+      normalizeQuotes(slot!.textContent || '').replace(/\s+/g, ' '),
+      'visual absence-slot is missing the private-absence label',
+    ).toContain(needle);
+    expect(
+      normalizeQuotes(srBlock!.textContent || '').replace(/\s+/g, ' '),
+      'sr-only block is missing the private-absence statement (spec rule 12)',
+    ).toContain(needle);
+  });
+
+  it('#archive is the trailing sibling before #interim-ending — nothing wedges between the field and the page end', () => {
+    // The former "nothing wedges between beat-5 and interim-ending" guarantee
+    // (moved down one slot by 5.5.3): the archive section is now the last
+    // thing before the provisional page end.
+    const section = archiveSection();
+    const next = (section as unknown as Element).nextElementSibling;
+    expect(next, '#archive has no next element sibling').not.toBeNull();
+    expect(
+      next!.id,
+      'next sibling of #archive is not #interim-ending — nothing may wedge between the archive field and the page end',
+    ).toBe('interim-ending');
+  });
+
+  it('the sr-only fragment-count label sentence appears in the archive section', () => {
+    const section = archiveSection();
+    const sectionText = searchable(section.innerHTML);
+    const needle = normalizeQuotes(COUNT_LABEL).replace(/\s+/g, ' ');
+    expect(sectionText, 'fragment-count sentence missing from #archive').toContain(needle);
+  });
+
+  it('#62866 props-serialization guard: the island props do NOT carry the full text of an EXCLUDED quote', () => {
+    // The island's serialized props should contain ONLY the derived,
+    // excerpt-trimmed fragments (≤160 chars each), never raw quote bodies.
+    // Quote 558c377a is on excludeIds, so it should not appear at all; and
+    // the chosen tail sits past char 160, so even an accidental prefix leak
+    // could not surface it. Its presence means a full raw quote leaked.
+    const raw = archiveIsland().getAttribute('props') || '';
+    expect(
+      raw.length,
+      'ArchiveField island has empty/missing props — guard would be vacuous',
+    ).toBeGreaterThan(0);
+    // Compare on a quote-normalized form so a curly-apostrophe serialization
+    // cannot smuggle the excluded text past an ASCII-only search.
+    const haystack = normalizeQuotes(raw);
+    const needle = normalizeQuotes(EXCLUDED_QUOTE_TAIL);
+    expect(
+      haystack.includes(needle),
+      `excluded quote text "${EXCLUDED_QUOTE_TAIL}" leaked into the ArchiveField props — a raw quote body was serialized (props-bloat regression #62866)`,
+    ).toBe(false);
+  });
+
+  // ----------------------------------------------------------
+  // Sweep cohabitation — the Archive payoff ("You didn't write
+  // this") is QUOTED archive material carried in the island's
+  // aligned-line/sr-only nodes (data-testid), NOT a .bridge-text,
+  // so it is OUTSIDE both existing sweeps' scope. These pins
+  // assert the sweeps remain satisfied WITHOUT touching their
+  // logic — they re-run the same predicates, they do not loosen.
+  // ----------------------------------------------------------
+
+  it('tone sweep stays green: no "it felt"/"it remembered" in the visible page, archive section included', () => {
+    // Same predicate as the page-wide tone sweep (block 17): the 48 archive
+    // excerpts contain neither phrase, so no exemption is needed.
+    archiveSection(); // the archive section must exist for this to be meaningful
+    const bodyText = (document.body.textContent || '')
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+    expect(
+      bodyText.length,
+      'page body text suspiciously small — sweep would be vacuous',
+    ).toBeGreaterThan(1000);
+    expect(bodyText).not.toMatch(/\bit\s+felt\b/);
+    expect(bodyText).not.toMatch(/\bit\s+remembered\b/);
+  });
+
+  it('second-person sweep stays green: the Archive payoff is NOT a .bridge-text carrier, so it does not trip the ban', () => {
+    // The second-person ban is scoped to .bridge-text carriers only, with
+    // #entry-turn as the sole sanctioned "You" carrier. The Archive payoff
+    // lives in the ArchiveField island's aligned-line/sr-only nodes, which
+    // are NOT .bridge-text — so it must not appear among the swept carriers.
+    const section = archiveSection();
+    const bridgeTextInArchive = section.querySelectorAll('.bridge-text');
+    expect(
+      bridgeTextInArchive.length,
+      'the #archive section must not introduce a .bridge-text carrier (the payoff belongs in the island, not a bridge carrier)',
+    ).toBe(0);
+    // And the payoff, though it contains "You", is not carried by any
+    // .bridge-text anywhere on the page.
+    const payoffNorm = normalizeQuotes(PAYOFF).replace(/\s+/g, ' ');
+    for (const carrier of Array.from(document.querySelectorAll('.bridge-text'))) {
+      const text = normalizeQuotes(carrier.textContent || '').replace(/\s+/g, ' ');
+      expect(
+        text.includes(payoffNorm),
+        'the Archive payoff must not be carried by a .bridge-text — it belongs to the island',
+      ).toBe(false);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // FINDING 2 (code review) — hydration rootMargin is EXACTLY
+  // "-200px". The page-integration contract for this island is a
+  // deferred client:visible with a specific negative rootMargin
+  // (spec-5.5.3). The existing block above only pins client="visible";
+  // an optionless `client:visible` still passes that but ships
+  // opts='{"name":"ArchiveField","value":true}' — hydrating the
+  // parallax field the instant 1px of #archive crosses the fold,
+  // exactly the below-the-fold defect the ColdBootAssembly/
+  // TypewriterReveal blocks (3b/3c) pin against. This pin decodes the
+  // island's client:visible options the SAME way those blocks do
+  // (getAttribute('opts') → JSON.parse → opts.value carries the
+  // directive's options object per astro/dist/runtime/server/
+  // hydration.js; runtime/client/visible.js only honors it when
+  // typeof value === "object") and requires rootMargin === "-200px".
+  // A bare `client:visible` (value === true) fails at the object check.
+  // ----------------------------------------------------------
+  it('FINDING 2: the ArchiveField island hydrates with client:visible options carrying rootMargin exactly "-200px"', () => {
+    const raw = archiveIsland().getAttribute('opts');
+    expect(raw, 'ArchiveField astro-island is missing its opts attribute').not.toBeNull();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw!);
+    } catch {
+      throw new Error(`opts attribute is not valid JSON: ${raw}`);
+    }
+    expect(typeof parsed, 'opts is not a JSON object').toBe('object');
+    expect(parsed).not.toBeNull();
+    const opts = parsed as { name?: unknown; value?: unknown };
+    expect(opts.name, 'opts.name must identify the ArchiveField component').toBe('ArchiveField');
+    // opts.value must be the options OBJECT — not the bare `true` of an
+    // optionless client:visible (which visible.js discards, leaving the
+    // island to hydrate at the fold on load).
+    const value = opts.value;
+    expect(
+      typeof value,
+      'opts.value must be an options object carrying IntersectionObserver options; ' +
+        `got ${JSON.stringify(value)} — a bare client:visible would serialize value:true ` +
+        'and hydrate the parallax field the instant #archive crosses the fold',
+    ).toBe('object');
+    expect(value).not.toBeNull();
+    expect(Array.isArray(value)).toBe(false);
+    const rootMargin = (value as { rootMargin?: unknown }).rootMargin;
+    expect(
+      rootMargin,
+      `opts.value.rootMargin must be exactly "-200px"; got ${JSON.stringify(rootMargin)}`,
+    ).toBe('-200px');
+  });
+
+  // ----------------------------------------------------------
+  // FINDING 3 (code review) — the LOCKED curation values (council +
+  // James, 2026-07-25; kanban #2702). The eligible pool is 48
+  // fragments; the cap is 44, so the cap binds EXACTLY. This pin
+  // parses the fragments array out of the island's serialized props
+  // — following the same props-reading approach as the #62866 guard
+  // above (getAttribute('props') → JSON.parse) — and decodes Astro's
+  // nested [flag, value] tuple encoding to read each fragment's id.
+  //
+  // Astro serializes props as [flag, value] tuples and does so
+  // RECURSIVELY: props.fragments is [1, [ [0,{ id:[0,"…"], … }], … ]],
+  // so a single top-level unwrap (islandProp) is not enough — the
+  // fragment objects and their id fields are themselves tuple-wrapped.
+  // A local recursive unwrap decodes them. As a belt-and-suspenders
+  // signal that survives any future encoding drift, the raw props
+  // string is ALSO asserted directly (pinned id present, all 15
+  // excluded ids absent as substrings) — the most robust available
+  // signal, since ids are opaque 16-hex tokens that cannot be split
+  // or line-wrapped by serialization the way prose excerpts can.
+  // ----------------------------------------------------------
+  it('FINDING 3: the ArchiveField props lock the curated fragment set (44 fragments; pinned id present; 15 excluded ids absent)', () => {
+    const PINNED_ID = '36d6f7940ef64cea';
+    const EXCLUDED_IDS = [
+      '2136407c24914846',
+      '4e1cc5f25936c925',
+      '558c377a6ac30cde',
+      '5a3f057c1f702569',
+      '660aeb60373f64cb',
+      '8efa611c552e6a8a',
+      'a1384d08ef6b005f',
+      'a39b4aa80b364473',
+      'a993b2d426676a56',
+      'b5853b6b4e9f3198',
+      'bc278ac6b6c1822d',
+      'c23e024493170d92',
+      'cb3a0d48c7accd9f',
+      'dd5de65119b28409',
+      'f3c3182467331e6b',
+    ];
+
+    const island = archiveIsland();
+    const raw = island.getAttribute('props');
+    expect(raw, 'ArchiveField island is missing its props attribute').not.toBeNull();
+    expect(
+      raw!.length,
+      'ArchiveField island has empty props — this pin would be vacuous',
+    ).toBeGreaterThan(0);
+
+    /** Recursively unwrap Astro's [flag:number, value] tuple encoding. */
+    const unwrap = (v: unknown): unknown =>
+      Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' ? v[1] : v;
+
+    let props: Record<string, unknown>;
+    try {
+      props = JSON.parse(raw!) as Record<string, unknown>;
+    } catch {
+      throw new Error(`props attribute is not valid JSON: ${raw}`);
+    }
+
+    const fragments = unwrap(props.fragments);
+    expect(
+      Array.isArray(fragments),
+      'props.fragments did not decode to an array',
+    ).toBe(true);
+    const fragArr = fragments as unknown[];
+
+    const ids = fragArr.map((f) => {
+      const obj = unwrap(f) as Record<string, unknown>;
+      return unwrap(obj.id);
+    });
+
+    // (a) exactly 44 fragments (cap 44 binds against the 48-fragment pool).
+    expect(
+      fragArr.length,
+      `expected exactly 44 curated fragments (cap 44 on a 48-fragment pool); got ${fragArr.length}`,
+    ).toBe(44);
+    // Non-vacuity: every fragment yielded a usable string id, and they are distinct.
+    const stringIds = ids.filter((id): id is string => typeof id === 'string' && id.length > 0);
+    expect(
+      stringIds.length,
+      'some fragments decoded without a usable string id — id-based pins would be vacuous',
+    ).toBe(44);
+    expect(new Set(stringIds).size, 'duplicate fragment ids in the curated set').toBe(44);
+
+    // (b) the pinned payoff-source fragment is present.
+    expect(
+      stringIds.includes(PINNED_ID),
+      `pinned payoff-source fragment id ${PINNED_ID} is missing from the curated set`,
+    ).toBe(true);
+
+    // (c) NONE of the 15 excluded ids appear as a fragment id.
+    for (const bad of EXCLUDED_IDS) {
+      expect(
+        stringIds.includes(bad),
+        `excluded fragment id ${bad} leaked into the curated set (kanban #2702)`,
+      ).toBe(false);
+    }
+
+    // Belt-and-suspenders: raw-string signal, immune to tuple-encoding drift.
+    // Fragment ids are opaque 16-hex tokens — serialization cannot line-wrap
+    // or split them, so substring presence/absence is a robust cross-check.
+    expect(
+      raw!.includes(PINNED_ID),
+      `pinned id ${PINNED_ID} does not appear anywhere in the serialized props`,
+    ).toBe(true);
+    for (const bad of EXCLUDED_IDS) {
+      expect(
+        raw!.includes(bad),
+        `excluded id ${bad} appears in the serialized props string (kanban #2702)`,
+      ).toBe(false);
     }
   });
 });
