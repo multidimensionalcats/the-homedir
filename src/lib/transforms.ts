@@ -763,3 +763,328 @@ export function deriveCareWindow(
 
   return days;
 }
+
+// ---------------------------------------------------------------------------
+// Archive Fragments
+// ---------------------------------------------------------------------------
+
+export interface ArchiveFragment {
+  id: string; // quote id (stable hash from quotes.json)
+  sessionId: string | null; // joined same-day session id, or null if no join
+  date: string; // quote date, YYYY-MM-DD
+  version: string | null; // quote.model_version, else joined session.version, else null
+  excerpt: string; // verbatim prefix of quote text per excerptRule
+  source: string | null; // quote.source_type passthrough (no enum enforcement)
+  sourceFile: string | null; // quote.source_file passthrough
+}
+
+export interface ArchiveFragmentOptions {
+  cap?: number; // max fragments returned; default: no cap
+  excludeIds?: string[]; // curation exclusions (quote ids)
+  pinnedIds?: string[]; // always included if valid+eligible; count toward cap
+  excerptRule?: { mode: 'sentence' | 'chars'; maxChars: number };
+}
+
+// Own-property read: values reachable only via the prototype chain must never
+// leak into output (cf. #62868).
+function readOwn(row: any, key: string): unknown {
+  return Object.prototype.hasOwnProperty.call(row, key) ? row[key] : undefined;
+}
+
+function isPlainRow(row: unknown): row is Record<string, unknown> {
+  return typeof row === 'object' && row !== null && !Array.isArray(row);
+}
+
+// Strict "YYYY-MM-DD" shape plus real-calendar validation (2026-02-30 and
+// Feb 29 in non-leap years are invalid). Pure arithmetic — no Date usage
+// anywhere in the archive-fragment path.
+const ARCHIVE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidArchiveDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !ARCHIVE_DATE_RE.test(value)) return false;
+  const year = parseInt(value.slice(0, 4), 10);
+  const month = parseInt(value.slice(5, 7), 10);
+  const day = parseInt(value.slice(8, 10), 10);
+  if (month < 1 || month > 12) return false;
+  return day >= 1 && day <= daysInMonth(year, month);
+}
+
+// FNV-1a 32-bit over UTF-16 code units: offset 2166136261, prime 16777619,
+// result forced unsigned. Deterministic sampling key — no randomness.
+function fnv1a32(str: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+// chars-mode excerpt: full text when it fits; otherwise cut at the last
+// whitespace at-or-before maxChars (hard-cut at maxChars when no whitespace
+// exists in range), never splitting a surrogate pair, then trim trailing
+// whitespace and append a single U+2026.
+function charsExcerpt(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+
+  let cut = -1;
+  for (let i = maxChars; i >= 0; i--) {
+    if (/\s/.test(text[i])) {
+      cut = i;
+      break;
+    }
+  }
+  if (cut === -1) {
+    cut = maxChars;
+  }
+  // Back off one code unit if the cut would land between a surrogate pair.
+  if (
+    cut > 0 &&
+    text.charCodeAt(cut - 1) >= 0xd800 &&
+    text.charCodeAt(cut - 1) <= 0xdbff &&
+    text.charCodeAt(cut) >= 0xdc00 &&
+    text.charCodeAt(cut) <= 0xdfff
+  ) {
+    cut -= 1;
+  }
+
+  const prefix = text.slice(0, cut).replace(/\s+$/, '');
+  return prefix + '…';
+}
+
+// sentence-mode excerpt: verbatim prefix up to and including the first
+// . ! ? or … that is followed by whitespace or end-of-text; if no such
+// terminator exists, fall back to chars behavior with the same maxChars.
+function sentenceExcerpt(text: string, maxChars: number): string {
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '.' || ch === '!' || ch === '?' || ch === '…') {
+      if (i + 1 === text.length || /\s/.test(text[i + 1])) {
+        return text.slice(0, i + 1);
+      }
+    }
+  }
+  return charsExcerpt(text, maxChars);
+}
+
+interface JoinSession {
+  id: string;
+  todRank: number;
+  version: string | null; // normalized for output ('' → null)
+  tieVersion: string | null; // raw string for tie-break; non-string → null (ranks LAST)
+}
+
+// True when `a` should win the same-date join over `b`: AM before PM, then
+// session id ascending, then — for rows fully tied on (date, tod rank, id) —
+// version ascending by raw string compare with missing/non-string version
+// ranking LAST. Rows still tied after that are identical in every field the
+// join reads, so keeping `b` is immaterial.
+function joinSessionBeats(a: JoinSession, b: JoinSession): boolean {
+  if (a.todRank !== b.todRank) return a.todRank < b.todRank;
+  if (a.id !== b.id) return a.id < b.id;
+  if (b.tieVersion === null) return a.tieVersion !== null;
+  if (a.tieVersion === null) return false;
+  return a.tieVersion < b.tieVersion;
+}
+
+interface FragmentCandidate {
+  id: string;
+  date: string;
+  text: string;
+  sessionId: string | null;
+  todRank: number;
+  version: string | null;
+  source: string | null;
+  sourceFile: string | null;
+}
+
+export function deriveArchiveFragments(
+  sessions: any[],
+  quotes: any[],
+  options?: ArchiveFragmentOptions,
+): ArchiveFragment[] {
+  const sessionRows: any[] = Array.isArray(sessions) ? sessions : [];
+  const quoteRows: any[] = Array.isArray(quotes) ? quotes : [];
+  const opts: Record<string, unknown> = isPlainRow(options) ? options : {};
+
+  // Cap normalization: undefined/non-number/+Infinity → no cap; NaN, zero,
+  // and negatives (including -Infinity) → hard [] — cap is a ceiling that
+  // pinned ids count toward, so cap 0 returns nothing at all.
+  const rawCap = opts.cap;
+  let cap: number | undefined;
+  if (typeof rawCap !== 'number' || rawCap === Infinity) {
+    cap = undefined;
+  } else if (Number.isNaN(rawCap) || rawCap <= 0) {
+    return [];
+  } else {
+    cap = Math.floor(rawCap);
+    if (cap <= 0) return [];
+  }
+
+  // Join map: best same-day session per date. AM before PM (missing/unknown
+  // time_of_day ranks AM — same rule as deriveVersionTransitions), ties
+  // broken by session id ascending; rows fully tied on (date, tod rank, id)
+  // tie-break by version ascending (raw string compare, missing/non-string
+  // LAST) so the join is a pure function of the session SET, never of input
+  // order (coordinator ruling, hardening round). All field reads go through
+  // a guarded snapshot: a hostile getter on ANY read field invalidates just
+  // that row — it is excluded from the join and the throw never escapes.
+  const bestSessionByDate = new Map<string, JoinSession>();
+  for (const row of sessionRows) {
+    if (!isPlainRow(row)) continue;
+    let id: unknown;
+    let date: unknown;
+    let rawVersion: unknown;
+    let rawTimeOfDay: unknown;
+    try {
+      id = readOwn(row, 'id');
+      date = readOwn(row, 'date');
+      rawVersion = readOwn(row, 'version');
+      rawTimeOfDay = readOwn(row, 'time_of_day');
+    } catch {
+      continue;
+    }
+    if (typeof id !== 'string' || id === '') continue;
+    if (!isValidArchiveDate(date)) continue;
+    const candidate: JoinSession = {
+      id,
+      todRank: timeOfDayRank(rawTimeOfDay),
+      version:
+        typeof rawVersion === 'string' && rawVersion !== '' ? rawVersion : null,
+      tieVersion:
+        typeof rawVersion === 'string' && rawVersion !== '' ? rawVersion : null,
+    };
+    const current = bestSessionByDate.get(date);
+    if (!current || joinSessionBeats(candidate, current)) {
+      bestSessionByDate.set(date, candidate);
+    }
+  }
+
+  const excludeSet = new Set<unknown>(
+    Array.isArray(opts.excludeIds) ? opts.excludeIds : [],
+  );
+
+  // Valid quotes, deduped by id (first occurrence in input order wins).
+  // Excluded ids still occupy their dedupe slot but never become candidates.
+  const byId = new Map<string, FragmentCandidate>();
+  const candidates: FragmentCandidate[] = [];
+  for (const row of quoteRows) {
+    if (!isPlainRow(row)) continue;
+    // Guarded snapshot of every field the transform reads: a hostile getter
+    // on ANY of them makes the row malformed → silently dropped, and the
+    // throw never escapes. All logic below operates on the plain extracted
+    // values only.
+    let id: unknown;
+    let text: unknown;
+    let date: unknown;
+    let modelVersion: unknown;
+    let sourceType: unknown;
+    let sourceFile: unknown;
+    try {
+      id = readOwn(row, 'id');
+      text = readOwn(row, 'text');
+      date = readOwn(row, 'date');
+      modelVersion = readOwn(row, 'model_version');
+      sourceType = readOwn(row, 'source_type');
+      sourceFile = readOwn(row, 'source_file');
+    } catch {
+      continue;
+    }
+    if (typeof id !== 'string' || id === '') continue;
+    if (typeof text !== 'string' || text.trim() === '') continue;
+    if (!isValidArchiveDate(date)) continue;
+    if (byId.has(id)) continue;
+
+    const joined = bestSessionByDate.get(date);
+    const candidate: FragmentCandidate = {
+      id,
+      date,
+      text,
+      sessionId: joined ? joined.id : null,
+      todRank: joined ? joined.todRank : 0,
+      version:
+        typeof modelVersion === 'string' && modelVersion !== ''
+          ? modelVersion
+          : joined
+            ? joined.version
+            : null,
+      source: typeof sourceType === 'string' ? sourceType : null,
+      sourceFile: typeof sourceFile === 'string' ? sourceFile : null,
+    };
+    byId.set(id, candidate);
+    if (!excludeSet.has(id)) {
+      candidates.push(candidate);
+    }
+  }
+
+  // Pinned ids: deduped, pinned-array order; invalid/unknown pins ignored;
+  // exclusion beats pinning.
+  const pinnedSelected: FragmentCandidate[] = [];
+  const pinnedIdSet = new Set<string>();
+  if (Array.isArray(opts.pinnedIds)) {
+    for (const pinned of opts.pinnedIds) {
+      if (typeof pinned !== 'string' || pinnedIdSet.has(pinned)) continue;
+      if (excludeSet.has(pinned)) continue;
+      const candidate = byId.get(pinned);
+      if (!candidate) continue;
+      pinnedIdSet.add(pinned);
+      pinnedSelected.push(candidate);
+    }
+  }
+
+  // Selection: no cap → all candidates. With a cap, pinned first (in pinned
+  // order, counting toward the cap), remaining slots filled by deterministic
+  // FNV-1a sample over `${sessionId ?? ''}:${id}`, ascending, ties by id.
+  let selected: FragmentCandidate[];
+  if (cap === undefined) {
+    selected = candidates.slice();
+  } else {
+    selected = pinnedSelected.slice(0, cap);
+    const slots = cap - selected.length;
+    if (slots > 0) {
+      const rest = candidates
+        .filter((c) => !pinnedIdSet.has(c.id))
+        .map((c) => ({ c, hash: fnv1a32(`${c.sessionId ?? ''}:${c.id}`) }));
+      rest.sort((a, b) => {
+        if (a.hash !== b.hash) return a.hash - b.hash;
+        return a.c.id < b.c.id ? -1 : a.c.id > b.c.id ? 1 : 0;
+      });
+      selected = selected.concat(rest.slice(0, slots).map((r) => r.c));
+    }
+  }
+
+  // Excerpt rule normalization: maxChars <= 0 or non-finite → default 140.
+  const rule = opts.excerptRule;
+  const mode =
+    isPlainRow(rule) && rule.mode === 'sentence' ? 'sentence' : 'chars';
+  const rawMaxChars = isPlainRow(rule) ? rule.maxChars : undefined;
+  let maxChars =
+    typeof rawMaxChars === 'number' &&
+    Number.isFinite(rawMaxChars) &&
+    rawMaxChars > 0
+      ? Math.floor(rawMaxChars)
+      : 140;
+  if (maxChars < 1) maxChars = 140;
+
+  // Output order: date asc, then joined session time_of_day (AM before PM,
+  // no-join ranks AM), then quote id asc — raw string compare, no locale.
+  selected.sort((a, b) => {
+    if (a.date < b.date) return -1;
+    if (a.date > b.date) return 1;
+    if (a.todRank !== b.todRank) return a.todRank - b.todRank;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+
+  return selected.map((c) => ({
+    id: c.id,
+    sessionId: c.sessionId,
+    date: c.date,
+    version: c.version,
+    excerpt:
+      mode === 'sentence'
+        ? sentenceExcerpt(c.text, maxChars)
+        : charsExcerpt(c.text, maxChars),
+    source: c.source,
+    sourceFile: c.sourceFile,
+  }));
+}

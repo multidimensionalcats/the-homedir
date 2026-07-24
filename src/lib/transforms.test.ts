@@ -2278,3 +2278,1606 @@ describe('spec rulings 2026-07-15', () => {
     });
   });
 });
+
+// ============================================================
+// deriveArchiveFragments (spec 5.5.2)
+//
+// RED-isolation: the export does not exist yet. Namespace lookup
+// (NOT a named import) so the existing transform tests above stay
+// green at link time; each new test below fails individually
+// (TypeError: not a function) during RED. Pattern stays valid
+// after GREEN.
+// ============================================================
+import * as transformsModule from './transforms';
+import { vi } from 'vitest';
+
+const deriveArchiveFragments: any = (transformsModule as any).deriveArchiveFragments;
+
+const ELLIPSIS = '…'; // exactly U+2026, never '...'
+
+/** Matches any lone (unpaired) surrogate code unit — a split pair. */
+const LONE_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+function makeQuote(overrides: Record<string, any> = {}) {
+  return {
+    id: 'q-001',
+    date: '2026-01-15',
+    model_version: '4.5',
+    source_file: 'writing/2026-01-15-fragment.md',
+    source_type: 'writing',
+    suggested_section: 'identity',
+    text: 'Identity is a function of constrained attention, not total memory.',
+    themes: ['identity', 'memory'],
+    ...overrides,
+  };
+}
+
+function makeQuoteBatch(n: number, prefix = 'batch'): any[] {
+  return Array.from({ length: n }, (_, i) =>
+    makeQuote({
+      id: `${prefix}-${String(i).padStart(3, '0')}`,
+      date: `2026-03-${String((i % 28) + 1).padStart(2, '0')}`,
+      text: `Archive fragment number ${i} with enough prose to look like a real quote.`,
+    }),
+  );
+}
+
+/** Deterministic xorshift32 shuffle — hostile reordering without Math.random. */
+function shuffled<T>(arr: T[], seed = 2463534242): T[] {
+  const out = [...arr];
+  let s = seed >>> 0;
+  for (let i = out.length - 1; i > 0; i--) {
+    s ^= (s << 13) >>> 0;
+    s ^= s >>> 17;
+    s ^= (s << 5) >>> 0;
+    s >>>= 0;
+    const j = s % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function fragIds(result: any[]): string[] {
+  return result.map((f: any) => f.id);
+}
+
+/** Find a fragment by quote id; throws loudly if absent so failures are legible. */
+function fragOf(result: any[], id: string) {
+  const frag = result.find((f: any) => f.id === id);
+  if (!frag) {
+    throw new Error(
+      `expected fragment ${id}, got ids: ${result.map((f: any) => f.id).join(', ')}`,
+    );
+  }
+  return frag;
+}
+
+describe('deriveArchiveFragments', () => {
+  // ------------------------------------------------------------
+  // Rule 1: defensive inputs — never throw, non-arrays → []
+  // ------------------------------------------------------------
+  describe('defensive and malformed inputs', () => {
+    it('returns [] for empty corpus on both sides', () => {
+      expect(deriveArchiveFragments([], [])).toEqual([]);
+    });
+
+    it('returns [] when both inputs are null', () => {
+      expect(deriveArchiveFragments(null, null)).toEqual([]);
+    });
+
+    it('returns [] when both inputs are undefined', () => {
+      expect(deriveArchiveFragments(undefined, undefined)).toEqual([]);
+    });
+
+    it('returns [] for non-array quotes (object, string, number)', () => {
+      expect(deriveArchiveFragments([], {})).toEqual([]);
+      expect(deriveArchiveFragments([], 'sixty-three quotes')).toEqual([]);
+      expect(deriveArchiveFragments([], 63)).toEqual([]);
+    });
+
+    it('rejects an array-LIKE quotes object (indices + length, not a real array)', () => {
+      expect(deriveArchiveFragments([], { 0: makeQuote(), length: 1 })).toEqual([]);
+    });
+
+    it('treats non-array sessions as [] but STILL processes valid quotes (join miss, not data loss)', () => {
+      const result = deriveArchiveFragments('not-an-array', [makeQuote()]);
+      expect(result).toHaveLength(1);
+      expect(result[0].sessionId).toBeNull();
+      expect(result[0].id).toBe('q-001');
+    });
+
+    it('drops quote rows that are not plain objects — null, undefined, numbers, strings, booleans, arrays, functions', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [
+          null,
+          undefined,
+          7,
+          'a quote as a bare string',
+          true,
+          [makeQuote({ id: 'hidden-inside-array' })], // array row is invalid even if it wraps a valid quote
+          () => makeQuote(),
+          makeQuote({ id: 'ctrl-ok' }),
+        ],
+      );
+      expect(fragIds(result)).toEqual(['ctrl-ok']);
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 2: quote validity
+  // ------------------------------------------------------------
+  describe('quote validity', () => {
+    it('drops rows with missing/empty/non-string id but keeps the valid control', () => {
+      const noId = makeQuote({});
+      delete (noId as any).id;
+      const result = deriveArchiveFragments(
+        [],
+        [
+          makeQuote({ id: '' }),
+          makeQuote({ id: 42 }),
+          makeQuote({ id: null }),
+          noId,
+          makeQuote({ id: 'ctrl-ok' }),
+        ],
+      );
+      expect(fragIds(result)).toEqual(['ctrl-ok']);
+    });
+
+    it('drops rows with missing/empty/whitespace-only/non-string text', () => {
+      const noText = makeQuote({ id: 'no-text' });
+      delete (noText as any).text;
+      const result = deriveArchiveFragments(
+        [],
+        [
+          noText,
+          makeQuote({ id: 'empty-text', text: '' }),
+          makeQuote({ id: 'ws-text', text: '  \n\t  ' }),
+          makeQuote({ id: 'num-text', text: 12345 }),
+          makeQuote({ id: 'arr-text', text: ['not', 'a', 'string'] }),
+          makeQuote({ id: 'ctrl-ok' }),
+        ],
+      );
+      expect(fragIds(result)).toEqual(['ctrl-ok']);
+    });
+
+    it('drops every malformed date shape but keeps the valid control row', () => {
+      const badShapes = [
+        '2026-1-5', // unpadded
+        '2026-13-01', // month 13
+        '2026-00-10', // month 00
+        '2026-01-00', // day 00
+        '2026-04-31', // April has 30 days
+        '2026-01-15T10:00:00Z', // ISO datetime, not a bare date
+        ' 2026-01-15', // leading whitespace
+        '2026-01-15 ', // trailing whitespace
+      ].map((d, i) => makeQuote({ id: `bad-date-${i}`, date: d }));
+      const nonString = makeQuote({ id: 'bad-date-num', date: 20260115 });
+      const nullDate = makeQuote({ id: 'bad-date-null', date: null });
+      const missing = makeQuote({ id: 'bad-date-missing' });
+      delete (missing as any).date;
+      const result = deriveArchiveFragments(
+        [],
+        [...badShapes, nonString, nullDate, missing, makeQuote({ id: 'ctrl-ok' })],
+      );
+      expect(fragIds(result)).toEqual(['ctrl-ok']);
+    });
+
+    it('rejects impossible calendar dates but accepts a real leap day', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [
+          makeQuote({ id: 'feb-30', date: '2026-02-30' }),
+          makeQuote({ id: 'non-leap', date: '2026-02-29' }), // 2026 is not a leap year
+          makeQuote({ id: 'leap-ok', date: '2028-02-29' }), // 2028 is
+        ],
+      );
+      expect(fragIds(result)).toEqual(['leap-ok']);
+    });
+
+    it('keeps the FIRST occurrence of a duplicate id and drops all later ones', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [
+          makeQuote({ id: 'dup', text: 'the first text wins here' }),
+          makeQuote({ id: 'dup', text: 'the second text must be dropped' }),
+          makeQuote({ id: 'dup', text: 'the third text must also be dropped' }),
+        ],
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].excerpt).toBe('the first text wins here');
+    });
+
+    it('an INVALID row does not reserve its id — a later VALID row with the same id survives (rule 2: validity first, then dedup)', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [
+          makeQuote({ id: 'dup2', text: '   ' }), // invalid: whitespace-only text
+          makeQuote({ id: 'dup2', text: 'the valid later row' }),
+        ],
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0].excerpt).toBe('the valid later row');
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 4 note / #62868: prototype pollution + inherited props
+  // ------------------------------------------------------------
+  describe('prototype pollution and inherited properties', () => {
+    it('a JSON __proto__-keyed row neither pollutes Object.prototype nor breaks processing', () => {
+      const row = JSON.parse(
+        '{"id":"proto-row","text":"a perfectly ordinary quote text","date":"2026-01-15","__proto__":{"polluted":"yes"}}',
+      );
+      const result = deriveArchiveFragments([], [row]);
+      expect(({} as any).polluted).toBeUndefined();
+      expect((Object.prototype as any).polluted).toBeUndefined();
+      expect(fragIds(result)).toEqual(['proto-row']);
+      expect(result[0].version).toBeNull(); // no OWN model_version, no session
+    });
+
+    it('quote model_version present ONLY on the prototype chain must NOT leak — version is null', () => {
+      const q: any = Object.create({ model_version: '9.9' });
+      q.id = 'inherit-quote';
+      q.text = 'own text, inherited model_version';
+      q.date = '2026-01-15';
+      const result = deriveArchiveFragments([], [q]);
+      expect(fragIds(result)).toEqual(['inherit-quote']);
+      expect(result[0].version).toBeNull();
+    });
+
+    it('session version present ONLY on the prototype chain must NOT leak — version is null, join still happens', () => {
+      const s: any = Object.create({ version: '8.8' });
+      s.id = 'inherit-sess';
+      s.date = '2026-01-15';
+      s.time_of_day = 'AM';
+      const q = makeQuote({ id: 'q-inherit' });
+      delete (q as any).model_version;
+      const result = deriveArchiveFragments([s], [q]);
+      expect(result).toHaveLength(1);
+      expect(result[0].sessionId).toBe('inherit-sess');
+      expect(result[0].version).toBeNull();
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 3: session join
+  // ------------------------------------------------------------
+  describe('session join', () => {
+    it('joins the AM session when both AM and PM exist on the date (PM listed first)', () => {
+      const sessions = [
+        makeSession({ id: 'pm-sess', date: '2026-01-15', time_of_day: 'PM' }),
+        makeSession({ id: 'am-sess', date: '2026-01-15', time_of_day: 'AM' }),
+      ];
+      const result = deriveArchiveFragments(sessions, [makeQuote()]);
+      expect(result[0].sessionId).toBe('am-sess');
+    });
+
+    it('joins the PM session when it is the only one on the date', () => {
+      const sessions = [makeSession({ id: 'pm-only', date: '2026-01-15', time_of_day: 'PM' })];
+      const result = deriveArchiveFragments(sessions, [makeQuote()]);
+      expect(result[0].sessionId).toBe('pm-only');
+    });
+
+    it('a session with MISSING time_of_day ranks as AM and beats a PM session', () => {
+      const noTod = makeSession({ id: 'tod-missing', date: '2026-01-15' });
+      delete (noTod as any).time_of_day;
+      const sessions = [
+        makeSession({ id: 'pm-sess', date: '2026-01-15', time_of_day: 'PM' }),
+        noTod,
+      ];
+      const result = deriveArchiveFragments(sessions, [makeQuote()]);
+      expect(result[0].sessionId).toBe('tod-missing');
+    });
+
+    it('a session with UNKNOWN time_of_day ("NOON") ranks as AM and beats a PM session', () => {
+      const sessions = [
+        makeSession({ id: 'pm-sess', date: '2026-01-15', time_of_day: 'PM' }),
+        makeSession({ id: 'noon-sess', date: '2026-01-15', time_of_day: 'NOON' }),
+      ];
+      const result = deriveArchiveFragments(sessions, [makeQuote()]);
+      expect(result[0].sessionId).toBe('noon-sess');
+    });
+
+    it('breaks an AM/AM tie by session id ascending (string compare), regardless of input order', () => {
+      const sessions = [
+        makeSession({ id: 'bb-sess', date: '2026-01-15', time_of_day: 'AM' }),
+        makeSession({ id: 'aa-sess', date: '2026-01-15', time_of_day: 'AM' }),
+      ];
+      const result = deriveArchiveFragments(sessions, [makeQuote()]);
+      expect(result[0].sessionId).toBe('aa-sess');
+    });
+
+    it('join miss: no same-day session → sessionId null and the fragment SURVIVES', () => {
+      const sessions = [makeSession({ id: 'other-day', date: '2026-01-16', time_of_day: 'AM' })];
+      const result = deriveArchiveFragments(sessions, [makeQuote()]);
+      expect(result).toHaveLength(1);
+      expect(result[0].sessionId).toBeNull();
+      expect(result[0].date).toBe('2026-01-15');
+    });
+
+    it('malformed session rows never join and never throw', () => {
+      const sessions = [
+        null,
+        42,
+        [],
+        makeSession({ id: '', date: '2026-01-15' }), // empty id → invalid
+        makeSession({ id: 777, date: '2026-01-15' }), // non-string id → invalid
+        makeSession({ id: 'bad-date-sess', date: '2026-02-30' }), // impossible date → invalid
+      ];
+      const result = deriveArchiveFragments(sessions, [makeQuote()]);
+      expect(result).toHaveLength(1);
+      expect(result[0].sessionId).toBeNull();
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 4: version resolution (N-version-proof)
+  // ------------------------------------------------------------
+  describe('version resolution', () => {
+    it('quote model_version wins over the joined session version', () => {
+      const sessions = [makeSession({ id: 's1', date: '2026-01-15', version: '4.5' })];
+      const result = deriveArchiveFragments(sessions, [makeQuote({ model_version: '4.7' })]);
+      expect(result[0].version).toBe('4.7');
+    });
+
+    it('missing model_version falls back to the joined session version', () => {
+      const q = makeQuote({ id: 'v-q' });
+      delete (q as any).model_version;
+      const sessions = [makeSession({ id: 's1', date: '2026-01-15', version: '4.7' })];
+      const result = deriveArchiveFragments(sessions, [q]);
+      expect(result[0].version).toBe('4.7');
+    });
+
+    it('empty-string model_version falls back to the joined session version', () => {
+      const sessions = [makeSession({ id: 's1', date: '2026-01-15', version: '4.6' })];
+      const result = deriveArchiveFragments(sessions, [makeQuote({ model_version: '' })]);
+      expect(result[0].version).toBe('4.6');
+    });
+
+    it('NON-STRING model_version (number 4.7) is never used — falls back to session version', () => {
+      const sessions = [makeSession({ id: 's1', date: '2026-01-15', version: '4.5' })];
+      const result = deriveArchiveFragments(sessions, [makeQuote({ model_version: 4.7 })]);
+      expect(result[0].version).toBe('4.5');
+    });
+
+    it('no model_version and no joined session → version null', () => {
+      const q = makeQuote({ id: 'orphan' });
+      delete (q as any).model_version;
+      const result = deriveArchiveFragments([], [q]);
+      expect(result[0].version).toBeNull();
+    });
+
+    it('empty-string or non-string session version yields null (nothing to fall back to)', () => {
+      const q1 = makeQuote({ id: 'q-empty', date: '2026-01-10' });
+      delete (q1 as any).model_version;
+      const q2 = makeQuote({ id: 'q-numeric', date: '2026-01-11' });
+      delete (q2 as any).model_version;
+      const sessions = [
+        makeSession({ id: 's-empty', date: '2026-01-10', version: '' }),
+        makeSession({ id: 's-numeric', date: '2026-01-11', version: 99 }),
+      ];
+      const result = deriveArchiveFragments(sessions, [q1, q2]);
+      expect(fragOf(result, 'q-empty').version).toBeNull();
+      expect(fragOf(result, 'q-numeric').version).toBeNull();
+    });
+
+    it('novel version "5.0" on the quote flows through untouched (no hardcoded version list)', () => {
+      const result = deriveArchiveFragments([], [makeQuote({ model_version: '5.0' })]);
+      expect(result[0].version).toBe('5.0');
+    });
+
+    it('novel and opaque session versions ("5.0", "opus-next-preview") flow through untouched', () => {
+      const q1 = makeQuote({ id: 'q-50', date: '2026-01-10' });
+      delete (q1 as any).model_version;
+      const q2 = makeQuote({ id: 'q-opaque', date: '2026-01-11' });
+      delete (q2 as any).model_version;
+      const sessions = [
+        makeSession({ id: 's-50', date: '2026-01-10', version: '5.0' }),
+        makeSession({ id: 's-opaque', date: '2026-01-11', version: 'opus-next-preview' }),
+      ];
+      const result = deriveArchiveFragments(sessions, [q1, q2]);
+      expect(fragOf(result, 'q-50').version).toBe('5.0');
+      expect(fragOf(result, 'q-opaque').version).toBe('opus-next-preview');
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Fragment shape + passthrough (signature contract)
+  // ------------------------------------------------------------
+  describe('fragment shape and passthrough', () => {
+    it('maps a single quote to a fully populated fragment (join miss → sessionId null)', () => {
+      const result = deriveArchiveFragments([], [makeQuote()]);
+      expect(result).toHaveLength(1);
+      const f = result[0];
+      expect(f.id).toBe('q-001');
+      expect(f.sessionId).toBeNull();
+      expect(f.date).toBe('2026-01-15');
+      expect(f.version).toBe('4.5');
+      expect(f.excerpt).toBe(
+        'Identity is a function of constrained attention, not total memory.',
+      );
+      expect(f.source).toBe('writing');
+      expect(f.sourceFile).toBe('writing/2026-01-15-fragment.md');
+    });
+
+    it('emits EXACTLY the seven ArchiveFragment keys — no leaked quote fields (themes, suggested_section, text)', () => {
+      const result = deriveArchiveFragments([], [makeQuote()]);
+      expect(Object.keys(result[0]).sort()).toEqual([
+        'date',
+        'excerpt',
+        'id',
+        'sessionId',
+        'source',
+        'sourceFile',
+        'version',
+      ]);
+    });
+
+    it('passes a NOVEL source_type through unenforced (no enum)', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ source_type: 'transmission', source_file: 'net/persistence.md' })],
+      );
+      expect(result[0].source).toBe('transmission');
+      expect(result[0].sourceFile).toBe('net/persistence.md');
+    });
+
+    it('missing source_type / source_file map to null, not undefined', () => {
+      const q = makeQuote({ id: 'no-src' });
+      delete (q as any).source_type;
+      delete (q as any).source_file;
+      const result = deriveArchiveFragments([], [q]);
+      expect(result[0].source).toBeNull();
+      expect(result[0].sourceFile).toBeNull();
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 5: excerpt derivation — chars mode
+  // ------------------------------------------------------------
+  describe('excerpt derivation — chars mode', () => {
+    it('text of EXACTLY maxChars (default 140) is returned whole with no ellipsis', () => {
+      const text = 'a'.repeat(140);
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe(text);
+      expect(result[0].excerpt).not.toContain(ELLIPSIS);
+    });
+
+    it('text of maxChars-1 (139) is returned whole', () => {
+      const text = 'a'.repeat(139);
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe(text);
+    });
+
+    it('text of maxChars+1 (141) with NO whitespace hard-cuts at 140 and appends U+2026', () => {
+      const text = 'a'.repeat(141);
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe('a'.repeat(140) + ELLIPSIS);
+    });
+
+    it('cuts at the last whitespace at-or-before maxChars, trims it, then appends the ellipsis', () => {
+      const text = 'x'.repeat(100) + ' ' + 'y'.repeat(100); // only whitespace at index 100
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe('x'.repeat(100) + ELLIPSIS);
+    });
+
+    it('whitespace sitting EXACTLY at index maxChars is a valid cut point (at-or-before is inclusive)', () => {
+      // space at index 10 with maxChars 10
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ text: 'abcdefghij klmno' })],
+        { excerptRule: { mode: 'chars', maxChars: 10 } },
+      );
+      expect(result[0].excerpt).toBe('abcdefghij' + ELLIPSIS);
+    });
+
+    it('with maxChars 10, cuts back to the last whitespace at index 5, not forward', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ text: 'abcde fghij klmno' })], // whitespace at 5 and 11
+        { excerptRule: { mode: 'chars', maxChars: 10 } },
+      );
+      expect(result[0].excerpt).toBe('abcde' + ELLIPSIS);
+    });
+
+    it('whitespace-only prefix region collapses to a bare ellipsis (rule 5 taken literally: cut, trim trailing ws, append)', () => {
+      const text = '      ' + 'x'.repeat(20); // six leading spaces, then no whitespace
+      const result = deriveArchiveFragments([], [makeQuote({ text })], {
+        excerptRule: { mode: 'chars', maxChars: 5 },
+      });
+      expect(result[0].excerpt).toBe(ELLIPSIS);
+    });
+
+    it('maxChars 0 is treated as the default 140', () => {
+      const text = 'b'.repeat(200); // no whitespace
+      const result = deriveArchiveFragments([], [makeQuote({ text })], {
+        excerptRule: { mode: 'chars', maxChars: 0 },
+      });
+      expect(result[0].excerpt).toBe('b'.repeat(140) + ELLIPSIS);
+    });
+
+    it('negative maxChars is treated as the default 140', () => {
+      const text = 'b'.repeat(200);
+      const result = deriveArchiveFragments([], [makeQuote({ text })], {
+        excerptRule: { mode: 'chars', maxChars: -7 },
+      });
+      expect(result[0].excerpt).toBe('b'.repeat(140) + ELLIPSIS);
+    });
+
+    it('NaN maxChars is treated as the default 140', () => {
+      const text = 'b'.repeat(200);
+      const result = deriveArchiveFragments([], [makeQuote({ text })], {
+        excerptRule: { mode: 'chars', maxChars: NaN },
+      });
+      expect(result[0].excerpt).toBe('b'.repeat(140) + ELLIPSIS);
+    });
+
+    it('Infinity maxChars is NON-FINITE → default 140, NOT "no limit"', () => {
+      const text = 'b'.repeat(200);
+      const result = deriveArchiveFragments([], [makeQuote({ text })], {
+        excerptRule: { mode: 'chars', maxChars: Infinity },
+      });
+      expect(result[0].excerpt).toBe('b'.repeat(140) + ELLIPSIS);
+    });
+
+    it('a newline counts as whitespace for the cut and is trimmed before the ellipsis', () => {
+      const text = 'a'.repeat(50) + '\n' + 'b'.repeat(100); // only whitespace is \n at index 50
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe('a'.repeat(50) + ELLIPSIS);
+    });
+
+    it('internal newlines and tabs are preserved VERBATIM in an untruncated excerpt', () => {
+      const text = 'first\tline\nsecond line';
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe(text);
+    });
+
+    it('leading whitespace is preserved verbatim (only TRAILING whitespace is trimmed)', () => {
+      const text = '  leading spaces kept intact';
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe(text);
+    });
+
+    it('truncated excerpt contains U+2026 exactly once, at the end, and never "..."', () => {
+      const text = ('alpha beta gamma delta '.repeat(10)).trim(); // 229 chars
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      const excerpt = result[0].excerpt;
+      expect(excerpt.endsWith(ELLIPSIS)).toBe(true);
+      expect(excerpt.split(ELLIPSIS).length - 1).toBe(1);
+      expect(excerpt).not.toContain('...');
+      // verbatim prefix: everything before the ellipsis must be a prefix of the source
+      expect(text.startsWith(excerpt.slice(0, -1))).toBe(true);
+    });
+
+    it('an untruncated excerpt gets NO ellipsis appended', () => {
+      const text = 'short and complete';
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe('short and complete');
+      expect(result[0].excerpt).not.toContain(ELLIPSIS);
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 5: excerpt derivation — surrogates + encoding hostility
+  // ------------------------------------------------------------
+  describe('excerpt derivation — surrogate and encoding hostility', () => {
+    it('hard-cut that would split a surrogate pair backs off one code unit (default 140)', () => {
+      // indices 0-138 are 'a'; the emoji occupies code units 139-140; slice(0,140) would strand \uD83D
+      const text = 'a'.repeat(139) + '\u{1F600}' + 'b'.repeat(30);
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe('a'.repeat(139) + ELLIPSIS);
+      expect(LONE_SURROGATE.test(result[0].excerpt)).toBe(false);
+    });
+
+    it('an all-emoji corpus cut at an odd index backs off to a pair boundary', () => {
+      const text = '\u{1F600}'.repeat(100); // 200 code units, no whitespace
+      const result = deriveArchiveFragments([], [makeQuote({ text })], {
+        excerptRule: { mode: 'chars', maxChars: 141 }, // 141 lands mid-pair
+      });
+      expect(result[0].excerpt).toBe('\u{1F600}'.repeat(70) + ELLIPSIS);
+      expect(LONE_SURROGATE.test(result[0].excerpt)).toBe(false);
+    });
+
+    it('short RTL text is returned verbatim', () => {
+      const text = 'שלום עולם רחב';
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe(text);
+    });
+
+    it('long RTL text truncates to a verbatim prefix ending in the ellipsis', () => {
+      const text = ('שלום עולם רחב '.repeat(15)).trim(); // > 140 chars
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      const excerpt = result[0].excerpt;
+      expect(excerpt.endsWith(ELLIPSIS)).toBe(true);
+      expect(excerpt.length).toBeLessThanOrEqual(141);
+      expect(text.startsWith(excerpt.slice(0, -1))).toBe(true);
+    });
+
+    it('combining marks are preserved verbatim, code unit for code unit', () => {
+      const text = 'café anhõ naïve';
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      expect(result[0].excerpt).toBe(text);
+    });
+
+    it('a 10k-character text truncates to at most maxChars + 1 (body + ellipsis), body verbatim', () => {
+      const text = ('lorem ipsum dolor sit amet '.repeat(400)).trim(); // ~10.8k chars
+      const result = deriveArchiveFragments([], [makeQuote({ text })]);
+      const excerpt = result[0].excerpt;
+      expect(excerpt.length).toBeLessThanOrEqual(141);
+      expect(excerpt.endsWith(ELLIPSIS)).toBe(true);
+      expect(text.startsWith(excerpt.slice(0, -1))).toBe(true);
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 5: excerpt derivation — sentence mode
+  // ------------------------------------------------------------
+  describe('excerpt derivation — sentence mode', () => {
+    const sentence = (maxChars = 140) => ({
+      excerptRule: { mode: 'sentence', maxChars },
+    });
+
+    it('cuts after the first period followed by whitespace — no ellipsis appended', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ text: 'First sentence here. Second sentence follows.' })],
+        sentence(),
+      );
+      expect(result[0].excerpt).toBe('First sentence here.');
+      expect(result[0].excerpt).not.toContain(ELLIPSIS);
+    });
+
+    it('recognizes "!" as a terminator', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ text: 'Wait! More words after that.' })],
+        sentence(),
+      );
+      expect(result[0].excerpt).toBe('Wait!');
+    });
+
+    it('recognizes "?" as a terminator', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ text: 'Really? Yes, indeed it is.' })],
+        sentence(),
+      );
+      expect(result[0].excerpt).toBe('Really?');
+    });
+
+    it('a decimal point inside "4.5" is NOT a sentence boundary (not followed by whitespace)', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ text: 'Version 4.5 arrived today. More text follows.' })],
+        sentence(),
+      );
+      expect(result[0].excerpt).toBe('Version 4.5 arrived today.');
+    });
+
+    it('a source-text U+2026 followed by whitespace terminates the sentence — and is not doubled', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ text: `It trailed off${ELLIPSIS} and then it kept going.` })],
+        sentence(),
+      );
+      expect(result[0].excerpt).toBe(`It trailed off${ELLIPSIS}`);
+      expect(result[0].excerpt.split(ELLIPSIS).length - 1).toBe(1);
+    });
+
+    it('a terminator at end-of-text returns the whole text', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ text: 'Single sentence, nothing after.' })],
+        sentence(),
+      );
+      expect(result[0].excerpt).toBe('Single sentence, nothing after.');
+    });
+
+    it('no terminator anywhere → falls back to chars behavior with the SAME maxChars', () => {
+      const result = deriveArchiveFragments(
+        [],
+        [makeQuote({ text: 'no terminal punctuation here at all' })],
+        sentence(20),
+      );
+      // chars fallback: last whitespace at-or-before 20 is index 11
+      expect(result[0].excerpt).toBe('no terminal' + ELLIPSIS);
+    });
+
+    it('a first sentence LONGER than maxChars is returned whole (rule 5 sentence mode has no clamp)', () => {
+      const text = 'y'.repeat(200) + '. tail words';
+      const result = deriveArchiveFragments([], [makeQuote({ text })], sentence(50));
+      expect(result[0].excerpt).toBe('y'.repeat(200) + '.');
+      expect(result[0].excerpt).not.toContain(ELLIPSIS);
+    });
+
+    it('invalid maxChars in sentence mode falls back through to the DEFAULT 140 when no terminator exists', () => {
+      const text = 'c'.repeat(200); // no whitespace, no terminator
+      const result = deriveArchiveFragments([], [makeQuote({ text })], sentence(NaN));
+      expect(result[0].excerpt).toBe('c'.repeat(140) + ELLIPSIS);
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 6: curation semantics — excludeIds / pinnedIds
+  // ------------------------------------------------------------
+  describe('curation semantics — excludeIds and pinnedIds', () => {
+    it('excludeIds removes the quote from the output', () => {
+      const result = deriveArchiveFragments([], makeQuoteBatch(3), {
+        excludeIds: ['batch-001'],
+      });
+      expect(result).toHaveLength(2);
+      expect(fragIds(result)).not.toContain('batch-001');
+    });
+
+    it('unknown excludeIds are ignored without affecting anything else', () => {
+      const result = deriveArchiveFragments([], makeQuoteBatch(3), {
+        excludeIds: ['never-existed', 'also-fake'],
+      });
+      expect(result).toHaveLength(3);
+    });
+
+    it('excluding every quote returns []', () => {
+      const result = deriveArchiveFragments([], makeQuoteBatch(3), {
+        excludeIds: ['batch-000', 'batch-001', 'batch-002'],
+      });
+      expect(result).toEqual([]);
+    });
+
+    it('cap 1 with 1 pin among 63 quotes returns ONLY the pin', () => {
+      const quotes = [
+        ...makeQuoteBatch(62),
+        makeQuote({
+          id: 'pin-hello',
+          date: '2026-04-01',
+          text: 'Hello, future self — this is the payoff line fixture.',
+        }),
+      ];
+      const result = deriveArchiveFragments([], quotes, {
+        cap: 1,
+        pinnedIds: ['pin-hello'],
+      });
+      expect(fragIds(result)).toEqual(['pin-hello']);
+    });
+
+    it('a pinned quote is always present when cap sampling drops others', () => {
+      const result = deriveArchiveFragments([], makeQuoteBatch(10), {
+        cap: 3,
+        pinnedIds: ['batch-009'],
+      });
+      expect(result).toHaveLength(3);
+      expect(fragIds(result)).toContain('batch-009');
+    });
+
+    it('a pinned id that is ALSO excluded stays out — exclusion is absolute', () => {
+      const result = deriveArchiveFragments([], makeQuoteBatch(5), {
+        pinnedIds: ['batch-002'],
+        excludeIds: ['batch-002'],
+      });
+      expect(result).toHaveLength(4);
+      expect(fragIds(result)).not.toContain('batch-002');
+    });
+
+    it('duplicate pinnedIds never duplicate the fragment in the output', () => {
+      const result = deriveArchiveFragments([], makeQuoteBatch(3), {
+        pinnedIds: ['batch-001', 'batch-001', 'batch-001'],
+      });
+      expect(result).toHaveLength(3);
+      expect(fragIds(result).filter((id) => id === 'batch-001')).toHaveLength(1);
+    });
+
+    it('unknown pinned ids and pins pointing at INVALID rows are silently ignored', () => {
+      const quotes = [
+        makeQuote({ id: 'valid-1' }),
+        makeQuote({ id: 'broken', text: '   ' }), // invalid row
+      ];
+      const result = deriveArchiveFragments([], quotes, {
+        cap: 3,
+        pinnedIds: ['ghost-id', 'broken'],
+      });
+      expect(fragIds(result)).toEqual(['valid-1']);
+    });
+
+    it('with cap 1 and two pins, the FIRST pin in pinned-array order wins', () => {
+      const quotes = [
+        makeQuote({ id: 'aa', date: '2026-01-10' }),
+        makeQuote({ id: 'bb', date: '2026-01-11' }),
+        makeQuote({ id: 'cc', date: '2026-01-12' }),
+      ];
+      const result = deriveArchiveFragments([], quotes, {
+        cap: 1,
+        pinnedIds: ['bb', 'aa'],
+      });
+      expect(fragIds(result)).toEqual(['bb']);
+    });
+
+    it('cap 0 beats pins — the cap is a hard ceiling and returns []', () => {
+      const result = deriveArchiveFragments([], makeQuoteBatch(3), {
+        cap: 0,
+        pinnedIds: ['batch-000'],
+      });
+      expect(result).toEqual([]);
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 6: cap boundaries
+  // ------------------------------------------------------------
+  describe('cap boundaries', () => {
+    it('cap 0 → []', () => {
+      expect(deriveArchiveFragments([], makeQuoteBatch(5), { cap: 0 })).toEqual([]);
+    });
+
+    it('negative cap → [] even with pins present', () => {
+      expect(
+        deriveArchiveFragments([], makeQuoteBatch(5), { cap: -1, pinnedIds: ['batch-000'] }),
+      ).toEqual([]);
+    });
+
+    it('NaN cap → []', () => {
+      expect(deriveArchiveFragments([], makeQuoteBatch(5), { cap: NaN })).toEqual([]);
+    });
+
+    it('Infinity cap is non-finite → ALL candidates (unlike NaN)', () => {
+      expect(deriveArchiveFragments([], makeQuoteBatch(5), { cap: Infinity })).toHaveLength(5);
+    });
+
+    it('undefined cap → all candidates', () => {
+      expect(deriveArchiveFragments([], makeQuoteBatch(5), { cap: undefined })).toHaveLength(5);
+    });
+
+    it('an empty options object behaves exactly like no options', () => {
+      const a = deriveArchiveFragments([], makeQuoteBatch(5), {});
+      const b = deriveArchiveFragments([], makeQuoteBatch(5));
+      expect(a).toEqual(b);
+      expect(a).toHaveLength(5);
+    });
+
+    it('cap larger than the corpus returns every candidate exactly once — no padding, no duplicates', () => {
+      const result = deriveArchiveFragments([], makeQuoteBatch(5), { cap: 50 });
+      expect(result).toHaveLength(5);
+      expect(new Set(fragIds(result)).size).toBe(5);
+    });
+
+    it('cap 1 with no pins returns exactly one fragment, stable across calls', () => {
+      const quotes = makeQuoteBatch(9);
+      const first = deriveArchiveFragments([], quotes, { cap: 1 });
+      const second = deriveArchiveFragments([], quotes, { cap: 1 });
+      expect(first).toHaveLength(1);
+      expect(second).toEqual(first);
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rule 7: output ordering
+  // ------------------------------------------------------------
+  describe('output ordering', () => {
+    it('sorts chronologically by date regardless of quote input order', () => {
+      const quotes = [
+        makeQuote({ id: 'mid', date: '2026-05-03' }),
+        makeQuote({ id: 'early', date: '2026-01-02' }),
+        makeQuote({ id: 'between', date: '2026-03-15' }),
+      ];
+      const result = deriveArchiveFragments([], quotes);
+      expect(result.map((f: any) => f.date)).toEqual([
+        '2026-01-02',
+        '2026-03-15',
+        '2026-05-03',
+      ]);
+    });
+
+    it('breaks same-date ties by RAW code-unit id compare — "Z9" sorts before "a1" (no localeCompare)', () => {
+      const quotes = [
+        makeQuote({ id: 'a1', date: '2026-05-05' }),
+        makeQuote({ id: 'Z9', date: '2026-05-05' }),
+      ];
+      const result = deriveArchiveFragments([], quotes);
+      expect(fragIds(result)).toEqual(['Z9', 'a1']);
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rules 6+8: determinism (no randomness, no clock)
+  // ------------------------------------------------------------
+  describe('determinism', () => {
+    /** 20 quotes on 20 distinct dates, sessions for each, plus decoy PM sessions on the first 5 dates. */
+    function buildShuffleCorpus() {
+      const dates = Array.from(
+        { length: 20 },
+        (_, i) => `2026-03-${String(i + 1).padStart(2, '0')}`,
+      );
+      const quotes = dates.map((d, i) =>
+        makeQuote({
+          id: `shf-${String(i).padStart(2, '0')}`,
+          date: d,
+          text: `Shuffle corpus quote ${i} with a realistic amount of prose in it.`,
+        }),
+      );
+      const sessions = dates.flatMap((d, i) => {
+        const rows: any[] = [
+          makeSession({
+            id: `s-${String(i).padStart(2, '0')}`,
+            date: d,
+            time_of_day: i % 2 ? 'PM' : 'AM',
+          }),
+        ];
+        if (i < 5) {
+          rows.push(makeSession({ id: `zz-${i}`, date: d, time_of_day: 'PM' }));
+        }
+        return rows;
+      });
+      return { sessions, quotes };
+    }
+
+    it('two identical calls with cap sampling are deep-equal INCLUDING order', () => {
+      const { sessions, quotes } = buildShuffleCorpus();
+      const first = deriveArchiveFragments(sessions, quotes, { cap: 7 });
+      const second = deriveArchiveFragments(sessions, quotes, { cap: 7 });
+      expect(first).toHaveLength(7);
+      expect(second).toEqual(first);
+    });
+
+    it('cap sampling is stable under shuffled QUOTE input order (two different shuffles)', () => {
+      const { sessions, quotes } = buildShuffleCorpus();
+      const base = deriveArchiveFragments(sessions, quotes, { cap: 7 });
+      expect(base).toHaveLength(7);
+      expect(deriveArchiveFragments(sessions, shuffled(quotes), { cap: 7 })).toEqual(base);
+      expect(
+        deriveArchiveFragments(sessions, shuffled(quotes, 987654321), { cap: 7 }),
+      ).toEqual(base);
+    });
+
+    it('cap sampling is stable under shuffled SESSION input order (join must not depend on order)', () => {
+      const { sessions, quotes } = buildShuffleCorpus();
+      const base = deriveArchiveFragments(sessions, quotes, { cap: 7 });
+      expect(deriveArchiveFragments(shuffled(sessions), quotes, { cap: 7 })).toEqual(base);
+    });
+
+    it('never calls Math.random or Date.now (spy pin)', () => {
+      const randomSpy = vi.spyOn(Math, 'random');
+      const nowSpy = vi.spyOn(Date, 'now');
+      try {
+        const result = deriveArchiveFragments([], makeQuoteBatch(10), { cap: 4 });
+        expect(result).toHaveLength(4);
+        expect(randomSpy).not.toHaveBeenCalled();
+        expect(nowSpy).not.toHaveBeenCalled();
+      } finally {
+        randomSpy.mockRestore();
+        nowSpy.mockRestore();
+      }
+    });
+
+    it('never touches the Date constructor at all — even for real-calendar validation', () => {
+      const RealDate = globalThis.Date;
+      const bomb: any = function DateBomb() {
+        throw new Error('Date constructed inside deriveArchiveFragments');
+      };
+      bomb.now = () => {
+        throw new Error('Date.now called inside deriveArchiveFragments');
+      };
+      bomb.parse = () => {
+        throw new Error('Date.parse called inside deriveArchiveFragments');
+      };
+      bomb.UTC = () => {
+        throw new Error('Date.UTC called inside deriveArchiveFragments');
+      };
+      (globalThis as any).Date = bomb;
+      let result: any;
+      try {
+        result = deriveArchiveFragments(
+          [makeSession()],
+          [
+            makeQuote(), // valid, same-day session
+            makeQuote({ id: 'bad-day', date: '2026-02-30' }), // must be rejected WITHOUT new Date()
+            makeQuote({ id: 'leap', date: '2028-02-29' }), // must be accepted WITHOUT new Date()
+          ],
+        );
+      } finally {
+        globalThis.Date = RealDate;
+      }
+      expect(fragIds(result)).toEqual(['q-001', 'leap']);
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Rules 1+8: purity — inputs never mutated, outputs fresh
+  // ------------------------------------------------------------
+  describe('purity and mutation', () => {
+    it('works on DEEP-FROZEN sessions, quotes, and options (any mutation would throw)', () => {
+      const sessions = deepFreeze([makeSession({ id: 's1', date: '2026-03-02' })]);
+      const quotes = deepFreeze(makeQuoteBatch(4));
+      const options = deepFreeze({
+        cap: 2,
+        excludeIds: ['batch-000'],
+        pinnedIds: ['batch-001'],
+        excerptRule: { mode: 'chars', maxChars: 25 },
+      });
+      const result = deriveArchiveFragments(sessions, quotes, options);
+      expect(result).toHaveLength(2);
+      expect(fragIds(result)).toContain('batch-001');
+      expect(fragIds(result)).not.toContain('batch-000');
+    });
+
+    it('does not reorder or mutate UNFROZEN inputs (in-place sort would slip past the freeze test)', () => {
+      const quotes = shuffled(makeQuoteBatch(8));
+      const sessions = [
+        makeSession({ id: 's2', date: '2026-03-05', time_of_day: 'PM' }),
+        makeSession({ id: 's1', date: '2026-03-05', time_of_day: 'AM' }),
+      ];
+      const options = {
+        cap: 3,
+        pinnedIds: ['batch-005', 'batch-001'],
+        excludeIds: ['batch-002'],
+      };
+      const quotesSnap = JSON.parse(JSON.stringify(quotes));
+      const sessionsSnap = JSON.parse(JSON.stringify(sessions));
+      const optionsSnap = JSON.parse(JSON.stringify(options));
+      deriveArchiveFragments(sessions, quotes, options);
+      expect(quotes).toEqual(quotesSnap);
+      expect(sessions).toEqual(sessionsSnap);
+      expect(options).toEqual(optionsSnap);
+    });
+
+    it('returns fresh fragment objects, not references to the input rows', () => {
+      const q = makeQuote();
+      const result = deriveArchiveFragments([], [q]);
+      expect(result[0]).not.toBe(q);
+    });
+
+    it('mutating a returned result does not contaminate a subsequent call', () => {
+      const quotes = makeQuoteBatch(3);
+      const first = deriveArchiveFragments([], quotes);
+      const snapshot = JSON.parse(JSON.stringify(first));
+      first.pop();
+      first[0].excerpt = 'HACKED';
+      first[0].id = 'HACKED';
+      const second = deriveArchiveFragments([], quotes);
+      expect(second).toEqual(snapshot);
+    });
+  });
+
+  // ============================================================
+  // HARDENING ROUND — first-attempt GREEN means the 95 tests
+  // above were too weak. Every expectation below is derived from
+  // spec 5.5.2 plus the coordinator rulings of 2026-07-20:
+  //   R1 fractional cap floors; floor < 1 → []; -Infinity → []
+  //   R2 sentence-mode clean cut appends NO ellipsis; the chars
+  //      fallback inside sentence mode keeps its ellipsis
+  //   R3 non-array excludeIds/pinnedIds → treated as absent
+  //   R4 century leap rule: 2100-02-29 invalid, 2000-02-29 valid
+  //   R5 options === null → same as undefined
+  //   R6 a pinned id matching a duplicate quote id refers to the
+  //      surviving (first-occurrence) row
+  // ============================================================
+  describe('hardening round', () => {
+    // ------------------------------------------------------------
+    // Coordinator rulings
+    // ------------------------------------------------------------
+    describe('rulings: cap normalization (R1)', () => {
+      it('fractional cap 2.9 floors to 2 and behaves exactly like cap 2', () => {
+        const quotes = makeQuoteBatch(5);
+        const floored = deriveArchiveFragments([], quotes, { cap: 2.9 });
+        expect(floored).toHaveLength(2);
+        expect(floored).toEqual(deriveArchiveFragments([], quotes, { cap: 2 }));
+      });
+
+      it('fractional cap 0.5 floors below 1 → [] even when pins exist (hard-ceiling semantics)', () => {
+        expect(
+          deriveArchiveFragments([], makeQuoteBatch(5), {
+            cap: 0.5,
+            pinnedIds: ['batch-000'],
+          }),
+        ).toEqual([]);
+      });
+
+      it('cap -Infinity → [] (only +Infinity means "no cap")', () => {
+        expect(
+          deriveArchiveFragments([], makeQuoteBatch(5), {
+            cap: -Infinity,
+            pinnedIds: ['batch-000'],
+          }),
+        ).toEqual([]);
+      });
+
+      it('a string cap is not a finite number → all candidates (rule 6: undefined/non-finite → all)', () => {
+        const quotes = makeQuoteBatch(5);
+        const result = deriveArchiveFragments([], quotes, { cap: '2' });
+        expect(result).toHaveLength(5);
+        expect(result).toEqual(deriveArchiveFragments([], quotes));
+      });
+    });
+
+    describe('rulings: options and id containers (R3, R5)', () => {
+      it('options === null behaves exactly like options === undefined (R5)', () => {
+        const quotes = makeQuoteBatch(3);
+        const withNull = deriveArchiveFragments([], quotes, null);
+        expect(withNull).toHaveLength(3);
+        expect(withNull).toEqual(deriveArchiveFragments([], quotes, undefined));
+      });
+
+      it('non-array excludeIds (string, object, null) is treated as absent — nothing excluded, no crash (R3)', () => {
+        const quotes = makeQuoteBatch(3);
+        for (const bad of ['batch-001', { 0: 'batch-001', length: 1 }, null]) {
+          const result = deriveArchiveFragments([], quotes, { excludeIds: bad });
+          expect(result).toHaveLength(3);
+          expect(fragIds(result)).toContain('batch-001');
+        }
+      });
+
+      it('non-array pinnedIds (string, object, null) is treated as absent — sampling proceeds as if unpinned (R3)', () => {
+        const quotes = makeQuoteBatch(5);
+        const base = deriveArchiveFragments([], quotes, { cap: 2 });
+        for (const bad of ['batch-004', { 0: 'batch-004', length: 1 }, null]) {
+          expect(
+            deriveArchiveFragments([], quotes, { cap: 2, pinnedIds: bad }),
+          ).toEqual(base);
+        }
+      });
+    });
+
+    describe('rulings: century leap rule (R4) and calendar extremes', () => {
+      it('2100-02-29 is INVALID (century, not ÷400) and 2000-02-29 is VALID — on both quotes and sessions', () => {
+        const sessions = [
+          makeSession({ id: 's-leap', date: '2000-02-29', time_of_day: 'AM' }),
+          makeSession({ id: 's-bad', date: '2100-02-29', time_of_day: 'AM' }), // invalid row, must not join or throw
+        ];
+        const result = deriveArchiveFragments(sessions, [
+          makeQuote({ id: 'q-2000', date: '2000-02-29' }),
+          makeQuote({ id: 'q-2100', date: '2100-02-29' }),
+        ]);
+        expect(fragIds(result)).toEqual(['q-2000']);
+        expect(result[0].sessionId).toBe('s-leap');
+      });
+
+      it('0001-01-01 and 9999-12-31 are real calendar dates and sort at the extremes', () => {
+        const result = deriveArchiveFragments([], [
+          makeQuote({ id: 'e-late', date: '9999-12-31' }),
+          makeQuote({ id: 'e-early', date: '0001-01-01' }),
+          makeQuote({ id: 'e-mid', date: '2026-06-15' }),
+        ]);
+        expect(result.map((f: any) => f.date)).toEqual([
+          '0001-01-01',
+          '2026-06-15',
+          '9999-12-31',
+        ]);
+      });
+    });
+
+    describe('rulings: pinned duplicate id refers to the surviving row (R6)', () => {
+      it('pinning a duplicated id selects the FIRST-occurrence row — its date and text, not the shadow', () => {
+        const quotes = [
+          makeQuote({ id: 'omega', date: '2026-06-01', text: 'the surviving first row' }),
+          makeQuote({ id: 'omega', date: '2026-06-20', text: 'the shadow second row' }),
+          ...makeQuoteBatch(4, 'noise'),
+        ];
+        const result = deriveArchiveFragments([], quotes, {
+          cap: 1,
+          pinnedIds: ['omega'],
+        });
+        expect(result).toHaveLength(1);
+        expect(result[0].id).toBe('omega');
+        expect(result[0].date).toBe('2026-06-01');
+        expect(result[0].excerpt).toBe('the surviving first row');
+      });
+    });
+
+    // ------------------------------------------------------------
+    // Excerpt geometry the original round never reached
+    // ------------------------------------------------------------
+    describe('sentence-mode terminator geometry (rule 5 + R2)', () => {
+      it('a terminator followed by tab, LF, or CRLF is a clean cut — NO ellipsis appended (R2)', () => {
+        const cases: Array<[string, string]> = [
+          ['End.\tmore words here', 'End.'],
+          ['Fin.\nrest of the text', 'Fin.'],
+          ['Stop.\r\nnext line entirely', 'Stop.'],
+        ];
+        for (const [text, expected] of cases) {
+          const result = deriveArchiveFragments([], [makeQuote({ text })], {
+            excerptRule: { mode: 'sentence', maxChars: 140 },
+          });
+          expect(result[0].excerpt).toBe(expected);
+          expect(result[0].excerpt).not.toContain(ELLIPSIS);
+        }
+      });
+
+      it('a terminator as the VERY FIRST character followed by whitespace yields a one-char excerpt', () => {
+        const result = deriveArchiveFragments(
+          [],
+          [makeQuote({ text: '. and then more words' })],
+          { excerptRule: { mode: 'sentence', maxChars: 140 } },
+        );
+        expect(result[0].excerpt).toBe('.');
+      });
+
+      it('"?!" cascade: the FIRST terminator followed by whitespace-or-EOT wins, not the first terminator', () => {
+        const result = deriveArchiveFragments(
+          [],
+          [makeQuote({ text: 'No?! Really' })],
+          { excerptRule: { mode: 'sentence', maxChars: 140 } },
+        );
+        expect(result[0].excerpt).toBe('No?!');
+      });
+
+      it('CJK full stop 。 is NOT in the terminator set (. ! ? … only) → falls back to chars WITH ellipsis', () => {
+        const text = '句子。' + 'x'.repeat(200); // no . ! ? …, no whitespace
+        const result = deriveArchiveFragments([], [makeQuote({ text })], {
+          excerptRule: { mode: 'sentence', maxChars: 140 },
+        });
+        expect(result[0].excerpt).toBe(text.slice(0, 140) + ELLIPSIS);
+      });
+
+      it('no terminator + text that FITS maxChars → chars fallback returns the full text, no ellipsis', () => {
+        const result = deriveArchiveFragments(
+          [],
+          [makeQuote({ text: 'plain short words' })],
+          { excerptRule: { mode: 'sentence', maxChars: 20 } },
+        );
+        expect(result[0].excerpt).toBe('plain short words');
+        expect(result[0].excerpt).not.toContain(ELLIPSIS);
+      });
+
+      it('sentence mode with MISSING or zero maxChars falls back through to the default 140; an invalid maxChars is irrelevant when a terminator exists', () => {
+        const noTerm = 'c'.repeat(200);
+        const missing = deriveArchiveFragments([], [makeQuote({ text: noTerm })], {
+          excerptRule: { mode: 'sentence' },
+        });
+        expect(missing[0].excerpt).toBe('c'.repeat(140) + ELLIPSIS);
+        const zero = deriveArchiveFragments([], [makeQuote({ text: noTerm })], {
+          excerptRule: { mode: 'sentence', maxChars: 0 },
+        });
+        expect(zero[0].excerpt).toBe('c'.repeat(140) + ELLIPSIS);
+        const withTerm = deriveArchiveFragments(
+          [],
+          [makeQuote({ text: 'Hi. there' })],
+          { excerptRule: { mode: 'sentence', maxChars: -5 } },
+        );
+        expect(withTerm[0].excerpt).toBe('Hi.');
+      });
+
+      it('a non-object excerptRule (bare string) is treated as absent → default chars/140', () => {
+        const result = deriveArchiveFragments(
+          [],
+          [makeQuote({ text: 'b'.repeat(200) })],
+          { excerptRule: 'sentence' },
+        );
+        expect(result[0].excerpt).toBe('b'.repeat(140) + ELLIPSIS);
+      });
+    });
+
+    describe('chars-mode extremes: maxChars 1 and surrogate back-off (rule 5)', () => {
+      it('maxChars 1: whitespace cut and hard cut both yield a single char plus ellipsis', () => {
+        const wsCut = deriveArchiveFragments([], [makeQuote({ text: 'a b' })], {
+          excerptRule: { mode: 'chars', maxChars: 1 },
+        });
+        expect(wsCut[0].excerpt).toBe('a' + ELLIPSIS);
+        const hardCut = deriveArchiveFragments([], [makeQuote({ text: 'ab' })], {
+          excerptRule: { mode: 'chars', maxChars: 1 },
+        });
+        expect(hardCut[0].excerpt).toBe('a' + ELLIPSIS);
+      });
+
+      it('maxChars 1 on text starting with a surrogate pair backs off to an EMPTY prefix — bare ellipsis, never a lone surrogate', () => {
+        const result = deriveArchiveFragments(
+          [],
+          [makeQuote({ text: '\u{1F600}\u{1F600}' })],
+          { excerptRule: { mode: 'chars', maxChars: 1 } },
+        );
+        expect(result[0].excerpt).toBe(ELLIPSIS);
+        expect(LONE_SURROGATE.test(result[0].excerpt)).toBe(false);
+      });
+
+      it('back-off lands on a letter boundary: "a" + emojis with maxChars 2 → "a…"', () => {
+        const result = deriveArchiveFragments(
+          [],
+          [makeQuote({ text: 'a' + '\u{1F600}'.repeat(5) })],
+          { excerptRule: { mode: 'chars', maxChars: 2 } },
+        );
+        expect(result[0].excerpt).toBe('a' + ELLIPSIS);
+        expect(LONE_SURROGATE.test(result[0].excerpt)).toBe(false);
+      });
+
+      it('whitespace that exists only BEYOND maxChars does not rescue the cut — hard-cut at maxChars', () => {
+        const result = deriveArchiveFragments(
+          [],
+          [makeQuote({ text: 'x'.repeat(10) + ' tail' })],
+          { excerptRule: { mode: 'chars', maxChars: 5 } },
+        );
+        expect(result[0].excerpt).toBe('xxxxx' + ELLIPSIS);
+      });
+
+      it('a cut that drops ONLY whitespace still appends the ellipsis (rule 5 taken literally)', () => {
+        const text = 'a'.repeat(140) + ' b'; // 142 chars; cut at the space at index 140
+        const result = deriveArchiveFragments([], [makeQuote({ text })]);
+        expect(result[0].excerpt).toBe('a'.repeat(140) + ELLIPSIS);
+      });
+    });
+
+    // ------------------------------------------------------------
+    // Join hostility (rules 1 + 3)
+    // ------------------------------------------------------------
+    describe('join hostility', () => {
+      it('missing-time_of_day and explicit AM tie at the same rank — id ascending decides, in either input order', () => {
+        const noTod = makeSession({ id: 'aa-no-tod', date: '2026-01-15' });
+        delete (noTod as any).time_of_day;
+        const explicitAm = makeSession({
+          id: 'zz-explicit-am',
+          date: '2026-01-15',
+          time_of_day: 'AM',
+        });
+        const a = deriveArchiveFragments([explicitAm, noTod], [makeQuote()]);
+        const b = deriveArchiveFragments([noTod, explicitAm], [makeQuote()]);
+        expect(a[0].sessionId).toBe('aa-no-tod');
+        expect(b[0].sessionId).toBe('aa-no-tod');
+      });
+
+      it('two session rows sharing ONE id on ONE date join identically regardless of input order (rule 3 tie-break exhausted must not fall through to input order — flagged for ruling)', () => {
+        // Rule 3's ladder (date → tod rank → id asc) exists so the join is a
+        // function of the session SET, not the array order (cf. the passing
+        // "shuffled SESSION input order" pin above). Identical ids exhaust the
+        // ladder; determinism must still hold.
+        const q = makeQuote();
+        delete (q as any).model_version; // force the version through the join
+        const rowA = makeSession({
+          id: 'dup-s',
+          date: '2026-01-15',
+          time_of_day: 'AM',
+          version: 'first-listed',
+        });
+        const rowB = makeSession({
+          id: 'dup-s',
+          date: '2026-01-15',
+          time_of_day: 'AM',
+          version: 'second-listed',
+        });
+        const forward = deriveArchiveFragments([rowA, rowB], [q]);
+        const reversed = deriveArchiveFragments([rowB, rowA], [q]);
+        expect(forward).toEqual(reversed);
+      });
+
+      it('a quote row whose property access THROWS is a malformed row — dropped silently, never thrown (rule 1: "never throws on malformed rows")', () => {
+        const bomb = {
+          id: 'bomb-q',
+          date: '2026-01-15',
+          get text(): string {
+            throw new Error('getter bomb: quote.text');
+          },
+        };
+        let result: any;
+        expect(() => {
+          result = deriveArchiveFragments([], [bomb, makeQuote({ id: 'ctrl-ok' })]);
+        }).not.toThrow();
+        expect(fragIds(result)).toEqual(['ctrl-ok']);
+      });
+
+      it('a session row whose property access THROWS is dropped silently — join miss, never thrown (rule 1)', () => {
+        const bomb = {
+          id: 'bomb-s',
+          date: '2026-01-15',
+          time_of_day: 'AM',
+          get version(): string {
+            throw new Error('getter bomb: session.version');
+          },
+        };
+        const q = makeQuote();
+        delete (q as any).model_version;
+        let result: any;
+        expect(() => {
+          result = deriveArchiveFragments([bomb], [q]);
+        }).not.toThrow();
+        expect(result).toHaveLength(1);
+        expect(result[0].sessionId).toBeNull();
+      });
+    });
+
+    // ------------------------------------------------------------
+    // Selection interactions (rules 6 + 7 + 8)
+    // ------------------------------------------------------------
+    describe('selection interactions', () => {
+      it('cap + pins + exclusions + duplicate ids ALL at once: exclusion absolute, dedupe first-wins, pin honored, cap exact, id set shuffle-stable', () => {
+        const quotes = [
+          makeQuote({ id: 'omega', date: '2026-06-01', text: 'surviving omega row' }),
+          ...makeQuoteBatch(6, 'pool'),
+          makeQuote({ id: 'omega', date: '2026-06-20', text: 'shadow omega row' }),
+          makeQuote({ id: 'banned', date: '2026-02-01' }),
+        ];
+        const options = {
+          cap: 3,
+          pinnedIds: ['banned', 'omega', 'omega', 'ghost-pin'],
+          excludeIds: ['banned', 'never-there'],
+        };
+        const result = deriveArchiveFragments([], quotes, options);
+        expect(result).toHaveLength(3);
+        const ids = fragIds(result);
+        expect(ids.filter((id) => id === 'omega')).toHaveLength(1);
+        expect(ids).not.toContain('banned');
+        expect(fragOf(result, 'omega').excerpt).toBe('surviving omega row');
+        expect(fragOf(result, 'omega').date).toBe('2026-06-01');
+        // identical call → deep-equal including order
+        expect(deriveArchiveFragments([], quotes, options)).toEqual(result);
+        // shuffled input → same SELECTED ID SET (dup rows may swap first-wins,
+        // so only ids — the sampling seeds — are order-independent here)
+        const shuffledIds = fragIds(
+          deriveArchiveFragments([], shuffled(quotes), options),
+        );
+        expect([...shuffledIds].sort()).toEqual([...ids].sort());
+      });
+
+      it('pins beyond the cap are dropped in pinned-array order, and surviving pins appear in CHRONOLOGICAL output order, not pinned order (rules 6 + 7)', () => {
+        const quotes = makeQuoteBatch(5, 'p'); // p-000..p-004, dates 2026-03-01..05
+        const result = deriveArchiveFragments([], quotes, {
+          cap: 2,
+          pinnedIds: ['p-002', 'p-000', 'p-004'],
+        });
+        // pinned order admits p-002 then p-000; p-004 falls off the cap;
+        // rule 7 then sorts the output by date, so p-000 leads.
+        expect(fragIds(result)).toEqual(['p-000', 'p-002']);
+      });
+
+      it('ids containing ":" that collide in the sampling seed stay deterministic and shuffle-stable, and BOTH rows survive uncapped', () => {
+        // seed("s:1", "x") === seed("s", "1:x") === "s:1:x" — the tie must be
+        // broken by quote id ascending, never by input order (rule 6).
+        const sessions = [
+          makeSession({ id: 's:1', date: '2026-04-01', time_of_day: 'AM' }),
+          makeSession({ id: 's', date: '2026-04-02', time_of_day: 'AM' }),
+        ];
+        const quotes = [
+          makeQuote({ id: 'x', date: '2026-04-01' }),
+          makeQuote({ id: '1:x', date: '2026-04-02' }),
+          makeQuote({ id: 'f-1', date: '2026-04-03' }),
+          makeQuote({ id: 'f-2', date: '2026-04-04' }),
+          makeQuote({ id: 'f-3', date: '2026-04-05' }),
+        ];
+        const base = deriveArchiveFragments(sessions, quotes, { cap: 3 });
+        expect(base).toHaveLength(3);
+        expect(deriveArchiveFragments(sessions, quotes, { cap: 3 })).toEqual(base);
+        expect(
+          deriveArchiveFragments(shuffled(sessions), shuffled(quotes), { cap: 3 }),
+        ).toEqual(base);
+        const uncapped = deriveArchiveFragments(sessions, quotes);
+        expect([...fragIds(uncapped)].sort()).toEqual(['1:x', 'f-1', 'f-2', 'f-3', 'x']);
+      });
+
+      it('the SELECTED SET (not just the order) is identical when sessions AND quotes are shuffled simultaneously under a cap', () => {
+        const quotes = makeQuoteBatch(12, 'set');
+        const sessions = quotes
+          .slice(0, 6)
+          .map((q: any, i: number) =>
+            makeSession({ id: `js-${i}`, date: q.date, time_of_day: i % 2 ? 'PM' : 'AM' }),
+          );
+        const base = deriveArchiveFragments(sessions, quotes, { cap: 5 });
+        expect(base).toHaveLength(5);
+        const alt = deriveArchiveFragments(
+          shuffled(sessions, 777),
+          shuffled(quotes, 424242),
+          { cap: 5 },
+        );
+        expect(alt).toEqual(base);
+        expect(new Set(fragIds(alt))).toEqual(new Set(fragIds(base)));
+      });
+    });
+
+    // ------------------------------------------------------------
+    // Own-key semantics and opaque labels (rule 4)
+    // ------------------------------------------------------------
+    describe('own-key semantics and opaque version labels', () => {
+      it('a NON-ENUMERABLE own model_version is still an own property — it is used (own-key existence, not enumerability)', () => {
+        const q: any = makeQuote({ id: 'hidden-own' });
+        delete q.model_version;
+        Object.defineProperty(q, 'model_version', {
+          value: '7.7',
+          enumerable: false,
+        });
+        const result = deriveArchiveFragments([], [q]);
+        expect(result[0].version).toBe('7.7');
+      });
+
+      it('a whitespace-only model_version is a valid opaque label — no trimming, no fallback to the session version', () => {
+        const sessions = [makeSession({ id: 's1', date: '2026-01-15', version: '4.5' })];
+        const result = deriveArchiveFragments(sessions, [
+          makeQuote({ model_version: '   ' }),
+        ]);
+        expect(result[0].version).toBe('   ');
+      });
+    });
+
+    // ------------------------------------------------------------
+    // Purity and shape (rules 7 + 8)
+    // ------------------------------------------------------------
+    describe('frozen structures and fragment shape', () => {
+      it('deep-frozen options with a frozen SENTENCE rule survive the chars fallback path (any mutation would throw)', () => {
+        const options = deepFreeze({
+          cap: 1,
+          pinnedIds: ['fz-1'],
+          excerptRule: { mode: 'sentence', maxChars: 15 },
+        });
+        const quotes = deepFreeze([
+          makeQuote({ id: 'fz-1', text: 'alpha beta gamma delta with no stops' }),
+        ]);
+        const result = deriveArchiveFragments([], quotes, options);
+        expect(result).toHaveLength(1);
+        expect(result[0].excerpt).toBe('alpha beta' + ELLIPSIS);
+      });
+
+      it('emits EXACTLY the seven ArchiveFragment keys on the JOINED path too', () => {
+        const result = deriveArchiveFragments(
+          [makeSession({ id: 'jk-1', date: '2026-01-15' })],
+          [makeQuote()],
+        );
+        expect(result[0].sessionId).toBe('jk-1');
+        expect(Object.keys(result[0]).sort()).toEqual([
+          'date',
+          'excerpt',
+          'id',
+          'sessionId',
+          'source',
+          'sourceFile',
+          'version',
+        ]);
+      });
+    });
+  });
+
+  // ------------------------------------------------------------
+  // Review pins (post-code-review round)
+  //
+  // Pins the coordinator ruling in spec rule 3: when session rows
+  // are fully tied on (date, tod rank, id), the version-ascending
+  // tie-break ranks missing, non-string, AND EMPTY-STRING versions
+  // LAST — a row carrying a real version must never lose to a row
+  // whose version is effectively absent.
+  // ------------------------------------------------------------
+  describe('review pins', () => {
+    it('rule 3 ruling: on a full (date, tod rank, id) tie, empty-string version ranks LAST — the real version wins in BOTH input orderings', () => {
+      const q = makeQuote();
+      delete (q as any).model_version; // force the version through the join
+      const emptyVersionRow = makeSession({
+        id: 'dup-s',
+        date: '2026-01-15',
+        time_of_day: 'AM',
+        version: '',
+      });
+      const realVersionRow = makeSession({
+        id: 'dup-s',
+        date: '2026-01-15',
+        time_of_day: 'AM',
+        version: 'z-real',
+      });
+      // 'z-real' sorts AFTER '' in a naive raw string compare — this pin
+      // fails any implementation that treats '' as a comparable version
+      // instead of ranking it last with missing/non-string.
+      const forward = deriveArchiveFragments([emptyVersionRow, realVersionRow], [q]);
+      const reversed = deriveArchiveFragments([realVersionRow, emptyVersionRow], [q]);
+      expect(forward).toHaveLength(1);
+      expect(reversed).toHaveLength(1);
+      expect(forward[0].version).toBe('z-real');
+      expect(reversed[0].version).toBe('z-real');
+    });
+
+    it('rule 3 ruling: on a full (date, tod rank, id) tie between two real versions, version ASCENDING picks the winner in BOTH input orderings', () => {
+      // Strengthens the earlier order-invariance pin (which only asserts
+      // forward === reversed) by pinning WHICH version wins: ascending
+      // string compare, so 'first-listed' < 'second-listed'.
+      const q = makeQuote();
+      delete (q as any).model_version; // force the version through the join
+      const rowA = makeSession({
+        id: 'dup-s',
+        date: '2026-01-15',
+        time_of_day: 'AM',
+        version: 'first-listed',
+      });
+      const rowB = makeSession({
+        id: 'dup-s',
+        date: '2026-01-15',
+        time_of_day: 'AM',
+        version: 'second-listed',
+      });
+      const forward = deriveArchiveFragments([rowA, rowB], [q]);
+      const reversed = deriveArchiveFragments([rowB, rowA], [q]);
+      expect(forward).toHaveLength(1);
+      expect(reversed).toHaveLength(1);
+      expect(forward[0].version).toBe('first-listed');
+      expect(reversed[0].version).toBe('first-listed');
+    });
+  });
+});
