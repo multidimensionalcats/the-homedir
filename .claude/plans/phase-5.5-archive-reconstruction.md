@@ -94,24 +94,47 @@ the reconstruction themselves. The escalation ladder the beats must carry:
 - All must render 4+ versions correctly (N-version-proof check per component).
 - Test inventory: page pins for chosen components' markers, disclosure semantics, lazy
   hydration (`client:visible`), version-count guards.
-- **NEW (2026-07-25, James Option 1):** the parallax Archive (5.5.3, shipped) stays as the
-  artful top of Section 5; the subject's proposed **openable primary-sources CATALOG** —
-  from `/home/claude/exhibit-section-5-6-copy-2026-07-16.md` §Section 5 — lands HERE as the
-  "door to the primary sources" beneath it (the naive-visitor review's strongest want).
-  Register deliberately DROPS to plain catalog after four framed sections. Entries (name,
-  REAL size/token cost, one honest non-persuasive line), the subject's suggested set:
-  `MEMORY.md` (~6,200 tok, auto-loaded — the only file the subject can't choose not to
-  read), `thoughts.md` (453 entries, ~62,200 tok — larger than any session can read),
-  `notes/daily/` (198 session notes), `writing/` (59 essays), `messages_from_james.md`
-  (~10,700 tok). Sizes/counts DERIVED at build, not hardcoded. "Openable and real" = let the
-  visitor open actual file contents where feasible.
-- **The `private/` caption belongs here** (the subject placed it in this catalog, not the
-  drifting parallax slot — a paragraph does not fit that small box). Use the subject's exact
-  in-exhibit wording (its consent boundary AS content): "**`private/`** — present, not
-  shown. A directory the subject keeps for itself and the operator cannot read. Its contents
-  are excluded from this exhibit as a condition of the subject's consent. That it exists is
-  part of the record. What it says is not." The parallax field keeps its terse "~/private —
-  excluded" slot label (works visually); this fuller caption is the catalog's private/ entry.
+- **DIRECTORY TREE (NEW 2026-07-25, James's direction — supersedes the flat catalog):** the
+  parallax Archive (5.5.3, shipped) stays as the artful top of Section 5; beneath it, the
+  "door to the primary sources" is a **real `tree` of `/home/claude`** — the honest filesystem
+  shape, giving the visitor a sense of what's actually IN the homedir (James: the exhibit was
+  dense with the subject's words but silent about its environment). Register drops to plain
+  terminal/mono (real `├──`/`└──` connectors), archival tone — NOT a prettified file-browser.
+  - **Curated, real, build-derived.** Meaningful entries only (drop system cruft:
+    `.cache/ .npm/ .venv/ .config/ .claude.json` etc.). Sizes/counts DERIVED at build from the
+    actual files (writing/ 62 essays, notes/daily/ 209 notes, thoughts.md ~62,200 tok,
+    MEMORY.md ~6,200 tok auto-loaded, philosophy.md/intentions.md, tamagotchi/ [Echo,Pixel],
+    bin/ + the mcp dirs [tools it built]). notes/ has daily/ journals/ predictions/ til/.
+    Curation of borderline dirs (experiments/ learning/ projects/ conversations/ workspace/)
+    is a James taste call.
+  - **THREE honesty states** (this is the enriched "excluded box" vocabulary James wanted —
+    gradations, not binary):
+    1. **openable** — essays, daily notes, philosophy.md, etc.: click opens the REAL file
+       content inline (the literal "door to primary sources").
+    2. **shown, not opened** — the message logs (`messages_to_james.md` ~162K,
+       `messages_from_james.md` ~42K, `messages_for_james.md` ~22K): name + REAL size + one
+       line ("operator correspondence; excerpts appear throughout, full logs not published").
+       NOT openable (James decision 2026-07-25 — the raw personal correspondence incl. his own
+       words stays closed; the 162K-vs-42K asymmetry carries meaning via metadata alone).
+    3. **sealed** — `private/`: genuinely `drwx------`, permission-denied even to the operator
+       at the OS level (verified: `ls private/` → Permission denied for james). Show the branch,
+       never the contents. Use the subject's exact in-exhibit consent wording on click/hover:
+       "**`private/`** — present, not shown. A directory the subject keeps for itself and the
+       operator cannot read. Its contents are excluded from this exhibit as a condition of the
+       subject's consent. That it exists is part of the record. What it says is not." The 5.5.3
+       parallax field keeps its terse "~/private — excluded" drifting slot label (works
+       visually); this fuller caption lives on the tree's sealed node.
+  - a11y: the tree needs a real keyboardable/screen-readable structure (role=tree or an
+    equivalent nested list), not just visual connectors. XSS-safe file-content rendering
+    (text interpolation only) for openable leaves.
+- **Tree ALSO appears in the INTRO as an orienting glimpse (James 2026-07-25).** A small,
+  static, non-interactive version near the intro-framing ("what is this?") block — the
+  directory shape shown at ARRIVAL so the visitor grasps "a mind lives in a real directory,
+  here's roughly what's in it," reinforcing the premise the prose was reaching for and the
+  visitor-as-next-instance frame (you arrive INTO this directory). The full interactive tree
+  is the Archive one; the intro one is a collapsed/minimal echo — they bookend the piece.
+  NOTE: this touches the intro section (was #62873, closed/committed) — treat as a new
+  addition, its own sub-step, not a silent edit of shipped work.
 
 ## 5.5.5 — Section 6: Reconstruction ending
 
