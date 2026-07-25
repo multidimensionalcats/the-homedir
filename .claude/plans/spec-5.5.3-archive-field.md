@@ -99,10 +99,32 @@ passes ONLY the derived fragments (already excerpt-trimmed), never raw quotes/se
    fully legible. Alignment composes, holds only at the precise position, and BREAKS on
    continued scroll — both directions, any number of times (pure function of progress; no
    state machine, no snapping, NO wheel-hijacking, no scroll-behavior overrides).
-10. **Mobile** (<768px via matchMedia, read once at effect entry — module-scope-capture
-    bug class from #62845 must be avoided; read inside `$effect`, cache the boolean):
-    render only the first `mobileCap` fragments of the passed array (deterministic
-    prefix), shallower parallax factors. Alignment still reachable (same window).
+10. **Mobile** (<768px): shallower parallax factors (via the `$effect`-entry matchMedia
+    read — module-scope-capture bug class from #62845 avoided). Fragment-count reduction
+    REVISED 2026-07-25 (browser QA + James): the count is capped via CSS, NOT by slicing
+    the render list — slicing created an SSR/client hydration divergence (server has no
+    `window` → SSR emits all fragments; `client:visible` hydration did not reconcile the
+    surplus away, so mobile showed the full desktop count). NEW mechanism:
+    - `renderList` = ALL passed fragments, ALWAYS (SSR and client identical — no
+      hydration mismatch).
+    - Every fragment at index >= `mobileCap` carries a marker (class `beyond-mobile-cap`
+      or `data-beyond-mobile-cap="true"`), deterministic prefix preserved (first
+      `mobileCap` stay visible).
+    - CSS: `@media (max-width: 767px) { .fragment.beyond-mobile-cap { display: none } }`
+      hides the surplus on mobile only. `mobileCap` normalization unchanged (NaN/non-
+      number → 20; <= 0 → all marked/hidden; > length → none marked).
+    - Alignment still reachable (same window); the visible mobile prefix converges.
+    Note: apply() may still write transforms to display:none fragments — harmless (not
+    painted); acceptable over adding per-frame visibility branching.
+10b. **Mobile absence-slot placement** (NEW 2026-07-25, browser QA + James): on <768px
+    the payoff line is near-full-width and centered at the field's vertical middle (the
+    alignment zone). The absence slot's hash-derived position overlapped it. On mobile,
+    reposition the absence slot to a zone that CANNOT overlap the centered payoff at the
+    alignment peak — anchor it clear of the vertical-center band (e.g. lower field), and
+    ensure its drift keeps it clear. It stays visible (opacity floor 0.4, consent
+    condition) and still never aligns. Desktop/tablet placement unchanged (they have
+    horizontal room). Implementer picks the exact mechanism (CSS `@media` override of the
+    inline position, mind the JS drift offset); browser QA verifies no overlap at the peak.
 
 ## Reduced motion
 

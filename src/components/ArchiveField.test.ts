@@ -52,9 +52,17 @@ import ArchiveField from './ArchiveField.svelte';
 //   window.scrollTo calls, no scroll-behavior override in CSS.
 //
 // Mobile (<768px, matchMedia read INSIDE the effect, per-mount — never
-//   captured at module scope): renders only the first mobileCap
-//   fragments (default 20; NaN → default; 0 → none; > length → all).
-//   Desktop ignores mobileCap. Shallower parallax on mobile.
+//   captured at module scope): the render list is ALWAYS the FULL set of
+//   passed fragments (SSR/client identical — no hydration divergence).
+//   The mobile count cap is enforced via CSS, NOT by slicing the render
+//   list: every fragment at index >= mobileCap carries the marker class
+//   `beyond-mobile-cap` (default mobileCap 20; NaN/non-number → 20;
+//   <= 0 → ALL marked; >= length → NONE marked). A
+//   `@media (max-width: 767px)` rule sets `display: none` on
+//   `.fragment.beyond-mobile-cap`. Shallower parallax on mobile.
+//   The absence slot is repositioned on <768px via a
+//   `@media (max-width: 767px)` rule overriding its inline top/left so it
+//   cannot overlap the centered payoff at the alignment peak.
 //
 // Reduced motion (read at effect entry, per-mount): NO scroll/resize
 //   listeners, NO IntersectionObserver, ZERO timers. Static
@@ -401,6 +409,42 @@ function transitionValues(css: string): string[] {
     s.matchAll(/(?:^|[;{])\s*transition(?:-property)?\s*:\s*([^;}]+)/gi),
     (m) => m[1],
   );
+}
+
+/**
+ * Return the BODIES of every `@media (max-width: 767px)` block in the
+ * injected CSS (comments stripped first — flatCssRules brace-scan bug).
+ * Manual depth-scan so nested rules inside the block are captured whole.
+ * Matches the media query loosely: `@media` ... `max-width` ... `767px`
+ * up to the opening brace (tolerant of `screen and`, spacing, `only`).
+ */
+function mediaMaxWidth767Blocks(css: string): string[] {
+  const s = stripCssComments(css);
+  const blocks: string[] = [];
+  // Match "@media <prelude> {" where the prelude contains max-width:767px.
+  const re = /@media[^{]*\{/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
+    const prelude = m[0];
+    if (!/max-width\s*:\s*767px/i.test(prelude)) continue;
+    const open = m.index + prelude.length - 1; // index of the '{'
+    let depth = 1;
+    let i = open + 1;
+    while (i < s.length && depth > 0) {
+      if (s[i] === '{') depth++;
+      else if (s[i] === '}') depth--;
+      i++;
+    }
+    blocks.push(s.slice(open + 1, i - 1));
+    // Continue scanning AFTER this block so nested @media don't double-count.
+    re.lastIndex = i;
+  }
+  return blocks;
+}
+
+/** Concatenated body of all mobile @media blocks (whitespace-normalized). */
+function mobileMediaCss(css: string): string {
+  return mediaMaxWidth767Blocks(css).join('\n');
 }
 
 // ============================================================
@@ -1034,48 +1078,187 @@ describe('ArchiveField -- matchMedia read at effect entry, NOT module scope', ()
 });
 
 // ============================================================
-// 9. Mobile cap (<768px)
+// 9. Mobile cap (<768px) — REVISED 2026-07-25 (browser QA + James).
+//
+// The mobile fragment cap is enforced via CSS, NOT by slicing the
+// render list. The OLD slicing mechanism (render-list length depended
+// on viewport → SSR/client hydration divergence) is GONE. New rules:
+//   - renderList = ALL passed fragments, ALWAYS. .fragment node count
+//     equals fragments.length regardless of matchMedia (mobile or not).
+//   - Every fragment at index >= mobileCap carries the marker class
+//     `beyond-mobile-cap`; indices < mobileCap do NOT.
+//     (default 20; NaN/non-number → 20; <= 0 → ALL marked;
+//      >= length → NONE marked.)
+//   - A `@media (max-width: 767px)` rule sets display:none on
+//     `.fragment.beyond-mobile-cap` (accept `[data-beyond-mobile-cap]`).
+//   - Alignment still reachable (window unchanged).
 // ============================================================
-describe('ArchiveField -- mobile cap', () => {
-  beforeEach(() => {
+
+/** ordered boolean: does the fragment at each index carry the cap marker? */
+function beyondCapFlags(container: Element): boolean[] {
+  return fragmentEls(container).map(
+    (el) =>
+      el.classList.contains('beyond-mobile-cap') ||
+      el.getAttribute('data-beyond-mobile-cap') === 'true',
+  );
+}
+
+describe('ArchiveField -- mobile cap via CSS (render-list is always full)', () => {
+  it('mobile matchMedia=true still renders ALL 30 fragments (count no longer depends on viewport)', () => {
     mockMedia({ mobile: true });
+    const { container } = renderField({ fragments: makeFragments(30) });
+    expect(fragmentEls(container).length).toBe(30);
   });
 
-  it('default mobileCap renders EXACTLY the first 20 of 30 fragments (deterministic prefix by id)', () => {
+  it('desktop matchMedia=false ALSO renders all 30 fragments — identical count to mobile (SSR/client parity)', () => {
+    mockMedia({ mobile: false });
+    const { container } = renderField({ fragments: makeFragments(30) });
+    expect(fragmentEls(container).length).toBe(30);
+  });
+
+  it('the .fragment count equals fragments.length for both matchMedia states with the SAME props', () => {
     const frags = makeFragments(30);
-    const { container } = renderField({ fragments: frags });
-    const ids = fragmentEls(container).map((el) => el.getAttribute('data-fragment-id'));
-    expect(ids.length).toBe(20);
-    expect(new Set(ids)).toEqual(new Set(frags.slice(0, 20).map((f) => f.id)));
-    expect(ids).not.toContain(frags[20].id);
+    mockMedia({ mobile: true });
+    const a = renderField({ fragments: frags });
+    const mobileCount = fragmentEls(a.container).length;
+    a.unmount();
+    mockMedia({ mobile: false });
+    const b = renderField({ fragments: frags });
+    const desktopCount = fragmentEls(b.container).length;
+    expect(mobileCount).toBe(30);
+    expect(desktopCount).toBe(30);
+    expect(mobileCount).toBe(desktopCount);
   });
 
-  it('mobileCap=5 renders exactly the first 5', () => {
-    const frags = makeFragments(30);
-    const { container } = renderField({ fragments: frags, mobileCap: 5 });
-    const ids = fragmentEls(container).map((el) => el.getAttribute('data-fragment-id'));
-    expect(new Set(ids)).toEqual(new Set(frags.slice(0, 5).map((f) => f.id)));
+  it('default mobileCap 20: indices 0–19 are NOT marked; indices 20–29 ARE marked beyond-mobile-cap', () => {
+    const { container } = renderField({ fragments: makeFragments(30) });
+    const flags = beyondCapFlags(container);
+    expect(flags.length).toBe(30);
+    for (let i = 0; i < 20; i++) expect(flags[i]).toBe(false);
+    for (let i = 20; i < 30; i++) expect(flags[i]).toBe(true);
   });
 
-  it('mobileCap=0 renders NO fragments but keeps the absence slot, aligned line, and sr block', () => {
+  it('mobileCap=24: indices 0–23 unmarked, indices 24+ marked (matches the page-locked cap)', () => {
+    const { container } = renderField({ fragments: makeFragments(30), mobileCap: 24 });
+    const flags = beyondCapFlags(container);
+    for (let i = 0; i < 24; i++) expect(flags[i]).toBe(false);
+    for (let i = 24; i < 30; i++) expect(flags[i]).toBe(true);
+  });
+
+  it('mobileCap=5: exactly the first 5 unmarked, the rest marked', () => {
+    const { container } = renderField({ fragments: makeFragments(30), mobileCap: 5 });
+    const flags = beyondCapFlags(container);
+    expect(flags.slice(0, 5).every((f) => f === false)).toBe(true);
+    expect(flags.slice(5).every((f) => f === true)).toBe(true);
+    // still ALL 30 rendered
+    expect(flags.length).toBe(30);
+  });
+
+  it('mobileCap=0: ALL fragments are marked beyond-mobile-cap (nothing survives the mobile cap) but all still render', () => {
     const { container } = renderField({ fragments: makeFragments(30), mobileCap: 0 });
-    expect(fragmentEls(container).length).toBe(0);
+    const flags = beyondCapFlags(container);
+    expect(flags.length).toBe(30);
+    expect(flags.every((f) => f === true)).toBe(true);
+    // absence slot, aligned line, sr block unaffected
     expect(absenceEl(container)).toBeTruthy();
     expect(alignedEl(container)).toBeTruthy();
     expect(srEl(container)).toBeTruthy();
   });
 
-  it('mobileCap greater than fragments.length renders all of them', () => {
+  it('negative mobileCap (<= 0) marks ALL fragments', () => {
+    const { container } = renderField({ fragments: makeFragments(12), mobileCap: -4 });
+    const flags = beyondCapFlags(container);
+    expect(flags.length).toBe(12);
+    expect(flags.every((f) => f === true)).toBe(true);
+  });
+
+  it('mobileCap >= fragments.length: NONE are marked (all survive the mobile cap)', () => {
     const { container } = renderField({ fragments: makeFragments(7), mobileCap: 50 });
-    expect(fragmentEls(container).length).toBe(7);
+    const flags = beyondCapFlags(container);
+    expect(flags.length).toBe(7);
+    expect(flags.every((f) => f === false)).toBe(true);
   });
 
-  it('mobileCap=NaN falls back to the default 20', () => {
+  it('mobileCap exactly === fragments.length: NONE marked (index >= cap never reached)', () => {
+    const { container } = renderField({ fragments: makeFragments(9), mobileCap: 9 });
+    expect(beyondCapFlags(container).every((f) => f === false)).toBe(true);
+  });
+
+  it('mobileCap=NaN falls back to 20: indices 20+ marked', () => {
     const { container } = renderField({ fragments: makeFragments(30), mobileCap: NaN });
-    expect(fragmentEls(container).length).toBe(20);
+    const flags = beyondCapFlags(container);
+    for (let i = 0; i < 20; i++) expect(flags[i]).toBe(false);
+    for (let i = 20; i < 30; i++) expect(flags[i]).toBe(true);
+    // still all rendered
+    expect(flags.length).toBe(30);
   });
 
-  it('alignment is still reachable on mobile: c=1 at progress 0.5', () => {
+  it('non-number mobileCap (string "8") is treated as the default 20, NOT coerced to 8', () => {
+    const { container } = renderField({
+      fragments: makeFragments(30),
+      mobileCap: '8' as any,
+    });
+    const flags = beyondCapFlags(container);
+    for (let i = 0; i < 20; i++) expect(flags[i]).toBe(false);
+    for (let i = 20; i < 30; i++) expect(flags[i]).toBe(true);
+  });
+
+  it('the cap marker is a stable prefix: for 30 fragments at cap 20, the unmarked ids are exactly the first 20 in render order', () => {
+    const frags = makeFragments(30);
+    const { container } = renderField({ fragments: frags });
+    const els = fragmentEls(container);
+    const flags = beyondCapFlags(container);
+    const unmarkedIds = els
+      .filter((_, i) => !flags[i])
+      .map((el) => el.getAttribute('data-fragment-id'));
+    expect(unmarkedIds.length).toBe(20);
+    expect(unmarkedIds).toContain(frags[0].id);
+    expect(unmarkedIds).toContain(frags[19].id);
+    expect(unmarkedIds).not.toContain(frags[20].id);
+  });
+});
+
+describe('ArchiveField -- mobile cap CSS rule (display:none via @media)', () => {
+  it('injected CSS has a @media (max-width: 767px) block that display:none the beyond-cap fragments', () => {
+    renderField({ fragments: makeFragments(30) });
+    const css = getInjectedCss();
+    // The mobile @media block must exist at all.
+    const blocks = mediaMaxWidth767Blocks(css);
+    expect(blocks.length).toBeGreaterThan(0);
+    // Some mobile @media block must target the beyond-cap selector AND
+    // set display:none within a rule that mentions it.
+    const mobileCss = mobileMediaCss(css);
+    const mentionsSelector =
+      /\.fragment\.beyond-mobile-cap/.test(mobileCss) ||
+      /\.beyond-mobile-cap/.test(mobileCss) ||
+      /\[data-beyond-mobile-cap\]/.test(mobileCss);
+    expect(mentionsSelector).toBe(true);
+    expect(/display\s*:\s*none/i.test(mobileCss)).toBe(true);
+  });
+
+  it('the display:none rule and the beyond-cap selector co-occur in the SAME rule block inside the mobile @media', () => {
+    renderField({ fragments: makeFragments(30) });
+    const mobileCss = mobileMediaCss(getInjectedCss());
+    // Scan rule bodies inside the mobile media block; find a rule whose
+    // SELECTOR names the beyond-cap marker and whose BODY sets display:none.
+    const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+    let m: RegExpExecArray | null;
+    let matched = false;
+    while ((m = ruleRe.exec(mobileCss)) !== null) {
+      const selector = m[1];
+      const body = m[2];
+      if (
+        (/beyond-mobile-cap/.test(selector)) &&
+        /display\s*:\s*none/i.test(body)
+      ) {
+        matched = true;
+      }
+    }
+    expect(matched).toBe(true);
+  });
+
+  it('alignment is still reachable on mobile: c=1 at progress 0.5 (all fragments render in happy-dom, so the visible prefix converges)', () => {
+    mockMedia({ mobile: true });
     const { container } = renderField({ fragments: makeFragments(30) });
     triggerLatestIntersection(true);
     scrollTo(0);
@@ -1107,13 +1290,6 @@ describe('ArchiveField -- mobile cap', () => {
       if (id in desktopMap && desktopMap[id] !== el.style.transform) differs = true;
     }
     expect(differs).toBe(true);
-  });
-});
-
-describe('ArchiveField -- desktop ignores mobileCap', () => {
-  it('at desktop width all 30 fragments render even with mobileCap=3', () => {
-    const { container } = renderField({ fragments: makeFragments(30), mobileCap: 3 });
-    expect(fragmentEls(container).length).toBe(30);
   });
 });
 
@@ -1174,6 +1350,78 @@ describe('ArchiveField -- absence slot', () => {
     const inline = styleOf(absenceEl(container));
     const css = stripCssComments(getInjectedCss());
     expect(/dashed/i.test(inline) || /dashed/i.test(css)).toBe(true);
+  });
+
+  // ----------------------------------------------------------
+  // Mobile absence-slot repositioning (rule 10b, NEW 2026-07-25).
+  // On <768px the payoff line is centered in the field's vertical
+  // middle (the alignment band); the absence slot's hash-derived
+  // position overlapped it. The impl repositions the slot on mobile
+  // via a @media (max-width: 767px) rule overriding its inline
+  // top/left (likely !important to beat the inline style) into a safe
+  // zone clear of the vertical-center band. happy-dom does NOT apply
+  // media queries to layout, so we pin the CSS RULE presence, not
+  // computed visibility (no-overlap is verified in browser QA).
+  // ----------------------------------------------------------
+  it('a @media (max-width: 767px) rule targets the absence slot and overrides its position (top and/or left)', () => {
+    renderField({ fragments: makeFragments(3) });
+    const mobileCss = mobileMediaCss(getInjectedCss());
+    expect(mobileCss.length).toBeGreaterThan(0);
+    // Find a rule inside the mobile media block whose SELECTOR targets
+    // the absence slot and whose BODY sets top and/or left.
+    const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+    let m: RegExpExecArray | null;
+    let repositioned = false;
+    while ((m = ruleRe.exec(mobileCss)) !== null) {
+      const selector = m[1];
+      const body = m[2];
+      const targetsSlot =
+        /\.absence-slot/.test(selector) ||
+        /\[data-testid\s*=\s*["']absence-slot["']\]/.test(selector);
+      const overridesPosition =
+        /(^|[;{\s])top\s*:/i.test(body) || /(^|[;{\s])left\s*:/i.test(body);
+      if (targetsSlot && overridesPosition) repositioned = true;
+    }
+    expect(repositioned).toBe(true);
+  });
+
+  it('the mobile absence-slot override uses !important to beat the inline seed position', () => {
+    renderField({ fragments: makeFragments(3) });
+    const mobileCss = mobileMediaCss(getInjectedCss());
+    const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
+    let m: RegExpExecArray | null;
+    let hasImportant = false;
+    while ((m = ruleRe.exec(mobileCss)) !== null) {
+      const selector = m[1];
+      const body = m[2];
+      const targetsSlot =
+        /\.absence-slot/.test(selector) ||
+        /\[data-testid\s*=\s*["']absence-slot["']\]/.test(selector);
+      if (targetsSlot && /(top|left)\s*:[^;]*!important/i.test(body)) {
+        hasImportant = true;
+      }
+    }
+    expect(hasImportant).toBe(true);
+  });
+
+  it('the absence slot still renders and keeps its opacity floor with the mobile reposition rule in play', () => {
+    mockMedia({ mobile: true });
+    const { container } = mountActive({ fragments: makeFragments(5) });
+    const absence = absenceEl(container);
+    expect(absence).toBeTruthy();
+    for (const p of [0, 0.5, 1]) {
+      scrollToProgress(p);
+      expect(numOpacity(absence) ?? 1).toBeGreaterThanOrEqual(0.4 - 1e-9);
+    }
+  });
+
+  it('the absence slot never aligns on mobile: its transform differs from the fragments’ common aligned transform at c=1', () => {
+    mockMedia({ mobile: true });
+    const { container } = mountActive({ fragments: makeFragments(5) });
+    scrollToProgress(0.5);
+    const common = fragmentEls(container)[0].style.transform;
+    expect(common).toBeTruthy();
+    expect(absenceEl(container).style.transform || '').not.toBe(common);
   });
 });
 

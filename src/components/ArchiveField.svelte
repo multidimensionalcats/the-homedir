@@ -140,7 +140,6 @@
   }
 
   const prefersReducedInit = readMedia('(prefers-reduced-motion: reduce)');
-  const isMobileInit = readMedia('(max-width: 767px)');
 
   // ---------------------------------------------------------------------
   // Render list. Props are never mutated (slice only) — deep-frozen props
@@ -155,9 +154,11 @@
     return floored > 0 ? floored : 0;
   });
 
-  const renderList = $derived(
-    isMobileInit ? fragList.slice(0, mobileCapNorm) : fragList
-  );
+  // renderList is ALL fragments, ALWAYS — identical on SSR and client (no
+  // hydration divergence). The mobile fragment cap is applied via CSS
+  // (`.fragment.beyond-mobile-cap { display: none }` under max-width: 767px),
+  // NOT by slicing the render list.
+  const renderList = $derived(fragList);
 
   const fragmentCount = $derived(fragList.length);
 
@@ -405,8 +406,16 @@
     aria-hidden="true"
   >
     {#each renderList as frag, i}
-      <!-- Text via Svelte interpolation ONLY — excerpts are untrusted. -->
-      <div class="fragment" data-fragment-id={idOf(frag, i)} style={fragStyle(frag, i)}>
+      <!-- Text via Svelte interpolation ONLY — excerpts are untrusted.
+           `beyond-mobile-cap` marks fragments at index >= mobileCapNorm; a
+           `@media (max-width: 767px)` rule hides them (mobile fragment cap
+           via CSS, no render-list slicing → no hydration divergence). -->
+      <div
+        class="fragment"
+        class:beyond-mobile-cap={i >= mobileCapNorm}
+        data-fragment-id={idOf(frag, i)}
+        style={fragStyle(frag, i)}
+      >
         <span class="fragment-excerpt">{excerptOf(frag)}</span>
         {#if metaOf(frag) !== ''}
           <span class="fragment-meta">{metaOf(frag)}</span>
@@ -461,6 +470,24 @@
   @media (max-width: 767px) {
     .archive-field {
       height: 160vh;
+    }
+
+    /* Mobile fragment cap (spec rule 10, REVISED): hide the surplus beyond
+       mobileCap. renderList stays full on SSR + client — no hydration
+       divergence; only paint differs. */
+    .fragment.beyond-mobile-cap {
+      display: none;
+    }
+
+    /* Mobile absence-slot repositioning (spec rule 10b): the hash-seeded
+       inline top/left can land the slot over the centered payoff line at the
+       alignment peak. Override to the field's lower edge, well clear of the
+       vertical-center band even after the JS upward drift (~100px at peak).
+       !important beats the inline seed style. Desktop/tablet untouched
+       (scoped to this @media). */
+    .absence-slot {
+      top: 82% !important;
+      left: 6% !important;
     }
   }
 
