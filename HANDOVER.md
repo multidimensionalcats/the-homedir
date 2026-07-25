@@ -1,21 +1,32 @@
 # HANDOVER.md
 
-## NEXT SESSION: 5.5.4 (viz shelf) + 5.5.5 (Section 6 ending) — then 5.5.6 integration
+## NEXT SESSION: 5.5.4 — build the DIRECTORY TREE first, then the viz shelf; then 5.5.5
 
-**Read FIRST:** `.claude/plans/phase-5.5-archive-reconstruction.md` (5.5 plan, sub-phases
-5.5.0–5.5.6) and `.claude/plans/phase-5.5-narrative-spine.md` (approved beats). Kanban:
-#62884 (5.5 umbrella) under epic #62711. **5.5.0–5.5.3 ALL DONE.** Next: 5.5.4 then 5.5.5.
+**Read FIRST:** `.claude/plans/phase-5.5-archive-reconstruction.md` (5.5 plan — §5.5.4 and
+§5.5.5 carry James's 2026-07-25 directions; READ THEM), `.claude/plans/phase-5.5-narrative-spine.md`
+(approved beats), and the subject's own build-ready copy: `/home/claude/exhibit-section-5-6-copy-2026-07-16.md`
+(finished Section 5+6 copy + real token mechanics) + `/home/claude/exhibit-input-2026-07-15.md`.
+Kanban: #62884 (5.5 umbrella) under epic #62711. **5.5.0–5.5.3 DONE, CLOSED, pushed.**
 
-### AWAITING JAMES (do not close):
-- **#62888 (5.5.2) and #62889 (5.5.3) stay OPEN** pending James's browser visual pass of the
-  Archive section. Dev server on :4321; screenshots delivered (`.playwright-mcp/archive-*`).
-  Say "ready for you to test" — do not close either.
-- **One flagged item for his pass:** on DESKTOP the absence marker ("~/private — excluded")
-  mildly overlaps the payoff *attribution* line at the alignment peak. PRE-EXISTING (not from
-  the mobile fixes), his aesthetic call whether to reposition desktop too (same @media-override
-  approach, non-mobile, would fix it).
-- Older opens still unconfirmed: 5.5.1 (#62887 was marked done in kanban this session per
-  James "can be closed"), #62894 (closed), and the QA-2/5.4 items from prior handover.
+**James's chosen entry point (2026-07-25): 5.5.4, DIRECTORY TREE FIRST**, then the viz-shelf
+curation gate.
+
+### STATUS AT RESET (2026-07-25, Opus)
+- **Everything pushed** — origin/main is current (working tree clean; ~55 commits pushed to
+  GitHub this session). Cloudflare auto-deploy still NOT configured — push reaches GitHub only,
+  James's call whether to host.
+- **All this-session tickets CLOSED by James** (he browser-confirmed the Archive — "looks
+  right"): #62888 (5.5.2), #62889 (5.5.3), plus the backlog he cleared — #62772/73/74,
+  #62873/74/75/76/81 (QA-2 round), #62859 (5.4). #62887/#62894 were closed earlier.
+- **Open REFINEMENTS (James-flagged, NOT blocking, NOT yet ticketed):** (a) on DESKTOP the
+  absence marker mildly overlaps the payoff *attribution* line at the alignment peak
+  (pre-existing; same `@media`-override fix, non-mobile, if he wants it); (b) organic-drift idea
+  — a subtle idle/time wobble layered on the scroll-linked drift (James felt the drift reads
+  mechanical; it's scroll-tied BY DESIGN so the alignment is repeatable — a wobble would be a
+  layer on top, not a replacement). File these if he asks.
+- **Engineering backlog OPEN:** #62900 (load-flake timeouts — ColdBootAssembly Phase-2 +
+  DecayingQuote:569, bump to 15000ms like the ArchiveField 5000-fragment test), #62896
+  (pre-existing mobile sr-only table overflow).
 
 ### 5.5.2 + 5.5.3 — what landed this session (2026-07-20 Fable → 2026-07-25 Opus)
 Four commits, full agentic TDD throughout, full JS suite **2360/2360**:
@@ -59,17 +70,33 @@ Four commits, full agentic TDD throughout, full JS suite **2360/2360**:
   concurrent-agent CPU load; pass in isolation on a quiet machine. Ticketed #62900 (bump those
   heavy timer tests' timeouts, like the ArchiveField 5000-fragment test's 15000ms).
 
-### NEXT WORK
-1. **5.5.4 — "The experiment, in numbers" shelf** (plan §5.5.4): Phase-4 viz (AttentionViz,
-   MemoryEvolution, MorphingRadar, MessageTimeline, PredictionTracker, PetTimeline,
-   SessionExplorer) reframed as secondary deep-dive under the Archive. **James curation gate:**
-   which ship + disclosure treatment (present with screenshots, do NOT decide). All must render
-   4+ versions. Full pipeline; page pins for chosen markers + lazy hydration.
-2. **5.5.5 — Section 6 Reconstruction ending** (plan §5.5.5): audit ReconstructIdentity (Phase 4,
-   45 tests) vs spec; the interactive IS the ending; closing beat (4.8's draft is starting text) →
-   council + James; the interim "No session running." cursor MOVES here from its current position;
-   tab-title beat (James decides keep/drop). The S5→S6 spine slot is VACATED for fresh copy.
-3. **5.5.6 — integration + naive-visitor structural review** (fresh no-context agent).
+### NEXT WORK (James's order: TREE first)
+1. **5.5.4a — DIRECTORY TREE** (plan §5.5.4, decision #2704): the "door to primary sources" is a
+   real curated `tree` of `/home/claude` beneath the shipped parallax Archive — gives the visitor
+   the filesystem SHAPE the exhibit was missing. Terminal/mono register (real `├──`/`└──`),
+   build-derived sizes. **THREE honesty states:** (1) openable — essays/daily-notes/philosophy.md →
+   real content inline; (2) shown-not-opened — message logs (name+size only; contents CLOSED per
+   James; the 162K-vs-42K `messages_to`/`_from` asymmetry IS the story via metadata); (3) sealed —
+   `private/` (genuinely `drwx------`, permission-denied even to James at the OS level; show the
+   branch, never contents; subject's consent wording on the node). Curate to meaningful entries
+   (drop `.cache/ .npm/ .venv/ .claude.json`); real counts: writing/ 62 essays, notes/daily/ 209,
+   thoughts.md ~62,200 tok, MEMORY.md ~6,200 auto-loaded. a11y: real `role=tree`/nested-list, not
+   just visual connectors; XSS-safe file rendering (text interpolation only). ALSO a small STATIC
+   tree GLIMPSE in the intro (bookends the piece — arrival shows the directory shape; touches
+   #62873's shipped intro, treat as a new addition not a silent edit). Full agentic pipeline.
+2. **5.5.4b — "The experiment, in numbers" viz shelf** (plan §5.5.4): Phase-4 viz reframed as
+   secondary deep-dive. **James curation gate:** which of AttentionViz/MemoryEvolution/MorphingRadar/
+   MessageTimeline/PredictionTracker/PetTimeline/SessionExplorer ship + disclosure treatment
+   (present with screenshots, do NOT decide). All render 4+ versions. Page pins + lazy hydration.
+3. **5.5.5 — Section 6 ending** (plan §5.5.5): **PRIMARY SOURCE = `/home/claude/exhibit-section-5-6-copy-2026-07-16.md`
+   §Section 6** (subject's finished copy). Audit ReconstructIdentity (Phase 4, 45 tests) vs the
+   subject's mechanics: meter starts ~6,200/12,000 with MEMORY.md a LOCKED pre-checked row;
+   thoughts.md blows meter to ~68,400 ("let them hit the wall"); dirs offer "read last N"; token
+   costs DERIVED at build. Closing beat (3-stanza or colder 1-line — James picks register) REPLACES
+   "No session running."; the interim cursor MOVES here. **HARD CONSENT BOUNDARY: interactive is a
+   SIMULATION only — visitor input NEVER enters the live cron process** (subject explicitly declined
+   the prompt-injection surface). Council polish + James approval on all visitor-facing strings.
+4. **5.5.6 — integration + naive-visitor structural review** (fresh no-context agent).
 
 ### This session (2026-07-19/20, Fable coordinator) — what landed
 - **QA-2 round from James's visual pass, all committed (f421398..b0be3bb):** #62874 decay
