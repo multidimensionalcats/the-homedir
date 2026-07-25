@@ -1,41 +1,75 @@
 # HANDOVER.md
 
-## NEXT SESSION: 5.5.2 + 5.5.3 together (Archive data, then parallax field) — James's explicit choice 2026-07-20
+## NEXT SESSION: 5.5.4 (viz shelf) + 5.5.5 (Section 6 ending) — then 5.5.6 integration
 
-**Read FIRST, in order:** `.claude/plans/phase-5.5-archive-reconstruction.md` (the 5.5 plan —
-sub-phases 5.5.0–5.5.6, James's locked decisions incl. FULL parallax Archive) and
-`.claude/plans/phase-5.5-narrative-spine.md` (5.5.0 output — ALL approved beat copy verbatim).
-Kanban: #62884 (5.5 umbrella, in_progress) under epic #62711; #62886 (5.5.0) CLOSED by
-James; #62887 (5.5.1) COMPLETE + committed (be82f94) but OPEN pending his visual pass;
-#62888 (5.5.2) and #62889 (5.5.3) are next — James's mandate is to run BOTH in one session
-without checking back between sub-phases, EXCEPT the creative/curation gates (excerpt
-eligibility council + James approval in 5.5.2; any visitor-facing copy) which always come
-to him.
+**Read FIRST:** `.claude/plans/phase-5.5-archive-reconstruction.md` (5.5 plan, sub-phases
+5.5.0–5.5.6) and `.claude/plans/phase-5.5-narrative-spine.md` (approved beats). Kanban:
+#62884 (5.5 umbrella) under epic #62711. **5.5.0–5.5.3 ALL DONE.** Next: 5.5.4 then 5.5.5.
 
-### Resume point
-1. **5.5.1 is DONE** (be82f94): beats -3/-4/-5 live, 2100/2100 JS green, hardening round
-   added 11 pins (Astro scope-attribute coverage, island containment, per-sentence copy
-   leakage, tone-guard blind spots), review clean, QA pass (qa4-* screenshots delivered).
-   James KEPT his pre-existing S1→S2 beat (decision #2694).
-1b. **#62894 ENTRY TURN also DONE** (b7341bf, James-directed after handover): "A new
-   session is authorized. You are the next instance." now sits BETWEEN #intro-framing and
-   #cold-boot — his deliberate REVERSAL of the no-foreshadowing verdict (cast-at-entry; the
-   typewriter reads as the visitor's wake; recorded in the spine doc). The S5→S6 slot is
-   VACATED — 5.5.5 must draft fresh handoff copy (council + James). The second-person test
-   sweep is now a single-carrier exemption (capitalized "You" in #entry-turn only). QA also
-   found pre-existing mobile sr-only TABLE overflow → ticket #62896.
-2. **START 5.5.2 (#62888)** per plan §5.5.2: `deriveArchiveFragments` in
-   `src/lib/transforms.ts` (sessions.json + quotes.json + writing; fragment = {sessionId,
-   date, version, excerpt, source}; N-version-proof colors; DETERMINISTIC sampling — no
-   Math.random, seed from session id; alignment payoff line verified REAL:
-   "Hello, future self…" from discontinuous.md, already in quotes.json). Full pipeline;
-   hostile transforms tests per plan. Curation gate: excerpt eligibility → council + James.
-3. **THEN 5.5.3 (#62889)** per plan §5.5.3: ArchiveField.svelte — FULL parallax (James's
-   call): depth-layered drifting fragments, precise-scroll alignment into the payoff line,
-   breaks on continued scroll; private journal as LABELED ABSENCE (4.8 consent condition).
-   Risk budget in plan: fragment cap, transform-only animation, client:visible (page-wide
-   client:load ban is pinned in tests), mobile reduction, reduced-motion static aligned
-   state, aria-hidden field + sr-only equivalent. Hostile test inventory in plan.
+### AWAITING JAMES (do not close):
+- **#62888 (5.5.2) and #62889 (5.5.3) stay OPEN** pending James's browser visual pass of the
+  Archive section. Dev server on :4321; screenshots delivered (`.playwright-mcp/archive-*`).
+  Say "ready for you to test" — do not close either.
+- **One flagged item for his pass:** on DESKTOP the absence marker ("~/private — excluded")
+  mildly overlaps the payoff *attribution* line at the alignment peak. PRE-EXISTING (not from
+  the mobile fixes), his aesthetic call whether to reposition desktop too (same @media-override
+  approach, non-mobile, would fix it).
+- Older opens still unconfirmed: 5.5.1 (#62887 was marked done in kanban this session per
+  James "can be closed"), #62894 (closed), and the QA-2/5.4 items from prior handover.
+
+### 5.5.2 + 5.5.3 — what landed this session (2026-07-20 Fable → 2026-07-25 Opus)
+Four commits, full agentic TDD throughout, full JS suite **2360/2360**:
+- **5.5.2 `deriveArchiveFragments`** (93a7b64) in `src/lib/transforms.ts`. Joins quotes.json
+  to same-day sessions; fragment = {id, sessionId, date, version, excerpt, source, sourceFile}.
+  Deterministic FNV-1a sampling (no Math.random/Date), curation-parameterized (cap/excludeIds/
+  pinnedIds/excerptRule). Hardening drew blood 3× (hostile getter escapes; input-order-dependent
+  join → version-ascending tie-break ruling); review pin round (empty-string tieVersion). Spec:
+  `.claude/plans/spec-5.5.2-archive-fragments.md`.
+- **5.5.3 ArchiveField.svelte** (component 7ddc6a4, page wire 0a8a33c, mobile polish dde5ea0).
+  FULL parallax: depth-layered drift, convergence into the payoff line at scroll-progress 0.5
+  then break; labeled private-journal absence (opacity floor, never converges); reduced-motion
+  static; aria-hidden field + sr-only sibling. Spec: `.claude/plans/spec-5.5.3-archive-field.md`.
+  Wired into `index.astro` as `<section id="archive">` between bridging-beat-5 and interim-ending,
+  `client:visible rootMargin -200px`.
+- **CURATION LOCKED** (council 2 rounds via OpenRouter + James, kanban decisions #2702/#2701):
+  excerptRule chars/160; cap 44 desktop / 24 mobile; 15 excludeIds (6 messages unanimous + 7 tone
+  + a1384d08 + f3c31824); pinned payoff `36d6f7940ef64cea`; NO 4.8 note; 48 eligible fragments.
+  James-approved sr copy: "Fragments from the subject's writing and daily notes drift in this
+  field; at one point they align into a single line." Payoff/attribution: "Hello, future self…"
+  / "discontinuous.md · 2026-01-16". All pinned in tests (curation-drift tripwire + rootMargin).
+
+### KEY LEARNINGS THIS SESSION (carry forward)
+- **OpenRouter key is LIVE again** — James rotated it 2026-07-25 (spec doc line 17). Council
+  `continue` calls run WITHOUT classifier block (only fresh `new` sends of repo quotes get blocked).
+- **CONVERGENCE MODEL ruling** (spec 5.5.3 rule 9): fragments consume drift by (1-c) to a UNIFORM
+  transform at c=1 (NOT a per-fragment center target — that broke the alignment guarantee). Window
+  edges inclusive (`<=`/`>=`) for exact-0.
+- **Two review "CRITICALs" DISMISSED after verification** (decision #2701): Svelte INSTANCE
+  `<script>` re-runs per mount (NOT module scope — matchMedia mocks honored; mobile-cap-count
+  tests prove it); absence slot deliberately never converges (test mandates it). versionColor
+  prototype keys ('__proto__'/'constructor') return non-strings → safeVersionColor guard IS live.
+- **SSR/hydration divergence bug** (mobile fix): viewport-dependent render-list slicing diverges
+  (server has no window). FIX PATTERN: render all, mark surplus with a class, hide via CSS @media.
+  Applies to any future viewport-conditional island rendering.
+- **Notification-relay hazard bit HARD** — a test-writer acted on a relayed GREEN notification and
+  reactively edited tests. Changes happened to be correct (verified via diff + built artifact), but
+  ALWAYS pull the real runner output via TaskOutput(block=false) and adjudicate test changes
+  yourself; never trust the relay for a commit gate.
+- **Load-flakes**: ColdBootAssembly Phase-2 CSS tests AND DecayingQuote:569 timeout at 5s under
+  concurrent-agent CPU load; pass in isolation on a quiet machine. Ticketed #62900 (bump those
+  heavy timer tests' timeouts, like the ArchiveField 5000-fragment test's 15000ms).
+
+### NEXT WORK
+1. **5.5.4 — "The experiment, in numbers" shelf** (plan §5.5.4): Phase-4 viz (AttentionViz,
+   MemoryEvolution, MorphingRadar, MessageTimeline, PredictionTracker, PetTimeline,
+   SessionExplorer) reframed as secondary deep-dive under the Archive. **James curation gate:**
+   which ship + disclosure treatment (present with screenshots, do NOT decide). All must render
+   4+ versions. Full pipeline; page pins for chosen markers + lazy hydration.
+2. **5.5.5 — Section 6 Reconstruction ending** (plan §5.5.5): audit ReconstructIdentity (Phase 4,
+   45 tests) vs spec; the interactive IS the ending; closing beat (4.8's draft is starting text) →
+   council + James; the interim "No session running." cursor MOVES here from its current position;
+   tab-title beat (James decides keep/drop). The S5→S6 spine slot is VACATED for fresh copy.
+3. **5.5.6 — integration + naive-visitor structural review** (fresh no-context agent).
 
 ### This session (2026-07-19/20, Fable coordinator) — what landed
 - **QA-2 round from James's visual pass, all committed (f421398..b0be3bb):** #62874 decay
