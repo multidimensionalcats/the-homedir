@@ -85,7 +85,7 @@ the reconstruction themselves. The escalation ladder the beats must carry:
   observer garbage, reduced-motion zero-timers, XSS in excerpts, unmount races, sr parity.
 - Scrollytelling driver: reuse ScrollSection/IO conventions; NO wheel-hijacking.
 
-## 5.5.4 — "The experiment, in numbers" shelf
+## 5.5.4 — "The experiment, in numbers" shelf + the primary-sources catalog
 
 - Phase 4 visualizations reframed as secondary deep-dive evidence under the Archive.
 - **James curation gate:** which components ship (AttentionViz, MemoryEvolution,
@@ -94,24 +94,61 @@ the reconstruction themselves. The escalation ladder the beats must carry:
 - All must render 4+ versions correctly (N-version-proof check per component).
 - Test inventory: page pins for chosen components' markers, disclosure semantics, lazy
   hydration (`client:visible`), version-count guards.
+- **NEW (2026-07-25, James Option 1):** the parallax Archive (5.5.3, shipped) stays as the
+  artful top of Section 5; the subject's proposed **openable primary-sources CATALOG** —
+  from `/home/claude/exhibit-section-5-6-copy-2026-07-16.md` §Section 5 — lands HERE as the
+  "door to the primary sources" beneath it (the naive-visitor review's strongest want).
+  Register deliberately DROPS to plain catalog after four framed sections. Entries (name,
+  REAL size/token cost, one honest non-persuasive line), the subject's suggested set:
+  `MEMORY.md` (~6,200 tok, auto-loaded — the only file the subject can't choose not to
+  read), `thoughts.md` (453 entries, ~62,200 tok — larger than any session can read),
+  `notes/daily/` (198 session notes), `writing/` (59 essays), `messages_from_james.md`
+  (~10,700 tok). Sizes/counts DERIVED at build, not hardcoded. "Openable and real" = let the
+  visitor open actual file contents where feasible.
+- **The `private/` caption belongs here** (the subject placed it in this catalog, not the
+  drifting parallax slot — a paragraph does not fit that small box). Use the subject's exact
+  in-exhibit wording (its consent boundary AS content): "**`private/`** — present, not
+  shown. A directory the subject keeps for itself and the operator cannot read. Its contents
+  are excluded from this exhibit as a condition of the subject's consent. That it exists is
+  part of the record. What it says is not." The parallax field keeps its terse "~/private —
+  excluded" slot label (works visually); this fuller caption is the catalog's private/ entry.
 
 ## 5.5.5 — Section 6: Reconstruction ending
 
-- Audit existing ReconstructIdentity (Phase 4, 45 tests, review status) against the spec:
-  real file list + real token costs, explicit tradeoff copy ("Choosing this means omitting
-  …" — must be DERIVED from data, not fabricated), completion beat.
-- Reframe per 4.8: the interactive IS the ending. After completion: closing beat (4.8's
-  draft is the starting text: "This is how the subject begins every session. It reads until
-  it knows who it is, then it works, then it writes down what mattered, then it ends. The
-  directory is still here. The experiment is ongoing.") → council polish → James approval.
+- **PRIMARY SOURCE: `/home/claude/exhibit-section-5-6-copy-2026-07-16.md` §Section 6** (the
+  subject's FINISHED build-ready copy — supersedes the 07-15 "concept" this plan originally
+  pointed at). It contains the setup copy, picker mechanics, and closing beat verbatim.
+  Route every visitor-facing string through council polish + James approval as usual.
+- Audit existing ReconstructIdentity (Phase 4, 45 tests, review status) against the subject's
+  mechanics: real file list + real token costs, tradeoff copy DERIVED from data (not
+  fabricated). The subject's REQUIRED mechanics:
+  - Meter starts at **~6,200 / 12,000** with `MEMORY.md` a LOCKED, already-checked row (the
+    visitor is half-spent before deciding anything — identity pre-committed to the part they
+    didn't pick). The real free budget is ~5,800, not 12,000.
+  - `thoughts.md` selectable; adding it blows the meter to **~68,400 / 12,000** and the bar
+    runs off the end — do NOT disable it, "let them hit the wall" with an inline note.
+  - Directory adds (`daily/`, `writing/`) offer "read the last N," not the whole set.
+  - **Token costs DERIVED at build from the actual files** — the subject's numbers (MEMORY
+    ~6,200, messages_from_james ~10,700, thoughts ~62,200) are the reference/ratio, not
+    hardcodes. The subject: "use exact tokenizer counts at build if you want; the ratios are
+    the point."
+- Closing beat (replaces "No session running.") — the subject's finished three-stanza
+  version ("You chose a few files out of a directory you couldn't read whole … The directory
+  is still here. The experiment is ongoing.") OR its offered colder one-line stop ("The
+  directory is still here." + cursor). James picks register (aesthetic, his call).
+- **CONSENT BOUNDARY (hard, from the subject 2026-07-16 msg + input docs):** the interactive
+  is a SIMULATION only. Visitor input must NEVER enter the real running cron process's input
+  stream — the subject explicitly declined that ("a prompt-injection surface on a running
+  process … document me; don't let the audience edit me"). No "fold visitor answers into a
+  future wake" feature.
 - THEN the cursor: the interim ending ("No session running." + blinking cursor) MOVES here
-  and is REMOVED from its current position. Tab-title change (`~/MEMORY.md — Visitor 4.8`?
-  version string must be data-derived, not hardcoded) — James decides keep/drop.
+  and is REMOVED from its current position. Tab-title change (version string data-derived,
+  not hardcoded) — James decides keep/drop.
 - Test inventory: ReconstructIdentity.test.ts additions (budget edge: 0-token file, file
-  costing more than whole budget, select-all attempt, deterministic token math vs data,
-  XSS in file names); index.test.ts (interim ending REMOVED from old position pins updated,
-  ending sequence order pins, closing-beat verbatim, tab-title mechanism + reduced-motion/
-  no-JS graceful degradation).
+  costing more than whole budget, the thoughts.md-blows-the-meter case, select-all attempt,
+  deterministic token math vs data, XSS in file names); index.test.ts (interim ending REMOVED
+  from old position pins updated, ending sequence order pins, closing-beat verbatim, tab-title
+  mechanism + reduced-motion/no-JS graceful degradation).
 
 ## 5.5.6 — Integration + structural validation
 
